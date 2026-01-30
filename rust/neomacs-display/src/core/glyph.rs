@@ -87,7 +87,7 @@ impl Default for Glyph {
 }
 
 impl Glyph {
-    /// Create a character glyph
+    /// Create a character glyph with explicit dimensions
     pub fn char(code: char, face_id: u32, width: i32, ascent: i32, descent: i32) -> Self {
         Self {
             glyph_type: GlyphType::Char,
@@ -96,6 +96,20 @@ impl Glyph {
             pixel_width: width,
             ascent,
             descent,
+            data: GlyphData::Char { code },
+            ..Default::default()
+        }
+    }
+
+    /// Create a character glyph with default sizing (for later measurement)
+    pub fn char_simple(code: char, face_id: u32) -> Self {
+        Self {
+            glyph_type: GlyphType::Char,
+            charcode: code as u32,
+            face_id,
+            pixel_width: 0, // Will be measured by renderer
+            ascent: 0,
+            descent: 0,
             data: GlyphData::Char { code },
             ..Default::default()
         }
@@ -205,8 +219,12 @@ pub struct GlyphRow {
 }
 
 impl GlyphRow {
-    pub fn new() -> Self {
+    pub fn new(y: i32, height: i32, ascent: i32) -> Self {
         Self {
+            y,
+            height,
+            visible_height: height,
+            ascent,
             enabled: true,
             ..Default::default()
         }
@@ -262,7 +280,7 @@ mod tests {
 
     #[test]
     fn test_glyph_row() {
-        let mut row = GlyphRow::new();
+        let mut row = GlyphRow::new(0, 20, 16);
         row.push(Glyph::char('H', 0, 10, 12, 4));
         row.push(Glyph::char('i', 0, 5, 12, 4));
         assert_eq!(row.width(), 15);

@@ -8,6 +8,7 @@ use crate::backend::gtk4::Gtk4Backend;
 use crate::backend::tty::TtyBackend;
 use crate::core::types::{Color, Rect};
 use crate::core::scene::{Scene, WindowScene, CursorState, CursorStyle};
+use crate::core::glyph::{Glyph, GlyphRow, GlyphType, GlyphData};
 use crate::core::animation::AnimationManager;
 
 /// Opaque handle to the display engine
@@ -191,6 +192,155 @@ pub unsafe extern "C" fn neomacs_display_set_cursor(
             visible: visible != 0 && display.animations.cursor_visible(),
         });
     }
+}
+
+// ============================================================================
+// Glyph Row Management
+// ============================================================================
+
+/// Begin a new glyph row for the current window
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_begin_row(
+    handle: *mut NeomacsDisplay,
+    y: c_int,
+    height: c_int,
+    ascent: c_int,
+    mode_line: c_int,
+    header_line: c_int,
+) {
+    if handle.is_null() {
+        return;
+    }
+
+    let display = &mut *handle;
+    
+    if let Some(window) = display.scene.windows.last_mut() {
+        let row = GlyphRow {
+            glyphs: Vec::new(),
+            y,
+            height,
+            visible_height: height,
+            ascent,
+            enabled: true,
+            cursor_in_row: false,
+            mode_line: mode_line != 0,
+            header_line: header_line != 0,
+        };
+        window.rows.push(row);
+    }
+}
+
+/// Add a character glyph to the current row
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_add_char_glyph(
+    handle: *mut NeomacsDisplay,
+    charcode: u32,
+    face_id: u32,
+    pixel_width: c_int,
+    ascent: c_int,
+    descent: c_int,
+) {
+    if handle.is_null() {
+        return;
+    }
+
+    let display = &mut *handle;
+    
+    if let Some(window) = display.scene.windows.last_mut() {
+        if let Some(row) = window.rows.last_mut() {
+            let glyph = Glyph {
+                glyph_type: GlyphType::Char,
+                charcode,
+                face_id,
+                pixel_width,
+                ascent,
+                descent,
+                charpos: 0,
+                left_box_line: false,
+                right_box_line: false,
+                padding: false,
+                data: GlyphData::Char {
+                    code: char::from_u32(charcode).unwrap_or('\u{FFFD}'),
+                },
+            };
+            row.glyphs.push(glyph);
+        }
+    }
+}
+
+/// Add a stretch (whitespace) glyph to the current row
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_add_stretch_glyph(
+    handle: *mut NeomacsDisplay,
+    pixel_width: c_int,
+    height: c_int,
+    face_id: u32,
+) {
+    if handle.is_null() {
+        return;
+    }
+
+    let display = &mut *handle;
+    
+    if let Some(window) = display.scene.windows.last_mut() {
+        if let Some(row) = window.rows.last_mut() {
+            let glyph = Glyph {
+                glyph_type: GlyphType::Stretch,
+                charcode: 0,
+                face_id,
+                pixel_width,
+                ascent: height,
+                descent: 0,
+                charpos: 0,
+                left_box_line: false,
+                right_box_line: false,
+                padding: false,
+                data: GlyphData::Stretch { width: pixel_width },
+            };
+            row.glyphs.push(glyph);
+        }
+    }
+}
+
+/// Add an image glyph to the current row
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_add_image_glyph(
+    handle: *mut NeomacsDisplay,
+    image_id: u32,
+    pixel_width: c_int,
+    pixel_height: c_int,
+) {
+    if handle.is_null() {
+        return;
+    }
+
+    let display = &mut *handle;
+    
+    if let Some(window) = display.scene.windows.last_mut() {
+        if let Some(row) = window.rows.last_mut() {
+            let glyph = Glyph {
+                glyph_type: GlyphType::Image,
+                charcode: 0,
+                face_id: 0,
+                pixel_width,
+                ascent: pixel_height,
+                descent: 0,
+                charpos: 0,
+                left_box_line: false,
+                right_box_line: false,
+                padding: false,
+                data: GlyphData::Image { image_id },
+            };
+            row.glyphs.push(glyph);
+        }
+    }
+}
+
+/// End the current row
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_end_row(handle: *mut NeomacsDisplay) {
+    // Currently a no-op, but could be used for row finalization
+    let _ = handle;
 }
 
 /// End frame and render

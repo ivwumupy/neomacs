@@ -9,6 +9,7 @@ use gtk4::{cairo, DrawingArea};
 
 use crate::core::error::{DisplayError, DisplayResult};
 use crate::core::scene::Scene;
+use crate::core::face::Face;
 use crate::backend::DisplayBackend;
 
 pub use renderer::Gtk4Renderer;
@@ -97,6 +98,16 @@ impl Gtk4Backend {
                 state.needs_redraw = true;
             }
         }
+    }
+
+    /// Register a face with the renderer
+    pub fn register_face(&mut self, face: Face) -> u32 {
+        if let Some(state) = &self.state {
+            if let Ok(mut state) = state.lock() {
+                return state.renderer.register_face(face);
+            }
+        }
+        face.id
     }
 }
 

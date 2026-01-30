@@ -159,11 +159,15 @@ impl Face {
 #[derive(Debug, Default)]
 pub struct FaceCache {
     faces: Vec<Face>,
+    next_id: u32,
 }
 
 impl FaceCache {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            faces: Vec::new(),
+            next_id: 1, // 0 is reserved for default
+        }
     }
 
     /// Get face by ID
@@ -171,13 +175,27 @@ impl FaceCache {
         self.faces.iter().find(|f| f.id == id)
     }
 
-    /// Add or update a face
-    pub fn insert(&mut self, face: Face) {
+    /// Get or create a face by ID
+    pub fn get_or_create(&mut self, id: u32) -> &Face {
+        // Check if exists
+        if self.get(id).is_some() {
+            return self.get(id).unwrap();
+        }
+        // Create new
+        let face = Face::new(id);
+        self.faces.push(face);
+        self.faces.last().unwrap()
+    }
+
+    /// Add or update a face, returns the face ID
+    pub fn insert(&mut self, face: Face) -> u32 {
+        let id = face.id;
         if let Some(existing) = self.faces.iter_mut().find(|f| f.id == face.id) {
             *existing = face;
         } else {
             self.faces.push(face);
         }
+        id
     }
 
     /// Get default face (ID 0)
