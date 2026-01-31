@@ -3924,15 +3924,16 @@ NEOMACS_LIBS=
 NEOMACS_CFLAGS=
 if test "$window_system" = "neomacs"; then
   NEOMACS_OBJ="neomacsterm.o neomacsfns.o"
-  dnl Check for the Rust library - use absolute path
+  dnl Check for the Rust library - use absolute path to static library
   NEOMACS_RUST_LIB_DIR="`cd ${srcdir} && pwd`/rust/neomacs-display/target/release"
   if test -f "${NEOMACS_RUST_LIB_DIR}/libneomacs_display.a"; then
-    NEOMACS_LIBS="-L${NEOMACS_RUST_LIB_DIR} -lneomacs_display"
+    dnl Use full path to static library to avoid dynamic linking
+    NEOMACS_LIBS="${NEOMACS_RUST_LIB_DIR}/libneomacs_display.a"
   else
     dnl Try debug build
     NEOMACS_RUST_LIB_DIR="`cd ${srcdir} && pwd`/rust/neomacs-display/target/debug"
     if test -f "${NEOMACS_RUST_LIB_DIR}/libneomacs_display.a"; then
-      NEOMACS_LIBS="-L${NEOMACS_RUST_LIB_DIR} -lneomacs_display"
+      NEOMACS_LIBS="${NEOMACS_RUST_LIB_DIR}/libneomacs_display.a"
     else
       AC_MSG_ERROR([Neomacs display library not found. Build it with: cd rust/neomacs-display && cargo build --release])
     fi
@@ -3951,8 +3952,13 @@ if test "$window_system" = "neomacs"; then
   else
     AC_MSG_ERROR([cairo required for Neomacs but not found.])
   fi
-  NEOMACS_CFLAGS="$GTK4_CFLAGS $GSTREAMER_CFLAGS $CAIRO_CFLAGS $GLIB_CFLAGS"
-  NEOMACS_LIBS="$NEOMACS_LIBS $GTK4_LIBS $GSTREAMER_LIBS $CAIRO_LIBS $GLIB_LIBS -lpthread -lm -ldl"
+  dnl EGL is required for DMA-BUF zero-copy in webkit/video
+  PKG_CHECK_MODULES([EGL], [egl], [], [AC_MSG_ERROR([EGL required for Neomacs zero-copy rendering])])
+  dnl WPE WebKit for browser embedding
+  PKG_CHECK_MODULES([WPEWEBKIT], [wpe-webkit-2.0], [], [AC_MSG_ERROR([WPE WebKit required for Neomacs webkit])])
+  PKG_CHECK_MODULES([WPEBACKEND], [wpebackend-fdo-1.0], [], [AC_MSG_ERROR([wpebackend-fdo required for Neomacs webkit])])
+  NEOMACS_CFLAGS="$GTK4_CFLAGS $GSTREAMER_CFLAGS $CAIRO_CFLAGS $GLIB_CFLAGS $EGL_CFLAGS $WPEWEBKIT_CFLAGS $WPEBACKEND_CFLAGS"
+  NEOMACS_LIBS="$NEOMACS_LIBS $GTK4_LIBS $GSTREAMER_LIBS $CAIRO_LIBS $GLIB_LIBS $EGL_LIBS $WPEWEBKIT_LIBS $WPEBACKEND_LIBS -lpthread -lm -ldl"
 fi
 AC_SUBST([NEOMACS_OBJ])
 AC_SUBST([NEOMACS_LIBS])
