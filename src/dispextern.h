@@ -2374,6 +2374,10 @@ enum it_method {
   GET_FROM_IMAGE,
   GET_FROM_STRETCH,
   GET_FROM_XWIDGET,
+#ifdef HAVE_NEOMACS
+  GET_FROM_VIDEO,
+  GET_FROM_WEBKIT,
+#endif
   NUM_IT_METHODS
 };
 
@@ -2757,6 +2761,10 @@ struct it
 
   /* If what == IT_WEBKIT, the WebKit view id.  */
   uint32_t webkit_id;
+
+  /* Width and height for IT_VIDEO or IT_WEBKIT.  */
+  int video_width;
+  int video_height;
 #endif
 
   /* Values from `slice' property.  */

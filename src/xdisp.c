@@ -1182,6 +1182,10 @@ static bool next_element_from_composition (struct it *);
 static bool next_element_from_image (struct it *);
 static bool next_element_from_stretch (struct it *);
 static bool next_element_from_xwidget (struct it *);
+#ifdef HAVE_NEOMACS
+static bool next_element_from_video (struct it *);
+static bool next_element_from_webkit (struct it *);
+#endif
 static void load_overlay_strings (struct it *, ptrdiff_t);
 static bool get_next_display_element (struct it *);
 static enum move_it_result
@@ -5959,6 +5963,10 @@ handle_display_spec (struct it *it, Lisp_Object spec, Lisp_Object object,
 #ifdef HAVE_XWIDGETS
       && !EQ (XCAR (spec), Qxwidget)
 #endif
+#ifdef HAVE_NEOMACS
+      && !EQ (XCAR (spec), Qvideo)
+      && !EQ (XCAR (spec), Qwebkit)
+#endif
       && !EQ (XCAR (spec), Qspace)
       && !EQ (XCAR (spec), Qwhen)
       && !EQ (XCAR (spec), Qslice)
@@ -6458,7 +6466,12 @@ handle_single_display_spec (struct it *it, Lisp_Object spec, Lisp_Object object,
 #endif /* not HAVE_WINDOW_SYSTEM */
              || (CONSP (value) && EQ (XCAR (value), Qspace))
              || ((it ? FRAME_WINDOW_P (it->f) : frame_window_p)
-		 && valid_xwidget_spec_p (value)));
+		 && valid_xwidget_spec_p (value))
+#ifdef HAVE_NEOMACS
+	     || VIDEOP (value)
+	     || WEBKITP (value)
+#endif /* HAVE_NEOMACS */
+	     );
 
   if (valid_p && display_replaced == 0)
     {
@@ -6557,12 +6570,18 @@ handle_single_display_spec (struct it *it, Lisp_Object spec, Lisp_Object object,
 	  Lisp_Object id = plist_get (XCDR (value), QCid);
 	  if (FIXNUMP (id))
 	    {
+	      Lisp_Object width_prop = plist_get (XCDR (value), QCwidth);
+	      Lisp_Object height_prop = plist_get (XCDR (value), QCheight);
+
 	      it->what = IT_VIDEO;
 	      it->video_id = XFIXNUM (id);
+	      it->video_width = FIXNUMP (width_prop) ? XFIXNUM (width_prop) : 320;
+	      it->video_height = FIXNUMP (height_prop) ? XFIXNUM (height_prop) : 240;
 	      it->position = start_pos;
 	      it->object = NILP (object) ? it->w->contents : object;
-	      it->method = GET_FROM_DISPLAY_VECTOR; /* Reuse existing method */
+	      it->method = GET_FROM_VIDEO;
 	      *position = start_pos;
+	      retval = 1 + (it->area == TEXT_AREA);
 	    }
 	}
       /* Handle (webkit :id N :width W :height H) display property.  */
@@ -6571,12 +6590,18 @@ handle_single_display_spec (struct it *it, Lisp_Object spec, Lisp_Object object,
 	  Lisp_Object id = plist_get (XCDR (value), QCid);
 	  if (FIXNUMP (id))
 	    {
+	      Lisp_Object width_prop = plist_get (XCDR (value), QCwidth);
+	      Lisp_Object height_prop = plist_get (XCDR (value), QCheight);
+
 	      it->what = IT_WEBKIT;
 	      it->webkit_id = XFIXNUM (id);
+	      it->video_width = FIXNUMP (width_prop) ? XFIXNUM (width_prop) : 400;
+	      it->video_height = FIXNUMP (height_prop) ? XFIXNUM (height_prop) : 300;
 	      it->position = start_pos;
 	      it->object = NILP (object) ? it->w->contents : object;
-	      it->method = GET_FROM_DISPLAY_VECTOR; /* Reuse existing method */
+	      it->method = GET_FROM_WEBKIT;
 	      *position = start_pos;
+	      retval = 1 + (it->area == TEXT_AREA);
 	    }
 	}
 #endif /* HAVE_NEOMACS */
@@ -7316,6 +7341,12 @@ push_it (struct it *it, struct text_pos *position)
     case GET_FROM_XWIDGET:
       p->u.xwidget.object = it->object;
       break;
+#ifdef HAVE_NEOMACS
+    case GET_FROM_VIDEO:
+    case GET_FROM_WEBKIT:
+      /* Video/WebKit state is stored in it->video_id/webkit_id */
+      break;
+#endif
     case GET_FROM_BUFFER:
     case GET_FROM_DISPLAY_VECTOR:
     case GET_FROM_STRING:
@@ -7470,6 +7501,12 @@ pop_it (struct it *it)
       break;
     case GET_FROM_C_STRING:
       break;
+#ifdef HAVE_NEOMACS
+    case GET_FROM_VIDEO:
+    case GET_FROM_WEBKIT:
+      /* Video/WebKit state is already in it->video_id/webkit_id */
+      break;
+#endif
     default:
       emacs_abort ();
     }
@@ -8244,6 +8281,10 @@ static next_element_function const get_next_element[NUM_IT_METHODS] =
   next_element_from_image,
   next_element_from_stretch,
   next_element_from_xwidget,
+#ifdef HAVE_NEOMACS
+  next_element_from_video,
+  next_element_from_webkit,
+#endif
 };
 
 #define GET_NEXT_DISPLAY_ELEMENT(it) (*get_next_element[(it)->method]) (it)
@@ -9188,6 +9229,10 @@ set_iterator_to_next (struct it *it, bool reseat_p)
     case GET_FROM_IMAGE:
     case GET_FROM_STRETCH:
     case GET_FROM_XWIDGET:
+#ifdef HAVE_NEOMACS
+    case GET_FROM_VIDEO:
+    case GET_FROM_WEBKIT:
+#endif
 
       /* The position etc with which we have to proceed are on
 	 the stack.  The position may be at the end of a string,
@@ -9675,6 +9720,22 @@ next_element_from_xwidget (struct it *it)
   it->what = IT_XWIDGET;
   return true;
 }
+
+#ifdef HAVE_NEOMACS
+static bool
+next_element_from_video (struct it *it)
+{
+  it->what = IT_VIDEO;
+  return true;
+}
+
+static bool
+next_element_from_webkit (struct it *it)
+{
+  it->what = IT_WEBKIT;
+  return true;
+}
+#endif /* HAVE_NEOMACS */
 
 
 /* Fill iterator IT with next display element from a stretch glyph
@@ -30936,6 +30997,53 @@ fill_xwidget_glyph_string (struct glyph_string *s)
   s->xwidget = xwidget_from_id (s->first_glyph->u.xwidget);
 }
 #endif
+
+#ifdef HAVE_NEOMACS
+static void
+fill_video_glyph_string (struct glyph_string *s)
+{
+  eassert (s->first_glyph->type == VIDEO_GLYPH);
+  s->face = FACE_FROM_ID (s->f, s->first_glyph->face_id);
+  s->font = s->face->font;
+  if (s->hl == DRAW_MOUSE_FACE
+      || (s->hl == DRAW_CURSOR
+	  && MATRIX_ROW (s->w->current_matrix,
+			 s->w->phys_cursor.vpos)->mouse_face_p
+	  && cursor_in_mouse_face_p (s->w)))
+    {
+      Mouse_HLInfo *hlinfo = MOUSE_HL_INFO (s->f);
+      s->face = FACE_FROM_ID_OR_NULL (s->f, hlinfo->mouse_face_face_id);
+      if (!s->face)
+	s->face = FACE_FROM_ID (s->f, MOUSE_FACE_ID);
+      prepare_face_for_display (s->f, s->face);
+    }
+  s->width = s->first_glyph->pixel_width;
+  s->ybase += s->first_glyph->voffset;
+}
+
+static void
+fill_webkit_glyph_string (struct glyph_string *s)
+{
+  eassert (s->first_glyph->type == WEBKIT_GLYPH);
+  s->face = FACE_FROM_ID (s->f, s->first_glyph->face_id);
+  s->font = s->face->font;
+  if (s->hl == DRAW_MOUSE_FACE
+      || (s->hl == DRAW_CURSOR
+	  && MATRIX_ROW (s->w->current_matrix,
+			 s->w->phys_cursor.vpos)->mouse_face_p
+	  && cursor_in_mouse_face_p (s->w)))
+    {
+      Mouse_HLInfo *hlinfo = MOUSE_HL_INFO (s->f);
+      s->face = FACE_FROM_ID_OR_NULL (s->f, hlinfo->mouse_face_face_id);
+      if (!s->face)
+	s->face = FACE_FROM_ID (s->f, MOUSE_FACE_ID);
+      prepare_face_for_display (s->f, s->face);
+    }
+  s->width = s->first_glyph->pixel_width;
+  s->ybase += s->first_glyph->voffset;
+}
+#endif /* HAVE_NEOMACS */
+
 /* Fill glyph string S from a sequence of stretch glyphs.
 
    START is the index of the first glyph to consider,
@@ -31422,6 +31530,36 @@ compute_overhangs_and_x (struct glyph_string *s, int x, bool backward_p)
      while (false)
 #endif
 
+#ifndef HAVE_NEOMACS
+# define BUILD_VIDEO_GLYPH_STRING(START, END, HEAD, TAIL, HL, X, LAST_X) \
+     eassume (false)
+# define BUILD_WEBKIT_GLYPH_STRING(START, END, HEAD, TAIL, HL, X, LAST_X) \
+     eassume (false)
+#else
+# define BUILD_VIDEO_GLYPH_STRING(START, END, HEAD, TAIL, HL, X, LAST_X) \
+     do									\
+       {								\
+	 s = alloca (sizeof *s);					\
+	 INIT_GLYPH_STRING (s, NULL, w, row, area, START, HL);		\
+	 fill_video_glyph_string (s);					\
+	 append_glyph_string (&(HEAD), &(TAIL), s);			\
+	 ++(START);							\
+         s->x = (X);							\
+       }								\
+     while (false)
+# define BUILD_WEBKIT_GLYPH_STRING(START, END, HEAD, TAIL, HL, X, LAST_X) \
+     do									\
+       {								\
+	 s = alloca (sizeof *s);					\
+	 INIT_GLYPH_STRING (s, NULL, w, row, area, START, HL);		\
+	 fill_webkit_glyph_string (s);					\
+	 append_glyph_string (&(HEAD), &(TAIL), s);			\
+	 ++(START);							\
+         s->x = (X);							\
+       }								\
+     while (false)
+#endif /* HAVE_NEOMACS */
+
 /* Add a glyph string for a sequence of character glyphs to the list
    of strings between HEAD and TAIL.  START is the index of the first
    glyph in row area AREA of glyph row ROW that is part of the new
@@ -31585,6 +31723,16 @@ compute_overhangs_and_x (struct glyph_string *s, int x, bool backward_p)
 	    case GLYPHLESS_GLYPH:					\
 	      BUILD_GLYPHLESS_GLYPH_STRING (START, END, HEAD, TAIL,	\
 					    HL, X, LAST_X);		\
+	      break;							\
+									\
+	    case VIDEO_GLYPH:						\
+	      BUILD_VIDEO_GLYPH_STRING (START, END, HEAD, TAIL,		\
+					HL, X, LAST_X);			\
+	      break;							\
+									\
+	    case WEBKIT_GLYPH:						\
+	      BUILD_WEBKIT_GLYPH_STRING (START, END, HEAD, TAIL,	\
+					 HL, X, LAST_X);		\
 	      break;							\
 									\
 	    default:							\
@@ -32422,15 +32570,15 @@ static void
 produce_video_glyph (struct it *it)
 {
   int glyph_ascent;
-  int width = 320;  /* Default width */
-  int height = 240; /* Default height */
+  int width = it->video_width > 0 ? it->video_width : 320;
+  int height = it->video_height > 0 ? it->video_height : 240;
 
   eassert (it->what == IT_VIDEO);
 
   struct face *face = FACE_FROM_ID (it->f, it->face_id);
   prepare_face_for_display (it->f, face);
 
-  /* TODO: Get actual video dimensions from the video cache */
+  /* Use width and height from display property */
   it->ascent = it->phys_ascent = glyph_ascent = height / 2;
   it->descent = it->phys_descent = height / 2;
   it->pixel_width = width;
@@ -32520,15 +32668,15 @@ static void
 produce_webkit_glyph (struct it *it)
 {
   int glyph_ascent;
-  int width = 800;  /* Default width */
-  int height = 600; /* Default height */
+  int width = it->video_width > 0 ? it->video_width : 800;
+  int height = it->video_height > 0 ? it->video_height : 600;
 
   eassert (it->what == IT_WEBKIT);
 
   struct face *face = FACE_FROM_ID (it->f, it->face_id);
   prepare_face_for_display (it->f, face);
 
-  /* TODO: Get actual webkit dimensions from the webkit cache */
+  /* Use width and height from display property */
   it->ascent = it->phys_ascent = glyph_ascent = height / 2;
   it->descent = it->phys_descent = height / 2;
   it->pixel_width = width;

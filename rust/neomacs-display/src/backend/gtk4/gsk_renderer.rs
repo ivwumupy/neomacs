@@ -545,6 +545,33 @@ impl GskRenderer {
                     }
                     x += glyph.pixel_width as f32;
                 }
+                GlyphType::Wpe => {
+                    // Render WebKit view
+                    if let GlyphData::Wpe { view_id: _ } = glyph.data {
+                        let webkit_rect = graphene::Rect::new(
+                            x,
+                            base_y,
+                            glyph.pixel_width as f32,
+                            glyph.ascent as f32,
+                        );
+                        
+                        // TODO: Get texture from WebKitCache once wiring is done
+                        // For now, draw a placeholder
+                        let webkit_color = gdk::RGBA::new(0.1, 0.3, 0.5, 1.0); // Blue-ish
+                        let webkit_node = gsk::ColorNode::new(&webkit_color, &webkit_rect);
+                        nodes.push(webkit_node.upcast());
+                        
+                        // Draw a globe icon placeholder
+                        let icon_size = (glyph.ascent as f32 * 0.3).min(30.0);
+                        let icon_x = x + (glyph.pixel_width as f32 - icon_size) / 2.0;
+                        let icon_y = base_y + (glyph.ascent as f32 - icon_size) / 2.0;
+                        let icon_rect = graphene::Rect::new(icon_x, icon_y, icon_size, icon_size);
+                        let icon_color = gdk::RGBA::new(1.0, 1.0, 1.0, 0.8);
+                        let icon_node = gsk::ColorNode::new(&icon_color, &icon_rect);
+                        nodes.push(icon_node.upcast());
+                    }
+                    x += glyph.pixel_width as f32;
+                }
                 _ => {
                     x += glyph.pixel_width as f32;
                 }
