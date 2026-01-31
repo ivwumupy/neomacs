@@ -139,7 +139,7 @@ impl GskRenderer {
             let window = &scene.windows[i];
             // Reborrow image_cache for each window
             let img_cache = image_cache.as_deref_mut();
-            if let Some(window_node) = self.build_window_node(window, scene, video_cache, img_cache) {
+            if let Some(window_node) = self.build_window_node(window, scene, video_cache, img_cache, webkit_cache) {
                 nodes.push(window_node);
             }
         }
@@ -264,6 +264,7 @@ impl GskRenderer {
         scene: &Scene, 
         video_cache: Option<&VideoCache>,
         mut image_cache: Option<&mut ImageCache>,
+        webkit_cache: Option<&WebKitCache>,
     ) -> Option<gsk::RenderNode> {
         let mut nodes: Vec<gsk::RenderNode> = Vec::new();
 
@@ -284,7 +285,7 @@ impl GskRenderer {
             let row = &window.rows[i];
             if row.enabled {
                 let img_cache = image_cache.as_deref_mut();
-                if let Some(row_nodes) = self.build_row_nodes(row, x, y + row.y as f32, scene, video_cache, img_cache) {
+                if let Some(row_nodes) = self.build_row_nodes(row, x, y + row.y as f32, scene, video_cache, img_cache, webkit_cache) {
                     nodes.extend(row_nodes);
                 }
             }
@@ -325,6 +326,7 @@ impl GskRenderer {
         scene: &Scene, 
         video_cache: Option<&VideoCache>,
         mut image_cache: Option<&mut ImageCache>,
+        webkit_cache: Option<&WebKitCache>,
     ) -> Option<Vec<gsk::RenderNode>> {
         let mut nodes: Vec<gsk::RenderNode> = Vec::new();
         let mut x = base_x;
@@ -547,7 +549,7 @@ impl GskRenderer {
                 }
                 GlyphType::Wpe => {
                     // Render WebKit view
-                    if let GlyphData::Wpe { view_id: _ } = glyph.data {
+                    if let GlyphData::Wpe { view_id } = glyph.data {
                         let webkit_rect = graphene::Rect::new(
                             x,
                             base_y,
@@ -555,20 +557,42 @@ impl GskRenderer {
                             glyph.ascent as f32,
                         );
                         
-                        // TODO: Get texture from WebKitCache once wiring is done
-                        // For now, draw a placeholder
-                        let webkit_color = gdk::RGBA::new(0.1, 0.3, 0.5, 1.0); // Blue-ish
-                        let webkit_node = gsk::ColorNode::new(&webkit_color, &webkit_rect);
-                        nodes.push(webkit_node.upcast());
+                        // Try to get texture from WebKitCache
+                        #[cfg(feature = "wpe-webkit")]
+                        let has_texture = if let Some(cache) = webkit_cache {
+                            if let Some(view) = cache.get(view_id) {
+                                if let Some(texture) = view.texture() {
+                                    let texture_node = gsk::TextureNode::new(texture, &webkit_rect);
+                                    nodes.push(texture_node.upcast());
+                                    true
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
                         
-                        // Draw a globe icon placeholder
-                        let icon_size = (glyph.ascent as f32 * 0.3).min(30.0);
-                        let icon_x = x + (glyph.pixel_width as f32 - icon_size) / 2.0;
-                        let icon_y = base_y + (glyph.ascent as f32 - icon_size) / 2.0;
-                        let icon_rect = graphene::Rect::new(icon_x, icon_y, icon_size, icon_size);
-                        let icon_color = gdk::RGBA::new(1.0, 1.0, 1.0, 0.8);
-                        let icon_node = gsk::ColorNode::new(&icon_color, &icon_rect);
-                        nodes.push(icon_node.upcast());
+                        #[cfg(not(feature = "wpe-webkit"))]
+                        let has_texture = false;
+                        
+                        // Fall back to placeholder if no texture
+                        if !has_texture {
+                            let webkit_color = gdk::RGBA::new(0.1, 0.3, 0.5, 1.0); // Blue-ish
+                            let webkit_node = gsk::ColorNode::new(&webkit_color, &webkit_rect);
+                            nodes.push(webkit_node.upcast());
+                            
+                            // Draw a globe icon placeholder
+                            let icon_size = (glyph.ascent as f32 * 0.3).min(30.0);
+                            let icon_x = x + (glyph.pixel_width as f32 - icon_size) / 2.0;
+                            let icon_y = base_y + (glyph.ascent as f32 - icon_size) / 2.0;
+                            let icon_rect = graphene::Rect::new(icon_x, icon_y, icon_size, icon_size);
+                            let icon_color = gdk::RGBA::new(1.0, 1.0, 1.0, 0.8);
+                            let icon_node = gsk::ColorNode::new(&icon_color, &icon_rect);
+                            nodes.push(icon_node.upcast());
+                        }
                     }
                     x += glyph.pixel_width as f32;
                 }
