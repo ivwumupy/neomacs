@@ -318,51 +318,80 @@
 
 ---
 
-## Phase 6: WPE WebKit Support
+## Phase 6: WPE WebKit Support ✅
 
-### 6.1 WPE Backend Setup
-- [ ] Create `backend/gtk4/wpe.rs` module
-- [ ] Research WPE Rust bindings (or create minimal bindings)
-- [ ] Initialize WPE WebKit context
-- [ ] Create WPE view backend for offscreen rendering
-- [ ] Set up buffer export (DMA-BUF or SHM)
+### 6.1 WPE Backend Setup ✅
+- [x] Create `backend/wpe/` module (backend.rs, view.rs, dmabuf.rs, sys.rs)
+- [x] Generate WPE Rust bindings via bindgen (libwpe, wpebackend-fdo, wpe-webkit)
+- [x] Initialize WPE WebKit context with EGL display
+- [x] Create WPE view backend for offscreen rendering
+- [x] Set up DMA-BUF export (EGLImage → GdkDmabufTexture)
 
-### 6.2 WebKit View Management
-- [ ] Create WebKit web view
-- [ ] Load URI
-- [ ] Handle navigation (back, forward, reload)
-- [ ] Handle page load events
-- [ ] Handle JavaScript execution
-- [ ] Handle web notifications/alerts
+### 6.2 WebKit View Management ✅
+- [x] Create WebKit web view (WpeWebView wrapper)
+- [x] Load URI (`webkit_web_view_load_uri`)
+- [x] Handle navigation (go_back, go_forward, reload, stop)
+- [x] Get page state (title, url, progress, loading)
+- [x] Handle JavaScript execution (`webkit_web_view_evaluate_javascript`)
 
-### 6.3 WPE Rendering
-- [ ] Receive rendered buffers from WPE
-- [ ] Convert buffers to GdkTexture
-- [ ] Render WPE view in scene graph
-- [ ] Handle continuous updates
+### 6.3 WPE Rendering ✅
+- [x] Receive rendered buffers from WPE (export_fdo_egl_image callback)
+- [x] Convert EGLImage to GdkDmabufTexture via DmaBufExporter
+- [x] Integrate WebKitCache with GSK renderer
+- [x] Render WebKit views as GskTextureNode
+- [x] Handle continuous updates (frame_available flag)
 
-### 6.4 Input Forwarding
-- [ ] Forward keyboard events to WPE
-- [ ] Forward mouse events to WPE
-- [ ] Forward scroll events to WPE
-- [ ] Handle focus management
+### 6.4 Input Forwarding ✅
+- [x] Forward keyboard events (`wpe_view_backend_dispatch_keyboard_event`)
+- [x] Forward mouse/pointer events (`wpe_view_backend_dispatch_pointer_event`)
+- [x] Forward scroll/axis events (`wpe_view_backend_dispatch_axis_event`)
+- [x] Convenience methods: click(), scroll()
 
-### 6.5 WPE FFI
-- [ ] Implement `emacs_display_create_wpe()` FFI
-- [ ] Implement `emacs_display_wpe_load_uri()` FFI
-- [ ] Implement `emacs_display_wpe_go_back()` FFI
-- [ ] Implement `emacs_display_wpe_go_forward()` FFI
-- [ ] Implement `emacs_display_wpe_reload()` FFI
-- [ ] Implement `emacs_display_wpe_execute_js()` FFI
-- [ ] Implement `emacs_display_wpe_send_key()` FFI
-- [ ] Implement `emacs_display_wpe_send_mouse()` FFI
+### 6.5 WPE FFI ✅
+- [x] Implement `neomacs_display_webkit_init()` FFI
+- [x] Implement `neomacs_display_webkit_create()` FFI
+- [x] Implement `neomacs_display_webkit_destroy()` FFI
+- [x] Implement `neomacs_display_webkit_load_uri()` FFI
+- [x] Implement `neomacs_display_webkit_go_back()` FFI
+- [x] Implement `neomacs_display_webkit_go_forward()` FFI
+- [x] Implement `neomacs_display_webkit_reload()` FFI
+- [x] Implement `neomacs_display_webkit_execute_js()` FFI
+- [x] Implement `neomacs_display_webkit_send_key()` FFI
+- [x] Implement `neomacs_display_webkit_send_pointer()` FFI
+- [x] Implement `neomacs_display_webkit_send_scroll()` FFI
+- [x] Implement `neomacs_display_webkit_click()` FFI
+- [x] Implement `neomacs_display_webkit_get_title()` FFI
+- [x] Implement `neomacs_display_webkit_get_url()` FFI
+- [x] Implement `neomacs_display_webkit_get_progress()` FFI
+- [x] Implement `neomacs_display_webkit_is_loading()` FFI
+- [x] Implement `neomacs_display_set_floating_webkit()` FFI
+- [x] Implement `neomacs_display_hide_floating_webkit()` FFI
 
-### 6.6 WPE Lisp API
-- [ ] Define `create-wpe-view` Lisp function
-- [ ] Define `insert-wpe-view` Lisp function
-- [ ] Define `wpe-load-uri`, `wpe-go-back`, `wpe-go-forward` functions
-- [ ] Define `wpe-execute-js` with callback
-- [ ] Define `wpe-uri`, `wpe-title` accessor functions
+### 6.6 WPE Lisp API ✅
+- [x] Define `neomacs-webkit-init` Lisp function
+- [x] Define `neomacs-webkit-create` Lisp function
+- [x] Define `neomacs-webkit-destroy` Lisp function
+- [x] Define `neomacs-webkit-load-uri` Lisp function
+- [x] Define `neomacs-webkit-go-back`, `neomacs-webkit-go-forward` functions
+- [x] Define `neomacs-webkit-reload` Lisp function
+- [x] Define `neomacs-webkit-execute-js` Lisp function
+- [x] Define `neomacs-webkit-floating`, `neomacs-webkit-floating-clear` functions
+- [x] Define `neomacs-webkit-send-key`, `neomacs-webkit-send-pointer` functions
+- [x] Define `neomacs-webkit-send-scroll`, `neomacs-webkit-click` functions
+- [x] Define `neomacs-webkit-get-title`, `neomacs-webkit-get-url` functions
+- [x] Define `neomacs-webkit-get-progress`, `neomacs-webkit-loading-p` functions
+- [x] Create `lisp/neomacs-webkit.el` helper package with:
+  - `neomacs-webkit-browse` interactive command
+  - `neomacs-webkit-mode` major mode with keybindings
+  - Mode line with title and loading progress
+  - Mouse click and scroll handlers
+
+### 6.7 Infrastructure for Inline Display ✅
+- [x] Add WEBKIT_GLYPH to `enum glyph_type` in dispextern.h
+- [x] Add IT_WEBKIT to `enum it_method` in dispextern.h
+- [x] Add webkit_id to glyph union and iterator struct
+- [x] Handle WEBKIT_GLYPH in neomacsterm.c draw functions
+- [ ] Wire up `(webkit :id N)` display property in xdisp.c (future)
 
 ---
 
@@ -530,16 +559,16 @@
 
 ## Milestones
 
-| Milestone | Phases | Target |
+| Milestone | Phases | Status |
 |-----------|--------|--------|
-| **M1: Basic Rendering** | 1-3 | TTY + GTK4 text rendering works |
-| **M2: Feature Parity** | 4 | Images work like current Emacs |
-| **M3: Video Support** | 5 | Video playback in buffers |
-| **M4: WebKit Support** | 6 | WPE WebKit embedding works |
-| **M5: Smooth UX** | 7 | Animations and smooth scrolling |
-| **M6: Full Integration** | 8 | Emacs builds and runs with new engine |
-| **M7: Cleanup** | 9 | Legacy backends removed |
-| **M8: Release Ready** | 10-11 | Tested, documented, optimized |
+| **M1: Basic Rendering** | 1-3 | ✅ TTY + GTK4 text rendering works |
+| **M2: Feature Parity** | 4 | ✅ Images work like current Emacs |
+| **M3: Video Support** | 5 | ✅ Video playback in buffers |
+| **M4: WebKit Support** | 6 | ✅ WPE WebKit embedding works |
+| **M5: Smooth UX** | 7 | 🔧 Animations and smooth scrolling |
+| **M6: Full Integration** | 8 | 🔧 Emacs builds and runs with new engine |
+| **M7: Cleanup** | 9 | ⏳ Legacy backends removed |
+| **M8: Release Ready** | 10-11 | ⏳ Tested, documented, optimized |
 
 ---
 
@@ -569,11 +598,12 @@
 
 ## Open Questions
 
-1. **WPE Rust bindings**: Do mature bindings exist, or need to create?
+1. ~~**WPE Rust bindings**: Do mature bindings exist, or need to create?~~ → Solved: bindgen for C APIs
 2. **GTK4 minimum version**: What's the minimum GTK4 version to support?
 3. **Fallback rendering**: Should we support software rendering fallback?
 4. **Thread model**: How to handle Rust async with Emacs event loop?
 5. **Memory sharing**: How to efficiently share buffer text with Rust?
+6. **Inline display**: How to wire up `(webkit :id N)` in xdisp.c?
 
 ---
 
