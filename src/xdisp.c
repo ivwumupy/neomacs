@@ -6550,6 +6550,36 @@ handle_single_display_spec (struct it *it, Lisp_Object spec, Lisp_Object object,
 	  *position = start_pos;
           it->xwidget = lookup_xwidget (value);
 	}
+#ifdef HAVE_NEOMACS
+      /* Handle (video :id N :width W :height H) display property.  */
+      else if (VIDEOP (value))
+	{
+	  Lisp_Object id = plist_get (XCDR (value), QCid);
+	  if (FIXNUMP (id))
+	    {
+	      it->what = IT_VIDEO;
+	      it->video_id = XFIXNUM (id);
+	      it->position = start_pos;
+	      it->object = NILP (object) ? it->w->contents : object;
+	      it->method = GET_FROM_DISPLAY_VECTOR; /* Reuse existing method */
+	      *position = start_pos;
+	    }
+	}
+      /* Handle (webkit :id N :width W :height H) display property.  */
+      else if (WEBKITP (value))
+	{
+	  Lisp_Object id = plist_get (XCDR (value), QCid);
+	  if (FIXNUMP (id))
+	    {
+	      it->what = IT_WEBKIT;
+	      it->webkit_id = XFIXNUM (id);
+	      it->position = start_pos;
+	      it->object = NILP (object) ? it->w->contents : object;
+	      it->method = GET_FROM_DISPLAY_VECTOR; /* Reuse existing method */
+	      *position = start_pos;
+	    }
+	}
+#endif /* HAVE_NEOMACS */
 #ifdef HAVE_WINDOW_SYSTEM
       else
 	{
@@ -32386,6 +32416,204 @@ produce_xwidget_glyph (struct it *it)
 #endif
 }
 
+#ifdef HAVE_NEOMACS
+/* Produce a glyph for a video display property.  */
+static void
+produce_video_glyph (struct it *it)
+{
+  int glyph_ascent;
+  int width = 320;  /* Default width */
+  int height = 240; /* Default height */
+
+  eassert (it->what == IT_VIDEO);
+
+  struct face *face = FACE_FROM_ID (it->f, it->face_id);
+  prepare_face_for_display (it->f, face);
+
+  /* TODO: Get actual video dimensions from the video cache */
+  it->ascent = it->phys_ascent = glyph_ascent = height / 2;
+  it->descent = it->phys_descent = height / 2;
+  it->pixel_width = width;
+
+  if (it->descent < 0)
+    it->descent = 0;
+
+  it->nglyphs = 1;
+
+  if (face->box != FACE_NO_BOX)
+    {
+      if (face->box_horizontal_line_width > 0)
+	{
+	  it->ascent += face->box_horizontal_line_width;
+	  it->descent += face->box_horizontal_line_width;
+	}
+      if (face->box_vertical_line_width > 0)
+	{
+	  if (it->start_of_box_run_p)
+	    it->pixel_width += face->box_vertical_line_width;
+	  it->pixel_width += face->box_vertical_line_width;
+	}
+    }
+
+  take_vertical_position_into_account (it);
+
+  /* Crop wide glyphs at right edge.  */
+  int crop = it->pixel_width - (it->last_visible_x - it->current_x);
+  if (crop > 0 && (it->hpos == 0 || it->pixel_width > it->last_visible_x / 4))
+    it->pixel_width -= crop;
+
+  if (it->glyph_row)
+    {
+      enum glyph_row_area area = it->area;
+      struct glyph *glyph
+	= it->glyph_row->glyphs[area] + it->glyph_row->used[area];
+
+      if (it->glyph_row->reversed_p)
+	{
+	  struct glyph *g;
+	  for (g = glyph - 1; g >= it->glyph_row->glyphs[it->area]; g--)
+	    g[1] = *g;
+	  glyph = it->glyph_row->glyphs[it->area];
+	}
+      if (glyph < it->glyph_row->glyphs[area + 1])
+	{
+	  glyph->charpos = CHARPOS (it->position);
+	  glyph->object = it->object;
+	  glyph->pixel_width = clip_to_bounds (-1, it->pixel_width, SHRT_MAX);
+	  glyph->ascent = glyph_ascent;
+	  glyph->descent = it->descent;
+	  glyph->voffset = it->voffset;
+	  glyph->type = VIDEO_GLYPH;
+	  glyph->avoid_cursor_p = it->avoid_cursor_p;
+	  glyph->multibyte_p = it->multibyte_p;
+	  if (it->glyph_row->reversed_p && area == TEXT_AREA)
+	    {
+	      glyph->right_box_line_p = it->start_of_box_run_p;
+	      glyph->left_box_line_p = it->end_of_box_run_p;
+	    }
+	  else
+	    {
+	      glyph->left_box_line_p = it->start_of_box_run_p;
+	      glyph->right_box_line_p = it->end_of_box_run_p;
+	    }
+	  glyph->overlaps_vertically_p = 0;
+	  glyph->padding_p = 0;
+	  glyph->glyph_not_available_p = 0;
+	  glyph->face_id = it->face_id;
+	  glyph->u.video_id = it->video_id;
+	  glyph->font_type = FONT_TYPE_UNKNOWN;
+	  if (it->bidi_p)
+	    {
+	      glyph->resolved_level = it->bidi_it.resolved_level;
+	      eassert ((it->bidi_it.type & 7) == it->bidi_it.type);
+	      glyph->bidi_type = it->bidi_it.type;
+	    }
+	  ++it->glyph_row->used[area];
+	}
+      else
+	IT_EXPAND_MATRIX_WIDTH (it, area);
+    }
+}
+
+/* Produce a glyph for a webkit display property.  */
+static void
+produce_webkit_glyph (struct it *it)
+{
+  int glyph_ascent;
+  int width = 800;  /* Default width */
+  int height = 600; /* Default height */
+
+  eassert (it->what == IT_WEBKIT);
+
+  struct face *face = FACE_FROM_ID (it->f, it->face_id);
+  prepare_face_for_display (it->f, face);
+
+  /* TODO: Get actual webkit dimensions from the webkit cache */
+  it->ascent = it->phys_ascent = glyph_ascent = height / 2;
+  it->descent = it->phys_descent = height / 2;
+  it->pixel_width = width;
+
+  if (it->descent < 0)
+    it->descent = 0;
+
+  it->nglyphs = 1;
+
+  if (face->box != FACE_NO_BOX)
+    {
+      if (face->box_horizontal_line_width > 0)
+	{
+	  it->ascent += face->box_horizontal_line_width;
+	  it->descent += face->box_horizontal_line_width;
+	}
+      if (face->box_vertical_line_width > 0)
+	{
+	  if (it->start_of_box_run_p)
+	    it->pixel_width += face->box_vertical_line_width;
+	  it->pixel_width += face->box_vertical_line_width;
+	}
+    }
+
+  take_vertical_position_into_account (it);
+
+  /* Crop wide glyphs at right edge.  */
+  int crop = it->pixel_width - (it->last_visible_x - it->current_x);
+  if (crop > 0 && (it->hpos == 0 || it->pixel_width > it->last_visible_x / 4))
+    it->pixel_width -= crop;
+
+  if (it->glyph_row)
+    {
+      enum glyph_row_area area = it->area;
+      struct glyph *glyph
+	= it->glyph_row->glyphs[area] + it->glyph_row->used[area];
+
+      if (it->glyph_row->reversed_p)
+	{
+	  struct glyph *g;
+	  for (g = glyph - 1; g >= it->glyph_row->glyphs[it->area]; g--)
+	    g[1] = *g;
+	  glyph = it->glyph_row->glyphs[it->area];
+	}
+      if (glyph < it->glyph_row->glyphs[area + 1])
+	{
+	  glyph->charpos = CHARPOS (it->position);
+	  glyph->object = it->object;
+	  glyph->pixel_width = clip_to_bounds (-1, it->pixel_width, SHRT_MAX);
+	  glyph->ascent = glyph_ascent;
+	  glyph->descent = it->descent;
+	  glyph->voffset = it->voffset;
+	  glyph->type = WEBKIT_GLYPH;
+	  glyph->avoid_cursor_p = it->avoid_cursor_p;
+	  glyph->multibyte_p = it->multibyte_p;
+	  if (it->glyph_row->reversed_p && area == TEXT_AREA)
+	    {
+	      glyph->right_box_line_p = it->start_of_box_run_p;
+	      glyph->left_box_line_p = it->end_of_box_run_p;
+	    }
+	  else
+	    {
+	      glyph->left_box_line_p = it->start_of_box_run_p;
+	      glyph->right_box_line_p = it->end_of_box_run_p;
+	    }
+	  glyph->overlaps_vertically_p = 0;
+	  glyph->padding_p = 0;
+	  glyph->glyph_not_available_p = 0;
+	  glyph->face_id = it->face_id;
+	  glyph->u.webkit_id = it->webkit_id;
+	  glyph->font_type = FONT_TYPE_UNKNOWN;
+	  if (it->bidi_p)
+	    {
+	      glyph->resolved_level = it->bidi_it.resolved_level;
+	      eassert ((it->bidi_it.type & 7) == it->bidi_it.type);
+	      glyph->bidi_type = it->bidi_it.type;
+	    }
+	  ++it->glyph_row->used[area];
+	}
+      else
+	IT_EXPAND_MATRIX_WIDTH (it, area);
+    }
+}
+#endif /* HAVE_NEOMACS */
+
 /* Append a stretch glyph to IT->glyph_row.  OBJECT is the source
    of the glyph, WIDTH and HEIGHT are the width and height of the
    stretch.  ASCENT is the ascent of the glyph (0 <= ASCENT <= HEIGHT).  */
@@ -33929,6 +34157,12 @@ gui_produce_glyphs (struct it *it)
     produce_stretch_glyph (it);
   else if (it->what == IT_XWIDGET)
     produce_xwidget_glyph (it);
+#ifdef HAVE_NEOMACS
+  else if (it->what == IT_VIDEO)
+    produce_video_glyph (it);
+  else if (it->what == IT_WEBKIT)
+    produce_webkit_glyph (it);
+#endif /* HAVE_NEOMACS */
 
  done:
   /* Accumulate dimensions.  Note: can't assume that it->descent > 0

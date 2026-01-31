@@ -1974,6 +1974,9 @@ syms_of_neomacsterm (void)
   defsubr (&Sneomacs_webkit_loading_p);
 
   DEFSYM (Qneomacs, "neomacs");
+  DEFSYM (Qvideo, "video");
+  DEFSYM (Qwebkit, "webkit");
+  DEFSYM (QCid, ":id");
 
   /* Required variables for cus-start */
   DEFVAR_BOOL ("x-use-underline-position-properties",

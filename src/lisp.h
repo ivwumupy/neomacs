@@ -3328,6 +3328,22 @@ IMAGEP (Lisp_Object x)
   return CONSP (x) && EQ (XCAR (x), Qimage);
 }
 
+#ifdef HAVE_NEOMACS
+/* Test for video (video :id N :width W :height H).  */
+INLINE bool
+VIDEOP (Lisp_Object x)
+{
+  return CONSP (x) && EQ (XCAR (x), Qvideo);
+}
+
+/* Test for webkit (webkit :id N :width W :height H).  */
+INLINE bool
+WEBKITP (Lisp_Object x)
+{
+  return CONSP (x) && EQ (XCAR (x), Qwebkit);
+}
+#endif /* HAVE_NEOMACS */
+
 /* Array types.  */
 INLINE bool
 ARRAYP (Lisp_Object x)

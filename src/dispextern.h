@@ -2304,6 +2304,9 @@ enum display_element_type
   IT_XWIDGET,
 
 #ifdef HAVE_NEOMACS
+  /* Video (Neomacs).  */
+  IT_VIDEO,
+
   /* WebKit browser view (Neomacs).  */
   IT_WEBKIT
 #endif
@@ -2749,6 +2752,9 @@ struct it
   struct xwidget *xwidget;
 
 #ifdef HAVE_NEOMACS
+  /* If what == IT_VIDEO, the video player id.  */
+  uint32_t video_id;
+
   /* If what == IT_WEBKIT, the WebKit view id.  */
   uint32_t webkit_id;
 #endif
