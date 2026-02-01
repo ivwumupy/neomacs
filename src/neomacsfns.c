@@ -641,7 +641,7 @@ neomacs_focus_enter_cb (GtkEventControllerFocus *controller, gpointer user_data)
   if (!FRAME_LIVE_P (f))
     return;
 
-  fprintf (stderr, "DEBUG: Focus entered frame %p, widget=%p (focusable=%d, has_focus=%d)\n", 
+if (0) fprintf (stderr, "DEBUG: Focus entered frame %p, widget=%p (focusable=%d, has_focus=%d)\n", 
            (void *) f, (void *) widget,
            gtk_widget_get_focusable (widget),
            gtk_widget_has_focus (widget));
@@ -654,7 +654,7 @@ neomacs_focus_enter_cb (GtkEventControllerFocus *controller, gpointer user_data)
       dpyinfo->x_focus_frame = f;
       dpyinfo->highlight_frame = f;
       dpyinfo->x_highlight_frame = f;
-      fprintf (stderr, "DEBUG: Set highlight_frame to %p\n", (void *) f);
+if (0) fprintf (stderr, "DEBUG: Set highlight_frame to %p\n", (void *) f);
     }
 
   /* Send focus-in event to Emacs */
@@ -675,7 +675,7 @@ neomacs_focus_leave_cb (GtkEventControllerFocus *controller, gpointer user_data)
   if (!FRAME_LIVE_P (f))
     return;
 
-  fprintf (stderr, "DEBUG: Focus left frame %p\n", (void *) f);
+if (0) fprintf (stderr, "DEBUG: Focus left frame %p\n", (void *) f);
 
   /* Clear highlight frame if it was this frame */
   dpyinfo = FRAME_NEOMACS_DISPLAY_INFO (f);

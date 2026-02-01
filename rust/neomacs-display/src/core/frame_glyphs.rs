@@ -359,8 +359,10 @@ impl FrameGlyphBuffer {
         self.glyphs.push(FrameGlyph::WebKit { webkit_id, x, y, width, height });
     }
 
-    /// Add cursor
+    /// Add cursor - removes any existing cursor first (only one cursor should exist)
     pub fn add_cursor(&mut self, x: f32, y: f32, width: f32, height: f32, style: u8, color: Color) {
+        // Remove any existing cursor glyphs - there should only be one cursor
+        self.glyphs.retain(|g| !matches!(g, FrameGlyph::Cursor { .. }));
         self.glyphs.push(FrameGlyph::Cursor { x, y, width, height, style, color });
     }
 
