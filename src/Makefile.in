@@ -330,15 +330,15 @@ NEOMACS_LIBS=@NEOMACS_LIBS@
 NEOMACS_CFLAGS=@NEOMACS_CFLAGS@
 
 ## Neomacs Rust display library
-## Set NEOMACS_RELEASE=1 to build release version
+## Set NEOMACS_DEBUG=1 to build debug version (default is release)
 NEOMACS_RUST_DIR = $(top_srcdir)/rust/neomacs-display
 NEOMACS_RUST_LIB = libneomacs_display.so
-ifdef NEOMACS_RELEASE
-NEOMACS_RUST_PROFILE = release
-NEOMACS_CARGO_FLAGS = --release
-else
+ifdef NEOMACS_DEBUG
 NEOMACS_RUST_PROFILE = debug
 NEOMACS_CARGO_FLAGS =
+else
+NEOMACS_RUST_PROFILE = release
+NEOMACS_CARGO_FLAGS = --release
 endif
 NEOMACS_RUST_TARGET = $(NEOMACS_RUST_DIR)/target/$(NEOMACS_RUST_PROFILE)/$(NEOMACS_RUST_LIB)
 
