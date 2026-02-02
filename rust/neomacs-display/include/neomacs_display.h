@@ -216,6 +216,26 @@ uint32_t neomacs_display_load_image_data(struct NeomacsDisplay *handle,
                                          uintptr_t len);
 
 /**
+ * Load an image from raw ARGB32 pixel data (Cairo/Emacs format)
+ * Returns image_id on success, 0 on failure
+ */
+uint32_t neomacs_display_load_image_argb32(struct NeomacsDisplay *handle,
+                                           const uint8_t *data,
+                                           int width,
+                                           int height,
+                                           int stride);
+
+/**
+ * Load an image from raw RGB24 pixel data (no alpha)
+ * Returns image_id on success, 0 on failure
+ */
+uint32_t neomacs_display_load_image_rgb24(struct NeomacsDisplay *handle,
+                                          const uint8_t *data,
+                                          int width,
+                                          int height,
+                                          int stride);
+
+/**
  * Get image dimensions
  * Returns 0 on success, -1 on failure
  */

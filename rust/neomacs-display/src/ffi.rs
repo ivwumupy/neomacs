@@ -1141,6 +1141,60 @@ pub unsafe extern "C" fn neomacs_display_load_image_data(
     }
 }
 
+/// Load an image from raw ARGB32 pixel data (Cairo/Emacs format)
+/// Returns image_id on success, 0 on failure
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_load_image_argb32(
+    handle: *mut NeomacsDisplay,
+    data: *const u8,
+    width: c_int,
+    height: c_int,
+    stride: c_int,
+) -> u32 {
+    if handle.is_null() || data.is_null() || width <= 0 || height <= 0 || stride <= 0 {
+        return 0;
+    }
+
+    let display = &mut *handle;
+    let data_len = (stride * height) as usize;
+    let bytes = std::slice::from_raw_parts(data, data_len);
+
+    match display.image_cache.load_from_argb32(bytes, width, height, stride) {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("Failed to load ARGB32 image: {}", e);
+            0
+        }
+    }
+}
+
+/// Load an image from raw RGB24 pixel data (no alpha)
+/// Returns image_id on success, 0 on failure
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_load_image_rgb24(
+    handle: *mut NeomacsDisplay,
+    data: *const u8,
+    width: c_int,
+    height: c_int,
+    stride: c_int,
+) -> u32 {
+    if handle.is_null() || data.is_null() || width <= 0 || height <= 0 || stride <= 0 {
+        return 0;
+    }
+
+    let display = &mut *handle;
+    let data_len = (stride * height) as usize;
+    let bytes = std::slice::from_raw_parts(data, data_len);
+
+    match display.image_cache.load_from_rgb24(bytes, width, height, stride) {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("Failed to load RGB24 image: {}", e);
+            0
+        }
+    }
+}
+
 /// Get image dimensions
 /// Returns 0 on success, -1 on failure
 #[no_mangle]
@@ -1581,7 +1635,7 @@ pub unsafe extern "C" fn neomacs_display_is_initialized(handle: *mut NeomacsDisp
 // GPU-Accelerated Widget (GSK)
 // ============================================================================
 
-use crate::backend::gtk4::{NeomacsWidget, set_widget_video_cache, set_widget_image_cache, set_widget_frame_glyphs, set_widget_use_hybrid};
+use crate::backend::gtk4::{NeomacsWidget, set_widget_video_cache, set_widget_image_cache, set_widget_frame_glyphs, set_widget_use_hybrid, set_widget_floating_images};
 
 /// Create a GPU-accelerated NeomacsWidget
 ///
@@ -1693,6 +1747,9 @@ pub unsafe extern "C" fn neomacs_display_render_to_widget(
             // Hybrid path: pass FrameGlyphBuffer to widget via thread-local
             debug!("render_to_widget: hybrid mode, {} glyphs", display.frame_glyphs.len());
             set_widget_frame_glyphs(&display.frame_glyphs as *const FrameGlyphBuffer);
+
+            // Pass floating images to widget for overlay rendering
+            set_widget_floating_images(display.scene.floating_images.clone());
 
             // Trigger redraw - widget will read from thread-local frame_glyphs
             widget.queue_draw();

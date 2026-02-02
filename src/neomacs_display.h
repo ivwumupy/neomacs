@@ -21,6 +21,11 @@
 #define DRM_FORMAT_XBGR8888 875709016
 
 /**
+ * Type for the resize callback function pointer from C
+ */
+typedef void (*ResizeCallbackFn)(void *user_data, int width, int height);
+
+/**
  * Backend type selection
  */
 typedef enum BackendType {
@@ -96,30 +101,6 @@ void neomacs_display_draw_border(struct NeomacsDisplay *handle,
                                  uint32_t color);
 
 /**
- * Clear a rectangular area (remove glyphs in the region)
- */
-void neomacs_display_clear_area(struct NeomacsDisplay *handle,
-                                int x,
-                                int y,
-                                int width,
-                                int height);
-
-/**
- * Clear all glyphs (used when frame layout changes, e.g., tab-bar-mode toggle)
- */
-void neomacs_display_clear_all_glyphs(struct NeomacsDisplay *handle);
-
-/**
- * Clear all cursors (called at frame start to prevent ghost cursors)
- */
-void neomacs_display_clear_all_cursors(struct NeomacsDisplay *handle);
-
-/**
- * Clear all borders/dividers (called at frame start to prevent stale dividers)
- */
-void neomacs_display_clear_all_borders(struct NeomacsDisplay *handle);
-
-/**
  * Begin a new glyph row for the current window
  */
 void neomacs_display_begin_row(struct NeomacsDisplay *handle,
@@ -184,17 +165,6 @@ void neomacs_display_set_face(struct NeomacsDisplay *handle,
 void neomacs_display_set_background(struct NeomacsDisplay *handle, uint32_t color);
 
 /**
- * Resize callback function type
- */
-typedef void (*neomacs_resize_callback_fn)(void *user_data, int width, int height);
-
-/**
- * Set the resize callback for the NeomacsWidget
- * The callback will be called whenever the widget is resized
- */
-void neomacs_display_set_resize_callback(neomacs_resize_callback_fn callback, void *user_data);
-
-/**
  * Add a video glyph to the current row
  */
 void neomacs_display_add_video_glyph(struct NeomacsDisplay *handle,
@@ -224,13 +194,15 @@ int neomacs_display_video_pause(struct NeomacsDisplay *handle, uint32_t videoId)
 int neomacs_display_video_stop(struct NeomacsDisplay *handle, uint32_t videoId);
 
 /**
- * Set loop mode for a video
- * loop_count: 0 = no loop, -1 = infinite loop, >0 = loop that many times
+ * Set video loop mode
+ * count: -1 = infinite loop, 0 = no loop, n > 0 = loop n times
+ * Returns 0 on success, -1 on failure
  */
 int neomacs_display_video_set_loop(struct NeomacsDisplay *handle, uint32_t videoId, int loopCount);
 
 /**
- * Update video state (check for EOS, handle looping)
+ * Update video frame (called from Emacs redisplay)
+ * Returns 0 on success, -1 on failure
  */
 int neomacs_display_video_update(struct NeomacsDisplay *handle, uint32_t videoId);
 
@@ -247,6 +219,26 @@ uint32_t neomacs_display_load_image(struct NeomacsDisplay *handle, const char *p
 uint32_t neomacs_display_load_image_data(struct NeomacsDisplay *handle,
                                          const uint8_t *data,
                                          uintptr_t len);
+
+/**
+ * Load an image from raw ARGB32 pixel data (Cairo/Emacs format)
+ * Returns image_id on success, 0 on failure
+ */
+uint32_t neomacs_display_load_image_argb32(struct NeomacsDisplay *handle,
+                                           const uint8_t *data,
+                                           int width,
+                                           int height,
+                                           int stride);
+
+/**
+ * Load an image from raw RGB24 pixel data (no alpha)
+ * Returns image_id on success, 0 on failure
+ */
+uint32_t neomacs_display_load_image_rgb24(struct NeomacsDisplay *handle,
+                                          const uint8_t *data,
+                                          int width,
+                                          int height,
+                                          int stride);
 
 /**
  * Get image dimensions
@@ -295,7 +287,31 @@ void neomacs_display_set_floating_image(struct NeomacsDisplay *handle,
 void neomacs_display_clear_floating_image(struct NeomacsDisplay *handle, uint32_t imageId);
 
 /**
+ * Clear a rectangular area of the display
+ * Used by gui_clear_end_of_line and related functions
+ */
+void neomacs_display_clear_area(struct NeomacsDisplay *handle, int x, int y, int width, int height);
+
+/**
+ * Clear all glyphs - used when frame layout changes (e.g., tab-bar-mode toggle)
+ */
+void neomacs_display_clear_all_glyphs(struct NeomacsDisplay *handle);
+
+/**
+ * Clear all cursors - called at start of each frame to prevent ghost cursors
+ * when focus changes between windows (e.g., buffer <-> minibuffer)
+ */
+void neomacs_display_clear_all_cursors(struct NeomacsDisplay *handle);
+
+/**
+ * Clear all borders (window dividers) - called at start of each frame
+ * to prevent stale dividers when windows are deleted
+ */
+void neomacs_display_clear_all_borders(struct NeomacsDisplay *handle);
+
+/**
  * End frame and render
+ * Returns 0 on success, 1 if layout changed (Emacs should force refresh), -1 on error
  */
 int neomacs_display_end_frame(struct NeomacsDisplay *handle);
 
@@ -380,6 +396,12 @@ void neomacs_display_widget_init_pango(struct NeomacsDisplay *handle, void *widg
  * handle must be valid, widget must be a valid NeomacsWidget
  */
 int neomacs_display_render_to_widget(struct NeomacsDisplay *handle, void *widget);
+
+/**
+ * Set the resize callback for the NeomacsWidget
+ * The callback will be called whenever the widget is resized
+ */
+void neomacs_display_set_resize_callback(ResizeCallbackFn callback, void *userData);
 
 /**
  * Initialize WebKit subsystem with EGL display

@@ -17,6 +17,7 @@ use gtk4::{glib, graphene, gsk, pango, Snapshot};
 use log::{debug, trace, warn, info};
 
 use crate::core::scene::Scene;
+use crate::core::scene::FloatingImage;
 use crate::core::frame_glyphs::FrameGlyphBuffer;
 use super::gsk_renderer::GskRenderer;
 use super::hybrid_renderer::HybridRenderer;
@@ -33,6 +34,8 @@ thread_local! {
     pub static WIDGET_USE_HYBRID: RefCell<bool> = const { RefCell::new(true) };
     // Resize callback - called when widget size changes
     pub static WIDGET_RESIZE_CALLBACK: RefCell<Option<Box<dyn Fn(i32, i32) + Send + 'static>>> = const { RefCell::new(None) };
+    // Floating images for overlay rendering in hybrid mode
+    pub static WIDGET_FLOATING_IMAGES: RefCell<Vec<FloatingImage>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Set the video cache for widget rendering (called from FFI before queue_draw)
@@ -81,6 +84,13 @@ where
 {
     WIDGET_RESIZE_CALLBACK.with(|c| {
         *c.borrow_mut() = Some(Box::new(callback));
+    });
+}
+
+/// Set floating images for overlay rendering (called from FFI before queue_draw)
+pub fn set_widget_floating_images(images: Vec<FloatingImage>) {
+    WIDGET_FLOATING_IMAGES.with(|c| {
+        *c.borrow_mut() = images;
     });
 }
 
@@ -143,6 +153,11 @@ impl NeomacsWidgetInner {
                 c.borrow().clone()  // Clone the Option<FrameGlyphBuffer>
             });
 
+            // Get floating images from thread-local
+            let floating_images: Vec<FloatingImage> = WIDGET_FLOATING_IMAGES.with(|c| {
+                c.borrow().clone()
+            });
+
             if let Some(ref buffer) = frame_glyphs {
 
                 // Get video cache from thread-local (mutable for update())
@@ -157,7 +172,7 @@ impl NeomacsWidgetInner {
                 // Build render node with hybrid renderer
                 let mut renderer = self.hybrid_renderer.borrow_mut();
 
-                if let Some(node) = renderer.build_render_node(buffer, video_cache, image_cache) {
+                if let Some(node) = renderer.build_render_node(buffer, video_cache, image_cache, &floating_images) {
                     snapshot.append_node(&node);
                 } else {
                     let rect = graphene::Rect::new(0.0, 0.0, width, height);

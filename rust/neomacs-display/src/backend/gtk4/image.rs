@@ -133,6 +133,78 @@ impl ImageCache {
         Ok(id)
     }
 
+    /// Load an image from raw ARGB32 pixel data (Cairo format)
+    /// Data should be width * height * 4 bytes in ARGB32 format (pre-multiplied alpha)
+    pub fn load_from_argb32(&mut self, data: &[u8], width: i32, height: i32, stride: i32) -> DisplayResult<u32> {
+        let expected_size = (stride * height) as usize;
+        if data.len() < expected_size {
+            return Err(DisplayError::Backend(format!(
+                "Data too small: got {} bytes, expected at least {} ({}x{} stride={})",
+                data.len(), expected_size, width, height, stride
+            )));
+        }
+
+        // Create Cairo surface from raw data
+        let surface = cairo::ImageSurface::create_for_data(
+            data.to_vec(),
+            cairo::Format::ARgb32,
+            width,
+            height,
+            stride,
+        ).map_err(|e| DisplayError::Backend(format!("Failed to create surface: {}", e)))?;
+
+        let id = self.next_id;
+        self.next_id += 1;
+
+        self.images.insert(id, CachedImage {
+            width,
+            height,
+            surface,
+            texture: None,
+            frames: None,
+            current_frame: 0,
+            is_animated: false,
+        });
+
+        Ok(id)
+    }
+
+    /// Load an image from raw RGB24 pixel data (no alpha)
+    /// Data should be width * height * 4 bytes in xRGB format (x is padding)
+    pub fn load_from_rgb24(&mut self, data: &[u8], width: i32, height: i32, stride: i32) -> DisplayResult<u32> {
+        let expected_size = (stride * height) as usize;
+        if data.len() < expected_size {
+            return Err(DisplayError::Backend(format!(
+                "Data too small: got {} bytes, expected at least {} ({}x{} stride={})",
+                data.len(), expected_size, width, height, stride
+            )));
+        }
+
+        // Create Cairo surface from raw data
+        let surface = cairo::ImageSurface::create_for_data(
+            data.to_vec(),
+            cairo::Format::Rgb24,
+            width,
+            height,
+            stride,
+        ).map_err(|e| DisplayError::Backend(format!("Failed to create surface: {}", e)))?;
+
+        let id = self.next_id;
+        self.next_id += 1;
+
+        self.images.insert(id, CachedImage {
+            width,
+            height,
+            surface,
+            texture: None,
+            frames: None,
+            current_frame: 0,
+            is_animated: false,
+        });
+
+        Ok(id)
+    }
+
     /// Load an animated GIF from file
     pub fn load_animation_from_file(&mut self, path: &Path) -> DisplayResult<u32> {
         use std::time::SystemTime;

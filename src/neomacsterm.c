@@ -46,6 +46,15 @@ struct wl_display;
 /* List of Neomacs display info structures */
 struct neomacs_display_info *neomacs_display_list = NULL;
 
+/* GPU image ID cache - maps Emacs image pointer to GPU image ID */
+#define IMAGE_CACHE_SIZE 256
+struct neomacs_image_cache_entry {
+  struct image *emacs_img;  /* Emacs image (key) */
+  uint32_t gpu_id;          /* GPU image ID */
+};
+static struct neomacs_image_cache_entry neomacs_image_cache[IMAGE_CACHE_SIZE];
+static int neomacs_image_cache_count = 0;
+
 /* Forward declarations */
 static void neomacs_set_window_size (struct frame *f, bool change_gravity,
                                      int width, int height);
@@ -57,6 +66,8 @@ static void neomacs_condemn_scroll_bars (struct frame *frame);
 static void neomacs_redeem_scroll_bar (struct window *w);
 static void neomacs_judge_scroll_bars (struct frame *f);
 static void neomacs_clear_frame (struct frame *f);
+static uint32_t neomacs_get_or_load_image (struct neomacs_display_info *dpyinfo,
+                                           struct image *img);
 
 /* Event queue for buffering input events from GTK callbacks */
 struct neomacs_event_queue_t
@@ -995,7 +1006,34 @@ neomacs_draw_glyph_string (struct glyph_string *s)
                                                   (uint32_t) face_id);
               break;
             case IMAGE_GLYPH:
-              /* TODO: Handle image glyphs */
+              /* Handle image glyphs via GPU rendering */
+              if (s->img)
+                {
+                  uint32_t gpu_id = neomacs_get_or_load_image (dpyinfo, s->img);
+                  if (gpu_id != 0)
+                    {
+                      /* Calculate image position and dimensions */
+                      int img_x = s->x;
+                      int img_y = s->ybase - image_ascent (s->img, s->face, &s->slice);
+
+                      /* Adjust for box line if present */
+                      if (s->face->box != FACE_NO_BOX
+                          && s->first_glyph->left_box_line_p
+                          && s->slice.x == 0)
+                        img_x += max (s->face->box_vertical_line_width, 0);
+
+                      /* Adjust for margins */
+                      if (s->slice.x == 0)
+                        img_x += s->img->hmargin;
+                      if (s->slice.y == 0)
+                        img_y += s->img->vmargin;
+
+                      neomacs_display_add_image_glyph (dpyinfo->display_handle,
+                                                       gpu_id,
+                                                       s->slice.width,
+                                                       s->slice.height);
+                    }
+                }
               break;
             case VIDEO_GLYPH:
               {
@@ -1307,6 +1345,65 @@ neomacs_clear_frame_area (struct frame *f, int x, int y, int width, int height)
   cairo_set_source_rgb (cr, r, g, b);
   cairo_rectangle (cr, x, y, width, height);
   cairo_fill (cr);
+}
+
+/* Get GPU image ID for an Emacs image, loading it if necessary */
+static uint32_t
+neomacs_get_or_load_image (struct neomacs_display_info *dpyinfo, struct image *img)
+{
+  int i;
+
+  if (!dpyinfo || !dpyinfo->display_handle || !img)
+    return 0;
+
+  /* Check cache first */
+  for (i = 0; i < neomacs_image_cache_count; i++)
+    {
+      if (neomacs_image_cache[i].emacs_img == img)
+        return neomacs_image_cache[i].gpu_id;
+    }
+
+  /* Not in cache - load the image */
+  uint32_t gpu_id = 0;
+
+  /* Try to load from pixmap data if available */
+  if (img->pixmap && img->pixmap->data)
+    {
+      /* Emacs Cairo uses ARGB32 or RGB24 format */
+      int width = img->pixmap->width;
+      int height = img->pixmap->height;
+      int stride = img->pixmap->bytes_per_line;
+      unsigned char *data = (unsigned char *) img->pixmap->data;
+
+      /* Check if image has alpha (mask or ARGB32 bits_per_pixel) */
+      if (img->mask || img->pixmap->bits_per_pixel == 32)
+        {
+          gpu_id = neomacs_display_load_image_argb32 (dpyinfo->display_handle,
+                                                       data, width, height, stride);
+        }
+      else
+        {
+          gpu_id = neomacs_display_load_image_rgb24 (dpyinfo->display_handle,
+                                                      data, width, height, stride);
+        }
+    }
+
+  if (gpu_id == 0)
+    {
+      fprintf (stderr, "neomacs: Failed to load image %dx%d\n",
+               img->width, img->height);
+      return 0;
+    }
+
+  /* Add to cache */
+  if (neomacs_image_cache_count < IMAGE_CACHE_SIZE)
+    {
+      neomacs_image_cache[neomacs_image_cache_count].emacs_img = img;
+      neomacs_image_cache[neomacs_image_cache_count].gpu_id = gpu_id;
+      neomacs_image_cache_count++;
+    }
+
+  return gpu_id;
 }
 
 /* Draw vertical window border - used for horizontal splits (C-x 3) */

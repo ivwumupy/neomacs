@@ -122,7 +122,8 @@ impl HybridRenderer {
         &mut self,
         buffer: &FrameGlyphBuffer,
         mut video_cache: Option<&mut VideoCache>,
-        _image_cache: Option<&mut ImageCache>,
+        mut image_cache: Option<&mut ImageCache>,
+        floating_images: &[crate::core::scene::FloatingImage],
     ) -> Option<gsk::RenderNode> {
         // Update ALL video players FIRST before any rendering
         // This ensures bus polling doesn't happen during the render loop
@@ -171,6 +172,30 @@ impl HybridRenderer {
         }
         for glyph in overlay_glyphs {
             self.render_glyph(&glyph, &mut nodes, &mut video_cache, &mut char_count, true);
+        }
+
+        // Render floating images on top
+        if let Some(ref mut cache) = image_cache {
+            debug!("Rendering {} floating images", floating_images.len());
+            for floating in floating_images {
+                if let Some(img) = cache.get_mut(floating.image_id) {
+                    if let Some(texture) = img.get_texture() {
+                        debug!("Got texture for floating image {}", floating.image_id);
+                        let img_rect = graphene::Rect::new(
+                            floating.x,
+                            floating.y,
+                            floating.width,
+                            floating.height,
+                        );
+                        let texture_node = gsk::TextureNode::new(&texture, &img_rect);
+                        nodes.push(texture_node.upcast());
+                    } else {
+                        warn!("No texture for floating image {}", floating.image_id);
+                    }
+                } else {
+                    warn!("Floating image {} not in cache", floating.image_id);
+                }
+            }
         }
 
         debug!("Processed {} chars, {} backgrounds, total {} nodes", char_count, bg_count, nodes.len());
