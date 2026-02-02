@@ -85,7 +85,7 @@ impl HybridRenderer {
             return self.glyph_atlas.get(&key);
         }
 
-        warn!("Rasterizing '{}' (face_id={}, fg={:?}, font='{}', bold={}, italic={}, scale={})", c, face_id, fg, font_family, bold, italic, self.scale_factor);
+        debug!("Rasterizing '{}' (face_id={}, fg={:?}, font='{}', bold={}, italic={}, scale={})", c, face_id, fg, font_family, bold, italic, self.scale_factor);
 
         // Need to rasterize - create a temporary face with the foreground color
         let mut attrs = crate::core::face::FaceAttributes::empty();
@@ -117,14 +117,14 @@ impl HybridRenderer {
         if let Some((width, height, pixels, bearing_x, bearing_y)) =
             self.text_engine.rasterize_char_scaled(c, Some(&face), self.scale_factor)
         {
-            warn!("Rasterized '{}': {}x{} bearing=({},{}) pixels_len={} scale={}", c, width, height, bearing_x, bearing_y, pixels.len(), self.scale_factor);
+            debug!("Rasterized '{}': {}x{} bearing=({},{}) pixels_len={} scale={}", c, width, height, bearing_x, bearing_y, pixels.len(), self.scale_factor);
             // Sample some pixel data to verify - find max alpha
             let max_alpha = pixels.chunks(4).map(|c| c[3]).max().unwrap_or(0);
             let non_zero_count = pixels.chunks(4).filter(|c| c[3] > 0).count();
-            warn!("  max_alpha={} non_zero_alpha_pixels={}", max_alpha, non_zero_count);
+            debug!("  max_alpha={} non_zero_alpha_pixels={}", max_alpha, non_zero_count);
             // Create GPU texture
             if let Some(texture) = TextEngine::create_texture(width, height, &pixels) {
-                warn!("Created texture for '{}' size={}x{}", c, texture.width(), texture.height());
+                debug!("Created texture for '{}' size={}x{}", c, texture.width(), texture.height());
                 self.glyph_atlas.insert_texture(
                     key.clone(),
                     texture,
