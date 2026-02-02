@@ -265,6 +265,10 @@ impl NeomacsWidgetInner {
                 // Build render node with hybrid renderer
                 let mut renderer = self.hybrid_renderer.borrow_mut();
 
+                // Set scale factor for HiDPI rendering
+                let scale_factor = widget.scale_factor() as f32;
+                renderer.set_scale_factor(scale_factor);
+
                 if let Some(node) = renderer.build_render_node(buffer, video_cache, image_cache, &floating_images, &floating_webkits, webkit_cache) {
                     snapshot.append_node(&node);
                 } else {

@@ -56,10 +56,24 @@ impl TextEngine {
     /// Rasterize a single character and return RGBA pixel data
     ///
     /// Returns (width, height, pixels, bearing_x, bearing_y) where pixels is RGBA data
+    /// The scale_factor parameter is used for HiDPI rendering (e.g., 2.0 for 2x displays)
     pub fn rasterize_char(
         &mut self,
         c: char,
         face: Option<&Face>,
+    ) -> Option<(u32, u32, Vec<u8>, f32, f32)> {
+        self.rasterize_char_scaled(c, face, 1.0)
+    }
+
+    /// Rasterize a single character at the given scale factor
+    ///
+    /// Returns (width, height, pixels, bearing_x, bearing_y) where pixels is RGBA data
+    /// The scale_factor parameter is used for HiDPI rendering (e.g., 2.0 for 2x displays)
+    pub fn rasterize_char_scaled(
+        &mut self,
+        c: char,
+        face: Option<&Face>,
+        scale_factor: f32,
     ) -> Option<(u32, u32, Vec<u8>, f32, f32)> {
         // Create attributes from face
         let attrs = self.face_to_attrs(face);
@@ -74,8 +88,8 @@ impl TextEngine {
         // Get the glyph info
         for run in buffer.layout_runs() {
             for glyph in run.glyphs.iter() {
-                // Rasterize the glyph
-                let physical_glyph = glyph.physical((0.0, 0.0), 1.0);
+                // Rasterize the glyph at the specified scale factor for HiDPI
+                let physical_glyph = glyph.physical((0.0, 0.0), scale_factor);
 
                 if let Some(image) = self.swash_cache.get_image(&mut self.font_system, physical_glyph.cache_key) {
                     let width = image.placement.width as u32;
@@ -85,7 +99,7 @@ impl TextEngine {
                         continue;
                     }
 
-                    // Get bearing for positioning
+                    // Get bearing for positioning (scale-adjusted)
                     let bearing_x = image.placement.left as f32;
                     let bearing_y = image.placement.top as f32;
 

@@ -30,6 +30,8 @@ pub struct HybridRenderer {
     glyph_atlas: GlyphAtlas,
     /// Face cache for styling
     face_cache: FaceCache,
+    /// Display scale factor for HiDPI (1.0 = normal, 2.0 = 2x HiDPI)
+    scale_factor: f32,
 }
 
 impl Default for HybridRenderer {
@@ -44,6 +46,17 @@ impl HybridRenderer {
             text_engine: TextEngine::new(),
             glyph_atlas: GlyphAtlas::new(),
             face_cache: FaceCache::new(),
+            scale_factor: 1.0,
+        }
+    }
+
+    /// Set the display scale factor for HiDPI rendering
+    pub fn set_scale_factor(&mut self, scale: f32) {
+        if (self.scale_factor - scale).abs() > 0.01 {
+            // Scale changed - clear glyph cache since textures are resolution-dependent
+            self.glyph_atlas.clear();
+            self.scale_factor = scale;
+            debug!("HybridRenderer: scale factor changed to {}", scale);
         }
     }
 
@@ -69,7 +82,7 @@ impl HybridRenderer {
             return self.glyph_atlas.get(&key);
         }
 
-        debug!("Rasterizing '{}' (face_id={}, fg={:?})", c, face_id, fg);
+        debug!("Rasterizing '{}' (face_id={}, fg={:?}, scale={})", c, face_id, fg, self.scale_factor);
 
         // Need to rasterize - create a temporary face with the foreground color
         let face = Face {
@@ -89,11 +102,11 @@ impl HybridRenderer {
             box_line_width: 0,
         };
 
-        // Rasterize the character
+        // Rasterize the character at the current scale factor for HiDPI
         if let Some((width, height, pixels, bearing_x, bearing_y)) =
-            self.text_engine.rasterize_char(c, Some(&face))
+            self.text_engine.rasterize_char_scaled(c, Some(&face), self.scale_factor)
         {
-            warn!("Rasterized '{}': {}x{} bearing=({},{}) pixels_len={}", c, width, height, bearing_x, bearing_y, pixels.len());
+            warn!("Rasterized '{}': {}x{} bearing=({},{}) pixels_len={} scale={}", c, width, height, bearing_x, bearing_y, pixels.len(), self.scale_factor);
             // Sample some pixel data to verify - find max alpha
             let max_alpha = pixels.chunks(4).map(|c| c[3]).max().unwrap_or(0);
             let non_zero_count = pixels.chunks(4).filter(|c| c[3] > 0).count();
@@ -426,16 +439,18 @@ impl HybridRenderer {
                 }
 
                 // Get or rasterize glyph
+                let scale = self.scale_factor;
                 if let Some(cached) = self.get_or_rasterize_glyph(*char, *face_id, fg) {
-                    // Position glyph using bearing
-                    let glyph_x = x + cached.bearing_x;
-                    let glyph_y = y + ascent - cached.bearing_y;
+                    // Position glyph using bearing (bearing is already in device pixels, divide by scale)
+                    let glyph_x = x + cached.bearing_x / scale;
+                    let glyph_y = y + ascent - cached.bearing_y / scale;
 
+                    // Texture is in device pixels, but we render at logical size
                     let rect = graphene::Rect::new(
                         glyph_x,
                         glyph_y,
-                        cached.width as f32,
-                        cached.height as f32,
+                        cached.width as f32 / scale,
+                        cached.height as f32 / scale,
                     );
 
                     // Create texture node
@@ -664,8 +679,15 @@ impl HybridRenderer {
                 if *char == ' ' || *char == '\t' || *char == '\n' {
                     return;
                 }
+                let scale = self.scale_factor;
                 if let Some(cached) = self.get_or_rasterize_glyph(*char, *face_id, fg) {
-                    let tex_rect = graphene::Rect::new(*x, *y + (*ascent - cached.ascent), cached.width, cached.height);
+                    // Scale down from device pixels to logical pixels for rendering
+                    let tex_rect = graphene::Rect::new(
+                        *x + cached.bearing_x / scale,
+                        *y + (*ascent - cached.bearing_y / scale),
+                        cached.width as f32 / scale,
+                        cached.height as f32 / scale,
+                    );
                     let texture_node = gsk::TextureNode::new(&cached.texture, &tex_rect);
                     nodes.push(texture_node.upcast());
                 }
