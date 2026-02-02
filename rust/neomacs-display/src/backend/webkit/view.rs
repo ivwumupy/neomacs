@@ -114,8 +114,8 @@ impl WebKitView {
         self.wpe_view.state.into()
     }
 
-    /// Get the texture for rendering
-    pub fn texture(&self) -> Option<&gdk4::Texture> {
+    /// Get the texture for rendering (cloned to ensure proper reference counting)
+    pub fn texture(&self) -> Option<gdk4::Texture> {
         self.wpe_view.texture()
     }
 

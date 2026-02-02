@@ -243,7 +243,7 @@ impl HybridRenderer {
                             floating.width,
                             floating.height,
                         );
-                        let texture_node = gsk::TextureNode::new(texture, &webkit_rect);
+                        let texture_node = gsk::TextureNode::new(&texture, &webkit_rect);
                         nodes.push(texture_node.upcast());
                     } else {
                         // Loading placeholder - dark rectangle
@@ -615,7 +615,7 @@ impl HybridRenderer {
                 if let Some(cache) = webkit_cache {
                     if let Some(view) = cache.get(*webkit_id) {
                         if let Some(texture) = view.texture() {
-                            let texture_node = gsk::TextureNode::new(texture, &rect);
+                            let texture_node = gsk::TextureNode::new(&texture, &rect);
                             nodes.push(texture_node.upcast());
                             return;
                         }

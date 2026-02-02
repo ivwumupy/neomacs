@@ -405,6 +405,7 @@ fn generate_wpe_platform_bindings(out_dir: &PathBuf) {
         .allowlist_function("g_bytes_unref")
         .allowlist_function("g_bytes_get_size")
         .allowlist_function("g_signal_connect_data")
+        .allowlist_function("g_type_check_instance_is_a")
         // GObject/GLib types we need
         .allowlist_type("GError")
         .allowlist_type("GBytes")
@@ -415,6 +416,7 @@ fn generate_wpe_platform_bindings(out_dir: &PathBuf) {
         .allowlist_type("GType")
         .allowlist_type("GQuark")
         .allowlist_type("gdouble")
+        .allowlist_type("GTypeInstance")
         .generate_comments(true)
         .derive_debug(true)
         .derive_default(true);

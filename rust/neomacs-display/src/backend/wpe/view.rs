@@ -5,8 +5,7 @@
 
 use std::ffi::{CStr, CString};
 use std::ptr;
-use std::cell::RefCell;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, atomic::{AtomicBool, Ordering}};
 
 use gdk4::prelude::*;
 use gdk4::Texture;
@@ -35,12 +34,16 @@ pub enum WpeViewState {
 
 /// Callback data for buffer-rendered signal
 struct BufferCallbackData {
-    /// Latest rendered texture
-    latest_texture: RefCell<Option<Texture>>,
+    /// Latest rendered texture (Mutex for thread safety)
+    latest_texture: Mutex<Option<Texture>>,
     /// Flag indicating new frame available
     frame_available: AtomicBool,
     /// WPE Platform display for buffer import
     display: *mut plat::WPEDisplay,
+    /// EGL display for DMA-BUF export
+    egl_display: *mut libc::c_void,
+    /// GDK display for texture creation (stored as raw pointer for thread safety)
+    gdk_display_ptr: usize,
 }
 
 /// A WPE WebKit browser view using WPE Platform API.
@@ -127,10 +130,10 @@ impl WpeWebView {
             // Create WebKitWebView with display property using g_object_new
             // This is the key difference - we pass the WPE Platform display
             eprintln!("WpeWebView::new: creating WebKitWebView with WPE Platform display...");
-            
+
             let type_name = CString::new("WebKitWebView").unwrap();
             let display_prop = CString::new("display").unwrap();
-            
+
             // Use webkit_web_view_new with the display set via web context
             // For WPE Platform, the display should be set as primary and WebKit will use it
             let web_view = wk::webkit_web_view_new(ptr::null_mut());
@@ -155,11 +158,21 @@ impl WpeWebView {
             // Set initial size
             plat::wpe_view_resized(wpe_view as *mut _, width as i32, height as i32);
 
+            // Get EGL display for DMA-BUF export
+            let egl_display = platform_display.egl_display();
+
+            // Get GDK display pointer for passing to callback
+            let gdk_display_ptr = gdk_display.as_ref()
+                .map(|d| d.as_ptr() as usize)
+                .unwrap_or(0);
+
             // Allocate callback data
             let callback_data = Box::into_raw(Box::new(BufferCallbackData {
-                latest_texture: RefCell::new(None),
+                latest_texture: Mutex::new(None),
                 frame_available: AtomicBool::new(false),
                 display,
+                egl_display,
+                gdk_display_ptr,
             }));
             eprintln!("WpeWebView::new: callback_data={:?}", callback_data);
 
@@ -328,10 +341,12 @@ impl WpeWebView {
                 if callback_data.frame_available.swap(false, Ordering::Acquire) {
                     self.needs_redraw = true;
 
-                    // Get texture from callback data
-                    if let Some(texture) = callback_data.latest_texture.borrow_mut().take() {
-                        log::trace!("WPE: Got new texture {}x{}", texture.width(), texture.height());
-                        self.texture = Some(texture);
+                    // Get texture from callback data (thread-safe)
+                    if let Ok(mut guard) = callback_data.latest_texture.lock() {
+                        if let Some(texture) = guard.take() {
+                            log::trace!("WPE: Got new texture {}x{}", texture.width(), texture.height());
+                            self.texture = Some(texture);
+                        }
                     }
                 }
             }
@@ -343,15 +358,15 @@ impl WpeWebView {
         self.width = width;
         self.height = height;
         self.needs_redraw = true;
-        
+
         unsafe {
             plat::wpe_view_resized(self.wpe_view, width as i32, height as i32);
         }
     }
 
     /// Get the current texture (latest rendered frame)
-    pub fn texture(&self) -> Option<&Texture> {
-        self.texture.as_ref()
+    pub fn texture(&self) -> Option<Texture> {
+        self.texture.clone()
     }
 
     /// Check if view needs redraw
@@ -445,102 +460,130 @@ unsafe extern "C" fn buffer_rendered_callback(
     buffer: *mut plat::WPEBuffer,
     user_data: *mut libc::c_void,
 ) {
+    use super::platform::{buffer_dmabuf_info, dmabuf_to_texture};
+
     if user_data.is_null() || buffer.is_null() {
-        eprintln!("buffer_rendered_callback: null user_data or buffer");
+        log::warn!("buffer_rendered_callback: null user_data or buffer");
         return;
     }
 
     let callback_data = &*(user_data as *const BufferCallbackData);
-    
+
     let width = plat::wpe_buffer_get_width(buffer) as u32;
     let height = plat::wpe_buffer_get_height(buffer) as u32;
-    
-    eprintln!("buffer_rendered_callback: received buffer {}x{}", width, height);
 
-    // Try to import buffer as EGL image first (GPU zero-copy)
-    let mut error: *mut plat::GError = ptr::null_mut();
-    let egl_image = plat::wpe_buffer_import_to_egl_image(buffer, &mut error);
-    
-    if !egl_image.is_null() {
-        eprintln!("buffer_rendered_callback: got EGL image {:?}", egl_image);
-        // TODO: Convert EGL image to GdkTexture
-        // For now, fall through to pixel import
-        
-        // Note: We need to release the EGL image eventually
-        // wpe_buffer_import_to_egl_image returns a new EGL image that must be destroyed
-    } else {
-        if !error.is_null() {
-            let msg = std::ffi::CStr::from_ptr((*error).message)
-                .to_string_lossy();
-            eprintln!("buffer_rendered_callback: EGL import failed: {}", msg);
-            plat::g_error_free(error);
+    // Validate dimensions
+    if width == 0 || height == 0 || width > 8192 || height > 8192 {
+        log::warn!("buffer_rendered_callback: invalid dimensions {}x{}", width, height);
+        return;
+    }
+
+    log::debug!("buffer_rendered_callback: received buffer {}x{}", width, height);
+
+    // Try DMA-BUF zero-copy path first
+    if callback_data.gdk_display_ptr != 0 {
+        if let Some(dmabuf_info) = buffer_dmabuf_info(buffer) {
+            // Reconstruct GdkDisplay from pointer
+            let gdk_display: gdk4::Display = glib::translate::from_glib_none(
+                callback_data.gdk_display_ptr as *mut gdk4::ffi::GdkDisplay
+            );
+
+            match dmabuf_to_texture(&dmabuf_info, &gdk_display) {
+                Ok(texture) => {
+                    log::info!("buffer_rendered_callback: DMA-BUF zero-copy texture {}x{}", width, height);
+                    if let Ok(mut guard) = callback_data.latest_texture.lock() {
+                        *guard = Some(texture);
+                    }
+                    callback_data.frame_available.store(true, Ordering::Release);
+                    return;
+                }
+                Err(e) => {
+                    log::debug!("DMA-BUF texture creation failed: {}, falling back to pixels", e);
+                }
+            }
         }
     }
-    
+
     // Fallback: Import buffer to pixels
+    // Take a reference to the buffer to prevent WPE from recycling it during our processing
+    plat::g_object_ref(buffer as *mut _);
+
     let mut error: *mut plat::GError = ptr::null_mut();
     let bytes = plat::wpe_buffer_import_to_pixels(buffer, &mut error);
-    
+
     if bytes.is_null() {
         if !error.is_null() {
             let msg = std::ffi::CStr::from_ptr((*error).message)
                 .to_string_lossy();
-            eprintln!("buffer_rendered_callback: pixel import failed: {}", msg);
+            log::warn!("buffer_rendered_callback: pixel import failed: {}", msg);
             plat::g_error_free(error);
         }
+        plat::g_object_unref(buffer as *mut _);
         return;
     }
-    
-    eprintln!("buffer_rendered_callback: got pixels, creating texture...");
-    
-    // Create texture from pixels
+
+    // Get pixel data
     let mut size: plat::gsize = 0;
     let data = plat::g_bytes_get_data(bytes, &mut size);
-    
+
     if data.is_null() || size == 0 {
         log::warn!("buffer_rendered_callback: empty pixel data");
         plat::g_bytes_unref(bytes);
+        plat::g_object_unref(buffer as *mut _);
         return;
     }
-    
-    // Create a slice from the pixel data
-    let pixel_slice = std::slice::from_raw_parts(data as *const u8, size as usize);
+
     let size = size as usize;
-    
-    // Calculate expected stride - WPE might align rows to 4/8/16 bytes
+
+    // Validate size is reasonable
     let expected_size = (width * height * 4) as usize;
-    let actual_stride = if size != expected_size {
-        // Buffer has padding - calculate actual stride
-        size / (height as usize)
-    } else {
-        (width * 4) as usize
-    };
-    
-    log::info!("buffer_rendered_callback: {}x{}, expected_size={}, actual_size={}, stride={}", 
-               width, height, expected_size, size, actual_stride);
-    
+    if size < expected_size || size > expected_size * 2 {
+        log::warn!("buffer_rendered_callback: suspicious size {} for {}x{} (expected ~{})",
+                   size, width, height, expected_size);
+        plat::g_bytes_unref(bytes);
+        plat::g_object_unref(buffer as *mut _);
+        return;
+    }
+
+    // Copy pixel data IMMEDIATELY before WPE can reclaim the buffer
+    let pixel_data: Vec<u8> = std::slice::from_raw_parts(data as *const u8, size).to_vec();
+
+    // Free the GBytes and release the buffer reference
+    plat::g_bytes_unref(bytes);
+    plat::g_object_unref(buffer as *mut _);
+
+    // Calculate stride
+    let actual_stride = size / (height as usize);
+
+    log::info!("buffer_rendered_callback: {}x{}, size={}, stride={}",
+               width, height, size, actual_stride);
+
     // WPE exports XRGB/BGRX format (alpha channel is unused/zero)
     // We need to set alpha to 255 (opaque) for all pixels
     let mut pixels_with_alpha: Vec<u8> = Vec::with_capacity((width * height * 4) as usize);
-    
+
     // Copy row by row, handling stride
     for row in 0..(height as usize) {
         let row_start = row * actual_stride;
         for col in 0..(width as usize) {
             let offset = row_start + col * 4;
+            if offset + 3 >= pixel_data.len() {
+                log::warn!("buffer_rendered_callback: buffer underrun at row={}, col={}", row, col);
+                return;
+            }
             // Copy BGR, set A to 255
-            pixels_with_alpha.push(pixel_slice[offset]);     // B
-            pixels_with_alpha.push(pixel_slice[offset + 1]); // G
-            pixels_with_alpha.push(pixel_slice[offset + 2]); // R
-            pixels_with_alpha.push(255);                      // A (was 0)
+            pixels_with_alpha.push(pixel_data[offset]);     // B
+            pixels_with_alpha.push(pixel_data[offset + 1]); // G
+            pixels_with_alpha.push(pixel_data[offset + 2]); // R
+            pixels_with_alpha.push(255);                     // A (was 0)
         }
     }
-    
+
     // Create GdkMemoryTexture
     // Now using BGRA with alpha=255 (opaque), and correct stride
     let glib_bytes = glib::Bytes::from(&pixels_with_alpha);
     let new_stride = (width * 4) as usize; // No padding in our output
-    
+
     let texture = gdk4::MemoryTexture::new(
         width as i32,
         height as i32,
@@ -548,13 +591,12 @@ unsafe extern "C" fn buffer_rendered_callback(
         &glib_bytes,
         new_stride,
     );
-    
+
     log::info!("buffer_rendered_callback: created texture {}x{}", width, height);
-    
-    // Store the texture
-    *callback_data.latest_texture.borrow_mut() = Some(texture.upcast());
+
+    // Store the texture (thread-safe)
+    if let Ok(mut guard) = callback_data.latest_texture.lock() {
+        *guard = Some(texture.upcast());
+    }
     callback_data.frame_available.store(true, Ordering::Release);
-    
-    // Free the pixel bytes
-    plat::g_bytes_unref(bytes);
 }

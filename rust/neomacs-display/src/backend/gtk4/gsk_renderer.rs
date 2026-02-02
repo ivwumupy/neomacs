@@ -250,7 +250,7 @@ impl GskRenderer {
                             floating.width,
                             floating.height,
                         );
-                        let texture_node = gsk::TextureNode::new(texture, &webkit_rect);
+                        let texture_node = gsk::TextureNode::new(&texture, &webkit_rect);
                         nodes.push(texture_node.upcast());
                     } else {
                         // Loading placeholder - dark rectangle with loading indicator
@@ -606,7 +606,7 @@ impl GskRenderer {
                         let has_texture = if let Some(cache) = webkit_cache {
                             if let Some(view) = cache.get(view_id) {
                                 if let Some(texture) = view.texture() {
-                                    let texture_node = gsk::TextureNode::new(texture, &webkit_rect);
+                                    let texture_node = gsk::TextureNode::new(&texture, &webkit_rect);
                                     nodes.push(texture_node.upcast());
                                     true
                                 } else {

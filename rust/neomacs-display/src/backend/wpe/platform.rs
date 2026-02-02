@@ -27,7 +27,7 @@ use super::sys::webkit as wk;
 use crate::error::{DisplayError, DisplayResult};
 
 /// WPE Platform Display wrapper
-/// 
+///
 /// Uses headless mode for embedding - doesn't require a Wayland compositor
 pub struct WpePlatformDisplay {
     display: *mut plat::WPEDisplay,
@@ -39,14 +39,14 @@ impl WpePlatformDisplay {
     pub fn new_headless() -> DisplayResult<Self> {
         unsafe {
             info!("WpePlatformDisplay: Creating headless display...");
-            
+
             // Create headless display
             let display = plat::wpe_display_headless_new();
             if display.is_null() {
                 return Err(DisplayError::WebKit("Failed to create WPE headless display".into()));
             }
             info!("WpePlatformDisplay: Headless display created: {:?}", display);
-            
+
             // Connect the display
             let mut error: *mut plat::GError = ptr::null_mut();
             let connected = plat::wpe_display_connect(display, &mut error);
@@ -66,7 +66,7 @@ impl WpePlatformDisplay {
                 )));
             }
             info!("WpePlatformDisplay: Display connected");
-            
+
             // Get EGL display from WPE Platform
             let mut error: *mut plat::GError = ptr::null_mut();
             let egl_display = plat::wpe_display_get_egl_display(display, &mut error);
@@ -84,27 +84,27 @@ impl WpePlatformDisplay {
                 // Continue without EGL - will use pixel import fallback
             }
             info!("WpePlatformDisplay: EGL display: {:?}", egl_display);
-            
+
             // Set as primary display for WebKit
             plat::wpe_display_set_primary(display);
-            
+
             Ok(Self {
                 display,
                 egl_display: egl_display as egl::EGLDisplay,
             })
         }
     }
-    
+
     /// Get the raw WPEDisplay pointer
     pub fn raw(&self) -> *mut plat::WPEDisplay {
         self.display
     }
-    
+
     /// Get the EGL display
     pub fn egl_display(&self) -> egl::EGLDisplay {
         self.egl_display
     }
-    
+
     /// Check if EGL is available
     pub fn has_egl(&self) -> bool {
         !self.egl_display.is_null()
@@ -141,7 +141,7 @@ impl WpePlatformView {
             if web_view.is_null() {
                 return Err(DisplayError::WebKit("WebKitWebView is null".into()));
             }
-            
+
             // Get the WPEView from WebKitWebView
             let wpe_view = wk::webkit_web_view_get_wpe_view(web_view);
             if wpe_view.is_null() {
@@ -149,13 +149,13 @@ impl WpePlatformView {
                     "WebKitWebView has no WPEView - was it created with WPE Platform display?".into()
                 ));
             }
-            
+
             let width = plat::wpe_view_get_width(wpe_view as *mut _) as u32;
             let height = plat::wpe_view_get_height(wpe_view as *mut _) as u32;
-            
+
             info!("WpePlatformView: Got WPEView {:?} from WebKitWebView {:?} ({}x{})",
                   wpe_view, web_view, width, height);
-            
+
             Ok(Self {
                 wpe_view: wpe_view as *mut _,
                 web_view,
@@ -164,12 +164,12 @@ impl WpePlatformView {
             })
         }
     }
-    
+
     /// Get the raw WPEView pointer
     pub fn raw(&self) -> *mut plat::WPEView {
         self.wpe_view
     }
-    
+
     /// Resize the view
     pub fn resize(&mut self, width: u32, height: u32) {
         unsafe {
@@ -178,19 +178,19 @@ impl WpePlatformView {
             self.height = height;
         }
     }
-    
+
     /// Get current dimensions
     pub fn dimensions(&self) -> (u32, u32) {
         (self.width, self.height)
     }
-    
+
     /// Focus the view
     pub fn focus(&self) {
         unsafe {
             plat::wpe_view_focus_in(self.wpe_view);
         }
     }
-    
+
     /// Unfocus the view
     pub fn unfocus(&self) {
         unsafe {
@@ -207,10 +207,10 @@ pub fn buffer_to_egl_image(buffer: *mut plat::WPEBuffer) -> DisplayResult<egl::E
         if buffer.is_null() {
             return Err(DisplayError::WebKit("WPEBuffer is null".into()));
         }
-        
+
         let mut error: *mut plat::GError = ptr::null_mut();
         let egl_image = plat::wpe_buffer_import_to_egl_image(buffer, &mut error);
-        
+
         if egl_image.is_null() {
             let error_msg = if !error.is_null() {
                 let msg = std::ffi::CStr::from_ptr((*error).message)
@@ -225,7 +225,7 @@ pub fn buffer_to_egl_image(buffer: *mut plat::WPEBuffer) -> DisplayResult<egl::E
                 "Failed to import buffer to EGL image: {}", error_msg
             )));
         }
-        
+
         Ok(egl_image as egl::EGLImageKHR)
     }
 }
@@ -238,13 +238,13 @@ pub fn buffer_to_pixels(buffer: *mut plat::WPEBuffer) -> DisplayResult<(*mut pla
         if buffer.is_null() {
             return Err(DisplayError::WebKit("WPEBuffer is null".into()));
         }
-        
+
         let width = plat::wpe_buffer_get_width(buffer) as u32;
         let height = plat::wpe_buffer_get_height(buffer) as u32;
-        
+
         let mut error: *mut plat::GError = ptr::null_mut();
         let bytes = plat::wpe_buffer_import_to_pixels(buffer, &mut error);
-        
+
         if bytes.is_null() {
             let error_msg = if !error.is_null() {
                 let msg = std::ffi::CStr::from_ptr((*error).message)
@@ -259,7 +259,7 @@ pub fn buffer_to_pixels(buffer: *mut plat::WPEBuffer) -> DisplayResult<(*mut pla
                 "Failed to import buffer to pixels: {}", error_msg
             )));
         }
-        
+
         Ok((bytes, width, height))
     }
 }
@@ -274,23 +274,23 @@ pub fn pixels_to_texture(
         if bytes.is_null() {
             return Err(DisplayError::WebKit("GBytes is null".into()));
         }
-        
+
         let mut size: plat::gsize = 0;
         let data = plat::g_bytes_get_data(bytes, &mut size);
-        
+
         if data.is_null() || size == 0 {
             plat::g_bytes_unref(bytes);
             return Err(DisplayError::WebKit("Empty pixel data".into()));
         }
-        
+
         // Create a slice from the pixel data
         let pixel_slice = std::slice::from_raw_parts(data as *const u8, size as usize);
-        
+
         // Create GdkMemoryTexture
         // WPE uses BGRA8888 format (premultiplied)
         let glib_bytes = gtk4::glib::Bytes::from(pixel_slice);
         let stride = width * 4; // 4 bytes per pixel (BGRA)
-        
+
         let texture = gdk::MemoryTexture::new(
             width as i32,
             height as i32,
@@ -298,18 +298,120 @@ pub fn pixels_to_texture(
             &glib_bytes,
             stride as usize,
         );
-        
+
         // Free the original GBytes
         plat::g_bytes_unref(bytes);
-        
+
         Ok(texture.upcast())
+    }
+}
+
+/// Check if a WPEBuffer is a DMA-BUF buffer and return its info
+///
+/// Returns (fourcc, n_planes, modifier, fd, stride, offset) if it's a DMA-BUF buffer
+pub fn buffer_dmabuf_info(buffer: *mut plat::WPEBuffer) -> Option<DmaBufInfo> {
+    unsafe {
+        if buffer.is_null() {
+            return None;
+        }
+
+        // Check if buffer is WPEBufferDMABuf type
+        let dmabuf_type = plat::wpe_buffer_dma_buf_get_type();
+        let buffer_type = plat::g_type_check_instance_is_a(
+            buffer as *mut _,
+            dmabuf_type,
+        );
+
+        if buffer_type == 0 {
+            debug!("buffer_dmabuf_info: buffer is not WPEBufferDMABuf");
+            return None;
+        }
+
+        let dmabuf = buffer as *mut plat::WPEBufferDMABuf;
+
+        let fourcc = plat::wpe_buffer_dma_buf_get_format(dmabuf);
+        let n_planes = plat::wpe_buffer_dma_buf_get_n_planes(dmabuf);
+        let modifier = plat::wpe_buffer_dma_buf_get_modifier(dmabuf);
+        let width = plat::wpe_buffer_get_width(buffer) as u32;
+        let height = plat::wpe_buffer_get_height(buffer) as u32;
+
+        if n_planes == 0 || n_planes > 4 {
+            warn!("buffer_dmabuf_info: invalid plane count: {}", n_planes);
+            return None;
+        }
+
+        let mut planes = Vec::with_capacity(n_planes as usize);
+        for i in 0..n_planes {
+            let fd = plat::wpe_buffer_dma_buf_get_fd(dmabuf, i);
+            let stride = plat::wpe_buffer_dma_buf_get_stride(dmabuf, i);
+            let offset = plat::wpe_buffer_dma_buf_get_offset(dmabuf, i);
+            planes.push(DmaBufPlane { fd, stride, offset });
+        }
+
+        info!("buffer_dmabuf_info: DMA-BUF buffer {}x{}, fourcc={:08x}, planes={}, modifier={:016x}",
+              width, height, fourcc, n_planes, modifier);
+
+        Some(DmaBufInfo {
+            fourcc,
+            n_planes,
+            modifier,
+            width,
+            height,
+            planes,
+        })
+    }
+}
+
+/// DMA-BUF buffer information
+#[derive(Debug)]
+pub struct DmaBufInfo {
+    pub fourcc: u32,
+    pub n_planes: u32,
+    pub modifier: u64,
+    pub width: u32,
+    pub height: u32,
+    pub planes: Vec<DmaBufPlane>,
+}
+
+/// DMA-BUF plane information
+#[derive(Debug)]
+pub struct DmaBufPlane {
+    pub fd: i32,
+    pub stride: u32,
+    pub offset: u32,
+}
+
+/// Create GdkTexture directly from DMA-BUF info
+pub fn dmabuf_to_texture(info: &DmaBufInfo, gdk_display: &gdk::Display) -> DisplayResult<gdk::Texture> {
+    let builder = gdk::DmabufTextureBuilder::new();
+    builder.set_display(gdk_display);
+    builder.set_width(info.width);
+    builder.set_height(info.height);
+    builder.set_fourcc(info.fourcc);
+    builder.set_modifier(info.modifier);
+    builder.set_n_planes(info.n_planes);
+
+    for (i, plane) in info.planes.iter().enumerate() {
+        builder.set_fd(i as u32, plane.fd);
+        builder.set_stride(i as u32, plane.stride);
+        builder.set_offset(i as u32, plane.offset);
+    }
+
+    match unsafe { builder.build() } {
+        Ok(texture) => {
+            info!("dmabuf_to_texture: created DMA-BUF texture {}x{}", info.width, info.height);
+            Ok(texture.upcast::<gdk::Texture>())
+        }
+        Err(e) => {
+            Err(DisplayError::WebKit(format!("Failed to build DmabufTexture: {}", e)))
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_platform_display_types() {
         // Just verify types compile
