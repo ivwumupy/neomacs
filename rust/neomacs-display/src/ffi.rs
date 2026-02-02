@@ -2,7 +2,7 @@
 //!
 //! Enable logging with: RUST_LOG=neomacs_display=debug
 
-use std::ffi::{c_char, c_int, c_void, CStr, CString};
+use std::ffi::{c_char, c_int, c_uint, c_double, c_void, CStr, CString};
 use std::panic;
 use std::ptr;
 
@@ -1854,13 +1854,125 @@ pub unsafe extern "C" fn neomacs_display_set_resize_callback(
     user_data: *mut c_void,
 ) {
     use crate::backend::gtk4::set_widget_resize_callback;
-    
+
     // Store the raw pointer - it must remain valid for the lifetime of the callback
     let user_data_ptr = user_data as usize;
-    
+
     set_widget_resize_callback(move |width, height| {
         // Call the C callback
         callback(user_data_ptr as *mut c_void, width as c_int, height as c_int);
+    });
+}
+
+// ============================================================================
+// Mouse Event Callbacks
+// ============================================================================
+
+/// Type for mouse button callback: (user_data, x, y, button, pressed, modifiers, time)
+pub type MouseButtonCallbackFn = extern "C" fn(
+    user_data: *mut c_void,
+    x: c_double,
+    y: c_double,
+    button: c_uint,
+    pressed: c_int,
+    modifiers: c_uint,
+    time: c_uint,
+);
+
+/// Type for mouse motion callback: (user_data, x, y, modifiers, time)
+pub type MouseMotionCallbackFn = extern "C" fn(
+    user_data: *mut c_void,
+    x: c_double,
+    y: c_double,
+    modifiers: c_uint,
+    time: c_uint,
+);
+
+/// Type for mouse scroll callback: (user_data, x, y, delta_x, delta_y, modifiers, time)
+pub type MouseScrollCallbackFn = extern "C" fn(
+    user_data: *mut c_void,
+    x: c_double,
+    y: c_double,
+    delta_x: c_double,
+    delta_y: c_double,
+    modifiers: c_uint,
+    time: c_uint,
+);
+
+/// Set the mouse button callback for the NeomacsWidget
+/// Called on button press (pressed=1) and release (pressed=0)
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_mouse_button_callback(
+    callback: MouseButtonCallbackFn,
+    user_data: *mut c_void,
+) {
+    use crate::backend::gtk4::set_widget_mouse_button_callback;
+
+    let user_data_ptr = user_data as usize;
+
+    set_widget_mouse_button_callback(move |x, y, button, pressed, modifiers, time| {
+        log::debug!("FFI: Mouse button callback -> C: x={:.1}, y={:.1}, btn={}, pressed={}",
+                   x, y, button, pressed);
+        callback(
+            user_data_ptr as *mut c_void,
+            x as c_double,
+            y as c_double,
+            button as c_uint,
+            if pressed { 1 } else { 0 },
+            modifiers as c_uint,
+            time as c_uint,
+        );
+    });
+}
+
+/// Set the mouse motion callback for the NeomacsWidget
+/// Called on mouse movement
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_mouse_motion_callback(
+    callback: MouseMotionCallbackFn,
+    user_data: *mut c_void,
+) {
+    use crate::backend::gtk4::set_widget_mouse_motion_callback;
+
+    let user_data_ptr = user_data as usize;
+
+    set_widget_mouse_motion_callback(move |x, y, modifiers, time| {
+        // Only log occasionally to avoid spam (every ~100th call based on time)
+        if time % 1000 < 10 {
+            log::trace!("FFI: Mouse motion callback -> C: x={:.1}, y={:.1}", x, y);
+        }
+        callback(
+            user_data_ptr as *mut c_void,
+            x as c_double,
+            y as c_double,
+            modifiers as c_uint,
+            time as c_uint,
+        );
+    });
+}
+
+/// Set the mouse scroll callback for the NeomacsWidget
+/// Called on scroll wheel events
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_mouse_scroll_callback(
+    callback: MouseScrollCallbackFn,
+    user_data: *mut c_void,
+) {
+    use crate::backend::gtk4::set_widget_mouse_scroll_callback;
+
+    let user_data_ptr = user_data as usize;
+
+    set_widget_mouse_scroll_callback(move |x, y, dx, dy, modifiers, time| {
+        log::debug!("FFI: Mouse scroll callback -> C: dx={:.2}, dy={:.2}", dx, dy);
+        callback(
+            user_data_ptr as *mut c_void,
+            x as c_double,
+            y as c_double,
+            dx as c_double,
+            dy as c_double,
+            modifiers as c_uint,
+            time as c_uint,
+        );
     });
 }
 

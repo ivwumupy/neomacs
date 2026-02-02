@@ -36,6 +36,15 @@ thread_local! {
     pub static WIDGET_RESIZE_CALLBACK: RefCell<Option<Box<dyn Fn(i32, i32) + Send + 'static>>> = const { RefCell::new(None) };
     // Floating images for overlay rendering in hybrid mode
     pub static WIDGET_FLOATING_IMAGES: RefCell<Vec<FloatingImage>> = const { RefCell::new(Vec::new()) };
+    // Mouse button callback - called on button press/release
+    // Args: (x, y, button, pressed, modifiers, time)
+    pub static WIDGET_MOUSE_BUTTON_CALLBACK: RefCell<Option<Box<dyn Fn(f64, f64, u32, bool, u32, u32) + Send + 'static>>> = const { RefCell::new(None) };
+    // Mouse motion callback - called on mouse movement
+    // Args: (x, y, modifiers, time)
+    pub static WIDGET_MOUSE_MOTION_CALLBACK: RefCell<Option<Box<dyn Fn(f64, f64, u32, u32) + Send + 'static>>> = const { RefCell::new(None) };
+    // Mouse scroll callback - called on scroll wheel
+    // Args: (x, y, delta_x, delta_y, modifiers, time)
+    pub static WIDGET_MOUSE_SCROLL_CALLBACK: RefCell<Option<Box<dyn Fn(f64, f64, f64, f64, u32, u32) + Send + 'static>>> = const { RefCell::new(None) };
 }
 
 /// Set the video cache for widget rendering (called from FFI before queue_draw)
@@ -94,6 +103,42 @@ pub fn set_widget_floating_images(images: Vec<FloatingImage>) {
     });
 }
 
+/// Set the mouse button callback - called on button press/release
+/// Args: (x, y, button, pressed, modifiers, time)
+pub fn set_widget_mouse_button_callback<F>(callback: F)
+where
+    F: Fn(f64, f64, u32, bool, u32, u32) + Send + 'static,
+{
+    info!("Mouse button callback set");
+    WIDGET_MOUSE_BUTTON_CALLBACK.with(|c| {
+        *c.borrow_mut() = Some(Box::new(callback));
+    });
+}
+
+/// Set the mouse motion callback - called on mouse movement
+/// Args: (x, y, modifiers, time)
+pub fn set_widget_mouse_motion_callback<F>(callback: F)
+where
+    F: Fn(f64, f64, u32, u32) + Send + 'static,
+{
+    info!("Mouse motion callback set");
+    WIDGET_MOUSE_MOTION_CALLBACK.with(|c| {
+        *c.borrow_mut() = Some(Box::new(callback));
+    });
+}
+
+/// Set the mouse scroll callback - called on scroll wheel
+/// Args: (x, y, delta_x, delta_y, modifiers, time)
+pub fn set_widget_mouse_scroll_callback<F>(callback: F)
+where
+    F: Fn(f64, f64, f64, f64, u32, u32) + Send + 'static,
+{
+    info!("Mouse scroll callback set");
+    WIDGET_MOUSE_SCROLL_CALLBACK.with(|c| {
+        *c.borrow_mut() = Some(Box::new(callback));
+    });
+}
+
 /// Inner state for NeomacsWidget
 #[derive(Default)]
 pub struct NeomacsWidgetInner {
@@ -121,9 +166,21 @@ impl ObjectImpl for NeomacsWidgetInner {
     fn constructed(&self) {
         self.parent_constructed();
 
-        // Request keyboard focus
-        self.obj().set_focusable(true);
-        self.obj().set_can_focus(true);
+        let widget = self.obj();
+
+        // Request keyboard focus and enable input targeting
+        widget.set_focusable(true);
+        widget.set_can_focus(true);
+        widget.set_can_target(true);  // Enable receiving pointer events
+        widget.set_sensitive(true);   // Enable input events
+
+        // Note: Mouse event handlers are added by C code in neomacsfns.c
+        // (neomacs_click_pressed_cb, neomacs_motion_cb, neomacs_scroll_cb)
+        // The Rust-side handlers via FFI callbacks are for cases where
+        // C code wants to delegate to Rust, but currently all mouse handling
+        // is done in C for proper Emacs integration.
+
+        info!("NeomacsWidget constructed");
     }
 }
 

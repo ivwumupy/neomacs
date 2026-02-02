@@ -229,6 +229,9 @@ neomacs_open_display (const char *display_name)
   /* Set the background color to white (Emacs default) */
   neomacs_display_set_background (dpyinfo->display_handle, dpyinfo->background_pixel);
 
+  /* Note: Mouse event handlers are added by neomacsfns.c when the GTK widget is created.
+     The callbacks are connected directly to the widget via GtkGestureClick etc. */
+
   /* Add to display list */
   dpyinfo->next = neomacs_display_list;
   neomacs_display_list = dpyinfo;

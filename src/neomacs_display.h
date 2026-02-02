@@ -15,6 +15,20 @@
 /* Type for resize callback function pointer */
 typedef void (*ResizeCallbackFn)(void *user_data, int width, int height);
 
+/* Type for mouse button callback: (user_data, x, y, button, pressed, modifiers, time) */
+typedef void (*MouseButtonCallbackFn)(void *user_data, double x, double y,
+                                       unsigned int button, int pressed,
+                                       unsigned int modifiers, unsigned int time);
+
+/* Type for mouse motion callback: (user_data, x, y, modifiers, time) */
+typedef void (*MouseMotionCallbackFn)(void *user_data, double x, double y,
+                                       unsigned int modifiers, unsigned int time);
+
+/* Type for mouse scroll callback: (user_data, x, y, delta_x, delta_y, modifiers, time) */
+typedef void (*MouseScrollCallbackFn)(void *user_data, double x, double y,
+                                       double delta_x, double delta_y,
+                                       unsigned int modifiers, unsigned int time);
+
 #define DRM_FORMAT_ARGB8888 875713089
 
 #define DRM_FORMAT_XRGB8888 875713112
@@ -416,6 +430,24 @@ int neomacs_display_render_to_widget(struct NeomacsDisplay *handle, void *widget
  * The callback will be called whenever the widget is resized
  */
 void neomacs_display_set_resize_callback(ResizeCallbackFn callback, void *userData);
+
+/**
+ * Set the mouse button callback for the NeomacsWidget
+ * Called on button press (pressed=1) and release (pressed=0)
+ */
+void neomacs_display_set_mouse_button_callback(MouseButtonCallbackFn callback, void *userData);
+
+/**
+ * Set the mouse motion callback for the NeomacsWidget
+ * Called on mouse movement
+ */
+void neomacs_display_set_mouse_motion_callback(MouseMotionCallbackFn callback, void *userData);
+
+/**
+ * Set the mouse scroll callback for the NeomacsWidget
+ * Called on scroll wheel events
+ */
+void neomacs_display_set_mouse_scroll_callback(MouseScrollCallbackFn callback, void *userData);
 
 /**
  * Initialize WebKit subsystem with EGL display

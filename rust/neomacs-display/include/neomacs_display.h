@@ -415,6 +415,24 @@ int neomacs_display_render_to_widget(struct NeomacsDisplay *handle, void *widget
 void neomacs_display_set_resize_callback(ResizeCallbackFn callback, void *userData);
 
 /**
+ * Set the mouse button callback for the NeomacsWidget
+ * Called on button press (pressed=1) and release (pressed=0)
+ */
+void neomacs_display_set_mouse_button_callback(MouseButtonCallbackFn callback, void *userData);
+
+/**
+ * Set the mouse motion callback for the NeomacsWidget
+ * Called on mouse movement
+ */
+void neomacs_display_set_mouse_motion_callback(MouseMotionCallbackFn callback, void *userData);
+
+/**
+ * Set the mouse scroll callback for the NeomacsWidget
+ * Called on scroll wheel events
+ */
+void neomacs_display_set_mouse_scroll_callback(MouseScrollCallbackFn callback, void *userData);
+
+/**
  * Initialize WebKit subsystem with EGL display
  * Must be called before creating WebKit views
  */
