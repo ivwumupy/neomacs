@@ -1156,6 +1156,35 @@ pub unsafe extern "C" fn neomacs_display_load_image_data(
     }
 }
 
+/// Load an image from raw bytes with optional scaling
+/// Returns image_id on success, 0 on failure
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_load_image_data_scaled(
+    handle: *mut NeomacsDisplay,
+    data: *const u8,
+    len: usize,
+    max_width: c_int,
+    max_height: c_int,
+) -> u32 {
+    if handle.is_null() || data.is_null() || len == 0 {
+        return 0;
+    }
+
+    let display = &mut *handle;
+    let bytes = std::slice::from_raw_parts(data, len);
+
+    let mw = if max_width > 0 { Some(max_width) } else { None };
+    let mh = if max_height > 0 { Some(max_height) } else { None };
+
+    match display.image_cache.load_from_bytes_scaled(bytes, mw, mh) {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("Failed to load image data: {}", e);
+            0
+        }
+    }
+}
+
 /// Load an image from raw ARGB32 pixel data (Cairo/Emacs format)
 /// Returns image_id on success, 0 on failure
 #[no_mangle]

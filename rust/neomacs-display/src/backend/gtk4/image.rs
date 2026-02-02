@@ -5,7 +5,7 @@ use std::path::Path;
 
 use gtk4::cairo;
 use gtk4::gdk;
-use gtk4::gdk_pixbuf::{Pixbuf, PixbufLoader};
+use gtk4::gdk_pixbuf::{InterpType, Pixbuf, PixbufLoader};
 use gtk4::gdk_pixbuf::prelude::*;
 use gtk4::glib;
 
@@ -164,6 +164,67 @@ impl ImageCache {
 
         let pixbuf = loader.pixbuf()
             .ok_or_else(|| DisplayError::Backend("No pixbuf from loader".into()))?;
+
+        let surface = pixbuf_to_surface(&pixbuf)?;
+
+        let id = self.next_id;
+        self.next_id += 1;
+
+        self.images.insert(id, CachedImage {
+            width: pixbuf.width(),
+            height: pixbuf.height(),
+            surface,
+            texture: None,
+            frames: None,
+            current_frame: 0,
+            is_animated: false,
+        });
+
+        Ok(id)
+    }
+
+    /// Load an image from raw bytes with optional scaling
+    pub fn load_from_bytes_scaled(
+        &mut self,
+        data: &[u8],
+        max_width: Option<i32>,
+        max_height: Option<i32>,
+    ) -> DisplayResult<u32> {
+        let loader = PixbufLoader::new();
+        loader.write(data)
+            .map_err(|e| DisplayError::Backend(format!("Failed to parse image: {}", e)))?;
+        loader.close()
+            .map_err(|e| DisplayError::Backend(format!("Failed to close loader: {}", e)))?;
+
+        let pixbuf = loader.pixbuf()
+            .ok_or_else(|| DisplayError::Backend("No pixbuf from loader".into()))?;
+
+        // Scale if needed
+        let pixbuf = match (max_width, max_height) {
+            (Some(mw), Some(mh)) if pixbuf.width() > mw || pixbuf.height() > mh => {
+                // Scale to fit within bounds, preserving aspect ratio
+                let scale_w = mw as f64 / pixbuf.width() as f64;
+                let scale_h = mh as f64 / pixbuf.height() as f64;
+                let scale = scale_w.min(scale_h);
+                let new_w = (pixbuf.width() as f64 * scale) as i32;
+                let new_h = (pixbuf.height() as f64 * scale) as i32;
+                pixbuf.scale_simple(new_w, new_h, InterpType::Bilinear)
+                    .ok_or_else(|| DisplayError::Backend("Failed to scale image".into()))?
+            }
+            (Some(mw), None) if pixbuf.width() > mw => {
+                let scale = mw as f64 / pixbuf.width() as f64;
+                let new_h = (pixbuf.height() as f64 * scale) as i32;
+                pixbuf.scale_simple(mw, new_h, InterpType::Bilinear)
+                    .ok_or_else(|| DisplayError::Backend("Failed to scale image".into()))?
+            }
+            (None, Some(mh)) if pixbuf.height() > mh => {
+                let scale = mh as f64 / pixbuf.height() as f64;
+                let new_w = (pixbuf.width() as f64 * scale) as i32;
+                pixbuf.scale_simple(new_w, mh, InterpType::Bilinear)
+                    .ok_or_else(|| DisplayError::Backend("Failed to scale image".into()))?
+            }
+            _ => pixbuf,
+        };
 
         let surface = pixbuf_to_surface(&pixbuf)?;
 

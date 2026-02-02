@@ -2223,6 +2223,73 @@ using gdk-pixbuf to load PNG, JPEG, GIF, WebP, SVG, and other formats.  */)
   return spec;
 }
 
+DEFUN ("neomacs-insert-image-data", Fneomacs_insert_image_data, Sneomacs_insert_image_data, 1, 3, 0,
+       doc: /* Insert image from DATA (a string of image bytes) at point as an inline image.
+Optional MAX-WIDTH and MAX-HEIGHT limit the image dimensions (scales to fit).
+The image format is auto-detected (PNG, JPEG, GIF, WebP, SVG, etc.).
+Returns the neomacs image spec on success, nil on failure.
+
+This function bypasses Emacs's native image library requirements,
+using gdk-pixbuf to decode the image data.  */)
+  (Lisp_Object data, Lisp_Object max_width, Lisp_Object max_height)
+{
+  CHECK_STRING (data);
+
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    {
+      error ("No neomacs display available");
+      return Qnil;
+    }
+
+  const unsigned char *bytes = SDATA (data);
+  ptrdiff_t len = SBYTES (data);
+  int mw = FIXNUMP (max_width) ? XFIXNUM (max_width) : 0;
+  int mh = FIXNUMP (max_height) ? XFIXNUM (max_height) : 0;
+
+  /* Load image via GPU backend */
+  uint32_t image_id;
+  if (mw > 0 || mh > 0)
+    image_id = neomacs_display_load_image_data_scaled (dpyinfo->display_handle,
+                                                        bytes, len, mw, mh);
+  else
+    image_id = neomacs_display_load_image_data (dpyinfo->display_handle, bytes, len);
+
+  if (image_id == 0)
+    {
+      error ("Failed to load image from data");
+      return Qnil;
+    }
+
+  /* Get actual image dimensions */
+  int width, height;
+  if (neomacs_display_get_image_size (dpyinfo->display_handle, image_id, &width, &height) != 0)
+    {
+      error ("Failed to get image size");
+      return Qnil;
+    }
+
+  /* Create image spec for display property
+     Format: (image :type neomacs :neomacs-id ID :width W :height H) */
+  Lisp_Object neomacs_id_sym = intern (":neomacs-id");
+
+  /* Build the plist manually */
+  Lisp_Object plist = Qnil;
+  plist = Fcons (make_fixnum (height), plist);
+  plist = Fcons (QCheight, plist);
+  plist = Fcons (make_fixnum (width), plist);
+  plist = Fcons (QCwidth, plist);
+  plist = Fcons (make_fixnum (image_id), plist);
+  plist = Fcons (neomacs_id_sym, plist);
+  plist = Fcons (Qneomacs, plist);
+  plist = Fcons (QCtype, plist);
+
+  /* Final spec is (image :type neomacs ...) */
+  Lisp_Object spec = Fcons (Qimage, plist);
+
+  return spec;
+}
+
 
 /* ============================================================================
  * WebKit API
@@ -2750,6 +2817,7 @@ syms_of_neomacsterm (void)
   defsubr (&Sneomacs_image_floating);
   defsubr (&Sneomacs_image_floating_clear);
   defsubr (&Sneomacs_insert_image);
+  defsubr (&Sneomacs_insert_image_data);
 
   /* WebKit browser functions */
   defsubr (&Sneomacs_webkit_init);
