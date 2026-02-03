@@ -500,6 +500,10 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #ifdef HAVE_WINDOW_SYSTEM
 #include TERM_HEADER
 #endif /* HAVE_WINDOW_SYSTEM */
+#ifdef HAVE_NEOMACS
+#include "neomacsterm.h"
+#include "neomacs_display.h"
+#endif
 
 #ifndef FRAME_OUTPUT_DATA
 #define FRAME_OUTPUT_DATA(f) (NULL)
@@ -6564,11 +6568,39 @@ handle_single_display_spec (struct it *it, Lisp_Object spec, Lisp_Object object,
           it->xwidget = lookup_xwidget (value);
 	}
 #ifdef HAVE_NEOMACS
-      /* Handle (video :id N :width W :height H) display property.
-	 Height/width can be integer pixels or (VALUE . em) for font-relative.  */
+      /* Handle (video :id N :width W :height H) or (video :file PATH :width W :height H).
+	 Height/width can be integer pixels or (VALUE . em) for font-relative.
+	 If :file is provided, load video on demand and cache the ID.  */
       else if (VIDEOP (value))
 	{
 	  Lisp_Object id = plist_get (XCDR (value), QCid);
+	  Lisp_Object file = plist_get (XCDR (value), QCfile);
+
+	  /* If :file provided but no :id, load video on demand */
+	  if (!FIXNUMP (id) && STRINGP (file))
+	    {
+	      struct neomacs_display_info *dpyinfo = neomacs_display_list;
+	      if (dpyinfo && dpyinfo->display_handle)
+		{
+		  /* Convert file path to URI for GStreamer */
+		  const char *path = SSDATA (file);
+		  char uri[PATH_MAX + 16];
+		  if (path[0] == '/')
+		    snprintf (uri, sizeof (uri), "file://%s", path);
+		  else
+		    snprintf (uri, sizeof (uri), "%s", path);
+
+		  uint32_t video_id = neomacs_display_load_video (dpyinfo->display_handle, uri);
+		  if (video_id != 0)
+		    {
+		      id = make_fixnum (video_id);
+		      /* Auto-play loaded video */
+		      neomacs_display_video_play (dpyinfo->display_handle, video_id);
+		      neomacs_display_video_set_loop (dpyinfo->display_handle, video_id, -1);
+		    }
+		}
+	    }
+
 	  if (FIXNUMP (id))
 	    {
 	      Lisp_Object width_prop = plist_get (XCDR (value), QCwidth);
