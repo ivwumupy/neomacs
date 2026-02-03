@@ -249,7 +249,7 @@ impl WpeWebView {
             }));
             eprintln!("WpeWebView::new: callback_data={:?}", callback_data);
 
-            // Connect buffer-rendered signal
+            // Connect buffer-rendered signal on WPEView
             let signal_name = CString::new("buffer-rendered").unwrap();
             let handler_id = plat::g_signal_connect_data(
                 wpe_view as *mut _,
@@ -263,6 +263,30 @@ impl WpeWebView {
                 0, // G_CONNECT_DEFAULT
             );
             eprintln!("WpeWebView::new: connected buffer-rendered signal, handler_id={}", handler_id);
+
+            // Also add frame-displayed callback on WebKitWebView as a backup notification mechanism
+            let frame_callback_id = wk::webkit_web_view_add_frame_displayed_callback(
+                web_view,
+                Some(frame_displayed_callback),
+                callback_data as *mut _,
+                None,
+            );
+            eprintln!("WpeWebView::new: added frame-displayed callback, id={}", frame_callback_id);
+
+            // Connect buffer-released signal to debug buffer lifecycle
+            let buffer_released_signal = CString::new("buffer-released").unwrap();
+            let buffer_released_handler_id = plat::g_signal_connect_data(
+                wpe_view as *mut _,
+                buffer_released_signal.as_ptr(),
+                Some(std::mem::transmute::<
+                    unsafe extern "C" fn(*mut plat::WPEView, *mut plat::WPEBuffer, *mut libc::c_void),
+                    unsafe extern "C" fn(),
+                >(buffer_released_callback)),
+                callback_data as *mut _,
+                None,
+                0,
+            );
+            eprintln!("WpeWebView::new: connected buffer-released signal, handler_id={}", buffer_released_handler_id);
 
             // Connect decide-policy signal for new window handling
             let decide_policy_signal = CString::new("decide-policy").unwrap();
@@ -425,6 +449,13 @@ impl WpeWebView {
     /// Update view state from WebKit
     pub fn update(&mut self) {
         unsafe {
+            // Pump GLib main context to process WebKit events (including buffer-rendered signal)
+            // This is critical - without this, WebKit's internal events won't be dispatched
+            let ctx = plat::g_main_context_default();
+            while plat::g_main_context_iteration(ctx, 0) != 0 {
+                // Process all pending events
+            }
+
             // Update title
             let title_ptr = wk::webkit_web_view_get_title(self.web_view);
             if !title_ptr.is_null() {
@@ -482,15 +513,12 @@ impl WpeWebView {
     pub fn texture(&self) -> Option<Texture> {
         // Check if there's a new frame in callback_data
         unsafe {
-            log::trace!("texture(): callback_data ptr = {:?}", self.callback_data);
             if let Some(callback_data) = self.callback_data.as_ref() {
-                log::trace!("texture(): trying to lock latest_frame");
                 match callback_data.latest_frame.lock() {
                     Ok(mut guard) => {
-                        log::trace!("texture(): lock acquired, has_frame = {}", guard.is_some());
                         if let Some(frame_data) = guard.take() {
                             // Create texture on main thread from raw pixel data
-                            log::trace!("texture(): creating texture from raw data {}x{}",
+                            log::info!("texture(): creating texture from raw data {}x{}",
                                        frame_data.width, frame_data.height);
 
                             let glib_bytes = glib::Bytes::from(&frame_data.pixels);
@@ -516,7 +544,7 @@ impl WpeWebView {
                                 log::trace!("texture(): cached texture, cache size = {}", cache.len());
                             }
 
-                            log::trace!("texture(): returning new texture {}x{}",
+                            log::info!("texture(): returning new texture {}x{}",
                                        texture.width(), texture.height());
                             return Some(texture);
                         }
@@ -897,6 +925,142 @@ unsafe extern "C" fn buffer_rendered_callback(
     // Note: Do NOT unref the GBytes - WPE manages its lifecycle
     // The GBytes returned by wpe_buffer_import_to_pixels is internally linked
     // to the WPE buffer and will be cleaned up when the callback returns
+}
+
+/// C callback for buffer-released signal from WPEView
+/// In headless mode, buffer-rendered doesn't fire, but buffer-released does.
+/// We capture the pixel data here before the buffer is released.
+unsafe extern "C" fn buffer_released_callback(
+    _wpe_view: *mut plat::WPEView,
+    buffer: *mut plat::WPEBuffer,
+    user_data: *mut libc::c_void,
+) {
+    if user_data.is_null() || buffer.is_null() {
+        return;
+    }
+
+    let callback_data = &*(user_data as *const BufferCallbackData);
+
+    let width = plat::wpe_buffer_get_width(buffer) as u32;
+    let height = plat::wpe_buffer_get_height(buffer) as u32;
+
+    if width == 0 || height == 0 || width > 8192 || height > 8192 {
+        return;
+    }
+
+    log::info!("buffer_released_callback: capturing {}x{} buffer", width, height);
+
+    // Import pixels from the buffer
+    let mut error: *mut plat::GError = ptr::null_mut();
+    let bytes = plat::wpe_buffer_import_to_pixels(buffer, &mut error);
+
+    if bytes.is_null() {
+        if !error.is_null() {
+            let msg = std::ffi::CStr::from_ptr((*error).message).to_string_lossy();
+            log::warn!("buffer_released_callback: import failed: {}", msg);
+            plat::g_error_free(error);
+        }
+        return;
+    }
+
+    // Get pixel data
+    let mut size: plat::gsize = 0;
+    let data = plat::g_bytes_get_data(bytes, &mut size);
+
+    if data.is_null() || size == 0 {
+        return;
+    }
+
+    let size = size as usize;
+    let expected_size = (width * height * 4) as usize;
+
+    if size < expected_size {
+        log::warn!("buffer_released_callback: size {} < expected {}", size, expected_size);
+        return;
+    }
+
+    log::debug!("buffer_released_callback: got {} bytes for {}x{}", size, width, height);
+
+    // Copy pixel data
+    let pixel_data: Vec<u8> = std::slice::from_raw_parts(data as *const u8, size).to_vec();
+
+    // Calculate stride
+    let actual_stride = size / (height as usize);
+
+    // Convert XRGB to BGRA with alpha=255
+    let mut pixels_with_alpha: Vec<u8> = Vec::with_capacity((width * height * 4) as usize);
+    for row in 0..(height as usize) {
+        let row_start = row * actual_stride;
+        for col in 0..(width as usize) {
+            let offset = row_start + col * 4;
+            if offset + 3 >= pixel_data.len() {
+                return;
+            }
+            pixels_with_alpha.push(pixel_data[offset]);     // B
+            pixels_with_alpha.push(pixel_data[offset + 1]); // G
+            pixels_with_alpha.push(pixel_data[offset + 2]); // R
+            pixels_with_alpha.push(255);                     // A
+        }
+    }
+
+    log::info!("buffer_released_callback: storing frame {}x{}", width, height);
+
+    // Store raw pixel data
+    if let Ok(mut guard) = callback_data.latest_frame.lock() {
+        *guard = Some(RawFrameData {
+            pixels: pixels_with_alpha,
+            width,
+            height,
+        });
+    }
+    callback_data.frame_available.store(true, Ordering::Release);
+
+    // Queue widget redraw
+    glib::MainContext::default().invoke(|| {
+        if let Some(widget) = crate::backend::gtk4::get_video_widget() {
+            use gtk4::prelude::WidgetExt;
+            widget.queue_draw();
+        }
+    });
+}
+
+/// C callback for frame-displayed notification from WebKitWebView
+/// This is called when a frame has been displayed by the backend.
+/// We use this to capture the frame since buffer-rendered doesn't fire in headless mode.
+unsafe extern "C" fn frame_displayed_callback(
+    web_view: *mut wk::WebKitWebView,
+    user_data: *mut libc::c_void,
+) {
+    if user_data.is_null() {
+        return;
+    }
+
+    // Get the WPEView from WebKitWebView
+    let wpe_view = wk::webkit_web_view_get_wpe_view(web_view);
+    if wpe_view.is_null() {
+        log::warn!("frame_displayed_callback: wpe_view is null");
+        return;
+    }
+
+    let callback_data = &*(user_data as *const BufferCallbackData);
+
+    // Get view dimensions (cast WPEView type from webkit module to platform module)
+    let wpe_view_plat = wpe_view as *mut plat::WPEView;
+    let width = plat::wpe_view_get_width(wpe_view_plat) as u32;
+    let height = plat::wpe_view_get_height(wpe_view_plat) as u32;
+
+    log::debug!("frame_displayed_callback: view={}x{}", width, height);
+
+    // Mark that a frame is available
+    callback_data.frame_available.store(true, Ordering::Release);
+
+    // Queue widget redraw
+    glib::MainContext::default().invoke(|| {
+        if let Some(widget) = crate::backend::gtk4::get_video_widget() {
+            use gtk4::prelude::WidgetExt;
+            widget.queue_draw();
+        }
+    });
 }
 
 /// C callback for decide-policy signal from WebKitWebView

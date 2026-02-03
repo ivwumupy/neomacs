@@ -379,7 +379,8 @@ impl FrameGlyphBuffer {
                 FrameGlyph::Stretch { x, y, width, height, .. } => (*x, *y, *width, *height),
                 FrameGlyph::Image { x, y, width, height, .. } => (*x, *y, *width, *height),
                 FrameGlyph::Video { x, y, width, height, .. } => (*x, *y, *width, *height),
-                FrameGlyph::WebKit { x, y, width, height, .. } => (*x, *y, *width, *height),
+                // Keep WebKit glyphs - they are persistent embedded views managed explicitly
+                FrameGlyph::WebKit { .. } => return true,
                 // Don't remove backgrounds, cursors, borders - they're managed separately
                 _ => return true,
             };
@@ -396,14 +397,16 @@ impl FrameGlyphBuffer {
     pub fn clear_area(&mut self, x: f32, y: f32, width: f32, height: f32) {
         let x_end = x + width;
         let y_end = y + height;
-        
+
         self.glyphs.retain(|g| {
             let (gx, gy, gw, gh) = match g {
                 FrameGlyph::Char { x, y, width, height, .. } => (*x, *y, *width, *height),
                 FrameGlyph::Stretch { x, y, width, height, .. } => (*x, *y, *width, *height),
                 FrameGlyph::Image { x, y, width, height, .. } => (*x, *y, *width, *height),
                 FrameGlyph::Video { x, y, width, height, .. } => (*x, *y, *width, *height),
-                FrameGlyph::WebKit { x, y, width, height, .. } => (*x, *y, *width, *height),
+                // Keep WebKit glyphs - they are persistent embedded views managed explicitly
+                // Don't remove them when clearing mode lines or other overlapping areas
+                FrameGlyph::WebKit { .. } => return true,
                 // Keep backgrounds, cursors, borders - managed separately
                 _ => return true,
             };

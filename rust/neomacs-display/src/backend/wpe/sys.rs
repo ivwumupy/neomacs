@@ -75,6 +75,17 @@ pub mod platform {
     #![allow(improper_ctypes)]
 
     include!(concat!(env!("OUT_DIR"), "/wpe_platform_sys.rs"));
+
+    // GLib main context functions (not always in generated bindings)
+    #[repr(C)]
+    pub struct GMainContext {
+        _unused: [u8; 0],
+    }
+
+    extern "C" {
+        pub fn g_main_context_default() -> *mut GMainContext;
+        pub fn g_main_context_iteration(context: *mut GMainContext, may_block: i32) -> i32;
+    }
 }
 
 // wpe-webkit bindings (WebKitWebView, etc.)

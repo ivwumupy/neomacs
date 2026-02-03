@@ -1067,7 +1067,9 @@ impl HybridRenderer {
                 height,
             } => {
                 let rect = graphene::Rect::new(*x, *y, *width, *height);
-                
+
+                log::trace!("render WebKit glyph: id={} at ({}, {}) {}x{}", webkit_id, x, y, width, height);
+
                 // Try to get texture from webkit cache
                 if let Some(cache) = webkit_cache {
                     if let Some(view) = cache.get(*webkit_id) {
@@ -1075,10 +1077,16 @@ impl HybridRenderer {
                             let texture_node = gsk::TextureNode::new(&texture, &rect);
                             nodes.push(texture_node.upcast());
                             return;
+                        } else {
+                            log::trace!("No texture available for webkit {}", webkit_id);
                         }
+                    } else {
+                        log::warn!("webkit view {} not found in cache", webkit_id);
                     }
+                } else {
+                    log::warn!("webkit_cache is None");
                 }
-                
+
                 // Fallback: render placeholder
                 let placeholder = gdk::RGBA::new(0.1, 0.1, 0.2, 1.0);
                 nodes.push(gsk::ColorNode::new(&placeholder, &rect).upcast());

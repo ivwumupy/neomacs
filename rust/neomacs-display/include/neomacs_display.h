@@ -34,6 +34,14 @@ typedef enum BackendType {
   BACKEND_TYPE_TTY = 1,
 } BackendType;
 
+typedef struct GMainContext {
+  uint8_t unused[0];
+} GMainContext;
+
+extern struct GMainContext *g_main_context_default(void);
+
+extern int32_t g_main_context_iteration(struct GMainContext *context, int32_t mayBlock);
+
 /**
  * Initialize the display engine
  *

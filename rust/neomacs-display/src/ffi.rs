@@ -2863,6 +2863,8 @@ pub unsafe extern "C" fn neomacs_display_add_wpe_glyph(
     pixel_width: c_int,
     pixel_height: c_int,
 ) {
+    log::debug!("add_wpe_glyph: view_id={} size={}x{}", view_id, pixel_width, pixel_height);
+
     if handle.is_null() {
         return;
     }
@@ -2870,6 +2872,8 @@ pub unsafe extern "C" fn neomacs_display_add_wpe_glyph(
     let display = &mut *handle;
     let current_y = display.current_row_y;
     let current_x = display.current_row_x;
+
+    log::debug!("add_wpe_glyph: at ({}, {}), use_hybrid={}", current_x, current_y, display.use_hybrid);
 
     // Hybrid path: add to frame glyph buffer
     if display.use_hybrid {
