@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use wgpu::util::DeviceExt;
+
 use crate::core::scene::{CursorStyle, Scene};
 use crate::core::types::Color;
 
@@ -530,6 +532,3 @@ impl Default for WgpuRenderer {
         Self::new(None, 800, 600)
     }
 }
-
-// Import BufferInitDescriptor extension trait
-use wgpu::util::DeviceExt;
