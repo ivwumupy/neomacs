@@ -14,6 +14,8 @@ mod external_buffer;
 mod animation;
 #[cfg(feature = "winit-backend")]
 mod transition;
+#[cfg(feature = "winit-backend")]
+mod window_state;
 
 #[cfg(feature = "winit-backend")]
 pub use renderer::WgpuRenderer;
@@ -33,6 +35,8 @@ pub use external_buffer::DmaBufBuffer;
 pub use animation::{AnimationTarget, AnimatedProperty, Easing, Animation, AnimationEngine};
 #[cfg(feature = "winit-backend")]
 pub use transition::{TransitionType, BufferTransition, TransitionManager};
+#[cfg(feature = "winit-backend")]
+pub use window_state::WindowState;
 
 #[cfg(all(feature = "wpe-webkit", target_os = "linux"))]
 mod webkit_cache;
