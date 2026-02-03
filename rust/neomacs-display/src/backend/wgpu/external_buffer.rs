@@ -237,19 +237,25 @@ impl ExternalBuffer for SharedMemoryBuffer {
 /// DMA-BUF allows zero-copy sharing of GPU buffers between processes and
 /// between different GPU APIs. This is the most efficient way to handle
 /// video frames and WebKit surfaces on Linux.
+///
+/// This struct supports multi-plane formats (e.g., YUV), with up to 4 planes.
 #[cfg(target_os = "linux")]
 #[derive(Debug, Clone)]
 pub struct DmaBufBuffer {
-    /// DMA-BUF file descriptor.
-    pub fd: std::os::unix::io::RawFd,
+    /// DMA-BUF file descriptors per plane (up to 4).
+    pub fds: [std::os::unix::io::RawFd; 4],
+    /// Number of bytes per row per plane.
+    pub strides: [u32; 4],
+    /// Byte offset per plane.
+    pub offsets: [u32; 4],
+    /// Number of planes.
+    pub num_planes: u32,
     /// Width in pixels.
     pub width: u32,
     /// Height in pixels.
     pub height: u32,
-    /// Number of bytes per row.
-    pub stride: u32,
-    /// DRM format code (e.g., DRM_FORMAT_ARGB8888).
-    pub format: u32,
+    /// DRM fourcc format code (e.g., DRM_FORMAT_ARGB8888).
+    pub fourcc: u32,
     /// DRM modifier (for tiled/compressed formats).
     pub modifier: u64,
 }
@@ -258,21 +264,86 @@ pub struct DmaBufBuffer {
 impl DmaBufBuffer {
     /// Create a new DmaBufBuffer.
     pub fn new(
+        fds: [std::os::unix::io::RawFd; 4],
+        strides: [u32; 4],
+        offsets: [u32; 4],
+        num_planes: u32,
+        width: u32,
+        height: u32,
+        fourcc: u32,
+        modifier: u64,
+    ) -> Self {
+        Self {
+            fds,
+            strides,
+            offsets,
+            num_planes,
+            width,
+            height,
+            fourcc,
+            modifier,
+        }
+    }
+
+    /// Create a simple single-plane DmaBufBuffer.
+    pub fn single_plane(
         fd: std::os::unix::io::RawFd,
         width: u32,
         height: u32,
         stride: u32,
-        format: u32,
+        fourcc: u32,
         modifier: u64,
     ) -> Self {
         Self {
-            fd,
+            fds: [fd, -1, -1, -1],
+            strides: [stride, 0, 0, 0],
+            offsets: [0, 0, 0, 0],
+            num_planes: 1,
             width,
             height,
-            stride,
-            format,
+            fourcc,
             modifier,
         }
+    }
+
+    /// Import DMA-BUF as wgpu texture using Vulkan external memory.
+    ///
+    /// This requires the VK_EXT_external_memory_dma_buf extension.
+    /// Returns None if import fails or is not supported.
+    pub fn to_wgpu_texture(
+        &self,
+        _device: &wgpu::Device,
+        _queue: &wgpu::Queue,
+    ) -> Option<wgpu::Texture> {
+        // TODO: Implement full Vulkan DMA-BUF import
+        // This requires:
+        // 1. Access to raw Vulkan device via wgpu HAL (device.as_hal::<Vulkan, _, _>())
+        // 2. VK_EXT_external_memory_dma_buf extension
+        // 3. Create VkImage with external memory (VkExternalMemoryImageCreateInfo)
+        // 4. Import DMA-BUF fd using VkImportMemoryFdInfoKHR
+        // 5. Wrap as wgpu::Texture using device.create_texture_from_hal()
+        //
+        // Required Vulkan extensions:
+        // - VK_KHR_external_memory
+        // - VK_KHR_external_memory_fd
+        // - VK_EXT_external_memory_dma_buf
+        // - VK_EXT_image_drm_format_modifier
+
+        log::warn!(
+            "DmaBufBuffer::to_wgpu_texture not yet fully implemented \
+            ({}x{}, planes={}, fourcc={:#x}, modifier={:#x})",
+            self.width,
+            self.height,
+            self.num_planes,
+            self.fourcc,
+            self.modifier
+        );
+        None
+    }
+
+    /// Get dimensions of this buffer.
+    pub fn dimensions(&self) -> (u32, u32) {
+        (self.width, self.height)
     }
 }
 
@@ -280,30 +351,15 @@ impl DmaBufBuffer {
 impl ExternalBuffer for DmaBufBuffer {
     fn to_wgpu_texture(
         &self,
-        _device: &wgpu::Device,
-        _queue: &wgpu::Queue,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
     ) -> Option<wgpu::Texture> {
-        // TODO: Implement DMA-BUF import using wgpu's hal::vulkan extensions
-        // This requires:
-        // 1. Access to the underlying Vulkan device
-        // 2. VK_EXT_external_memory_dma_buf extension
-        // 3. Proper memory import and image creation
-        //
-        // For now, log a warning and return None. Callers should fall back
-        // to SharedMemoryBuffer for systems where DMA-BUF import isn't working.
-        log::warn!(
-            "DmaBufBuffer: DMA-BUF import not yet implemented (fd={}, {}x{}, format={:#x}, modifier={:#x})",
-            self.fd,
-            self.width,
-            self.height,
-            self.format,
-            self.modifier
-        );
-        None
+        // Delegate to the inherent method
+        DmaBufBuffer::to_wgpu_texture(self, device, queue)
     }
 
     fn dimensions(&self) -> (u32, u32) {
-        (self.width, self.height)
+        DmaBufBuffer::dimensions(self)
     }
 }
 
