@@ -7,7 +7,7 @@ use wgpu::util::DeviceExt;
 use crate::core::scene::{CursorStyle, Scene};
 use crate::core::types::Color;
 
-use super::vertex::{RectVertex, Uniforms};
+use super::vertex::{RectVertex, GlyphVertex, Uniforms};
 
 /// GPU-accelerated renderer using wgpu.
 pub struct WgpuRenderer {
@@ -16,6 +16,8 @@ pub struct WgpuRenderer {
     surface: Option<wgpu::Surface<'static>>,
     surface_config: Option<wgpu::SurfaceConfiguration>,
     rect_pipeline: wgpu::RenderPipeline,
+    glyph_pipeline: wgpu::RenderPipeline,
+    glyph_bind_group_layout: wgpu::BindGroupLayout,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     width: u32,
@@ -155,12 +157,90 @@ impl WgpuRenderer {
             cache: None,
         });
 
+        // Load glyph shader
+        let glyph_shader_source = include_str!("shaders/glyph.wgsl");
+        let glyph_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Glyph Shader"),
+            source: wgpu::ShaderSource::Wgsl(glyph_shader_source.into()),
+        });
+
+        // Glyph bind group layout (for per-glyph texture)
+        let glyph_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Glyph Bind Group Layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+
+        // Glyph pipeline layout (uniform + glyph texture)
+        let glyph_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Glyph Pipeline Layout"),
+            bind_group_layouts: &[&bind_group_layout, &glyph_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+
+        // Create glyph pipeline
+        let glyph_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Glyph Pipeline"),
+            layout: Some(&glyph_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &glyph_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[GlyphVertex::desc()],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &glyph_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: target_format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+            cache: None,
+        });
+
         Self {
             device,
             queue,
             surface,
             surface_config,
             rect_pipeline,
+            glyph_pipeline,
+            glyph_bind_group_layout,
             uniform_buffer,
             uniform_bind_group,
             width,
@@ -257,6 +337,11 @@ impl WgpuRenderer {
         };
         self.queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+    }
+
+    /// Get the glyph bind group layout for creating glyph bind groups
+    pub fn glyph_bind_group_layout(&self) -> &wgpu::BindGroupLayout {
+        &self.glyph_bind_group_layout
     }
 
     /// Render a scene to the configured surface.
