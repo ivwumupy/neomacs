@@ -142,6 +142,17 @@ struct NeomacsDisplay *neomacs_display_init(enum BackendType backend);
 void neomacs_display_shutdown(struct NeomacsDisplay *handle);
 
 /**
+ * Get the eventfd for Emacs to wait on (winit backend only)
+ *
+ * Returns the file descriptor that becomes readable when input events are available.
+ * Returns -1 if not available (e.g., TTY backend or eventfd creation failed).
+ *
+ * # Safety
+ * The handle must be valid.
+ */
+int neomacs_display_get_event_fd(struct NeomacsDisplay *handle);
+
+/**
  * Resize the display
  */
 void neomacs_display_resize(struct NeomacsDisplay *handle, int width, int height);
@@ -495,7 +506,9 @@ void neomacs_display_widget_init_pango(struct NeomacsDisplay *handle, void *widg
 int neomacs_display_render_to_widget(struct NeomacsDisplay *handle, void *widget);
 
 /**
- * Set the resize callback (stub)
+ * Set the resize callback for winit windows.
+ *
+ * The callback will be invoked when the window is resized.
  */
 void neomacs_display_set_resize_callback(ResizeCallbackFn callback, void *userData);
 

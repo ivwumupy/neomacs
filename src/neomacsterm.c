@@ -302,6 +302,15 @@ neomacs_open_display (const char *display_name)
       error ("Failed to initialize Neomacs display engine");
     }
 
+  /* Get the event fd from the Rust display for Emacs event loop integration.
+     This is a timerfd that fires periodically to ensure Emacs polls for winit events. */
+  int event_fd = neomacs_display_get_event_fd (dpyinfo->display_handle);
+  if (event_fd >= 0)
+    dpyinfo->connection = event_fd;
+
+  /* Register event callback for winit events (must be done after display_handle is created) */
+  neomacs_term_init ();
+
   /* Set the background color to white (Emacs default) */
   neomacs_display_set_background (dpyinfo->display_handle, dpyinfo->background_pixel);
 

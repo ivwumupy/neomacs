@@ -30,6 +30,18 @@ type EventCallback = extern "C" fn(*const NeomacsInputEvent);
 /// Global event callback - set by C code to receive input events
 #[cfg(feature = "winit-backend")]
 static mut EVENT_CALLBACK: Option<EventCallback> = None;
+
+/// Resize callback function type for C FFI
+#[cfg(feature = "winit-backend")]
+type ResizeCallback = extern "C" fn(user_data: *mut std::ffi::c_void, width: std::ffi::c_int, height: std::ffi::c_int);
+
+/// Global resize callback - set by C code to receive resize events
+#[cfg(feature = "winit-backend")]
+static mut RESIZE_CALLBACK: Option<ResizeCallback> = None;
+
+/// User data pointer for resize callback
+#[cfg(feature = "winit-backend")]
+static mut RESIZE_CALLBACK_USER_DATA: *mut std::ffi::c_void = std::ptr::null_mut();
 use crate::backend::tty::TtyBackend;
 use crate::core::types::{Color, Rect};
 use crate::core::scene::{Scene, WindowScene, CursorState, CursorStyle};
@@ -59,6 +71,9 @@ pub struct NeomacsDisplay {
     frame_counter: u64,     // Frame counter for tracking row updates
     current_render_window_id: u32, // Winit window ID being rendered to (0 = legacy rendering)
     faces: HashMap<u32, Face>,
+    /// Eventfd for waking up Emacs when events arrive (winit only)
+    #[cfg(feature = "winit-backend")]
+    event_fd: i32,
 }
 
 impl NeomacsDisplay {
@@ -110,6 +125,37 @@ pub unsafe extern "C" fn neomacs_display_init(backend: BackendType) -> *mut Neom
         info!("Using LEGACY scene graph mode");
     }
 
+    // Create timerfd for periodic wakeup of Emacs event loop (Linux only, for winit)
+    // This ensures Emacs polls for winit events regularly since winit uses a polling model
+    #[cfg(feature = "winit-backend")]
+    let event_fd = {
+        let fd = libc::timerfd_create(libc::CLOCK_MONOTONIC, libc::TFD_NONBLOCK | libc::TFD_CLOEXEC);
+        if fd < 0 {
+            warn!("Failed to create timerfd: {}", std::io::Error::last_os_error());
+            -1
+        } else {
+            // Set up a repeating timer at ~60fps (16ms interval)
+            let interval = libc::itimerspec {
+                it_interval: libc::timespec {
+                    tv_sec: 0,
+                    tv_nsec: 16_000_000, // 16ms
+                },
+                it_value: libc::timespec {
+                    tv_sec: 0,
+                    tv_nsec: 16_000_000, // 16ms initial
+                },
+            };
+            if libc::timerfd_settime(fd, 0, &interval, std::ptr::null_mut()) < 0 {
+                warn!("Failed to set timerfd: {}", std::io::Error::last_os_error());
+                libc::close(fd);
+                -1
+            } else {
+                debug!("Created timerfd {} with 16ms interval", fd);
+                fd
+            }
+        }
+    };
+
     let mut display = Box::new(NeomacsDisplay {
         backend_type: backend,
         tty_backend: None,
@@ -131,6 +177,8 @@ pub unsafe extern "C" fn neomacs_display_init(backend: BackendType) -> *mut Neom
         frame_counter: 0,
         current_render_window_id: 0, // 0 = legacy rendering
         faces: HashMap::new(),
+        #[cfg(feature = "winit-backend")]
+        event_fd,
     });
 
     // Create the backend
@@ -192,11 +240,43 @@ pub unsafe extern "C" fn neomacs_display_shutdown(handle: *mut NeomacsDisplay) {
 
     let mut display = Box::from_raw(handle);
 
+    // Close the eventfd
+    #[cfg(feature = "winit-backend")]
+    if display.event_fd >= 0 {
+        libc::close(display.event_fd);
+    }
+
     if let Some(backend) = display.get_backend() {
         backend.shutdown();
     }
 
     // display is dropped here
+}
+
+/// Get the eventfd for Emacs to wait on (winit backend only)
+///
+/// Returns the file descriptor that becomes readable when input events are available.
+/// Returns -1 if not available (e.g., TTY backend or eventfd creation failed).
+///
+/// # Safety
+/// The handle must be valid.
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_get_event_fd(handle: *mut NeomacsDisplay) -> c_int {
+    if handle.is_null() {
+        return -1;
+    }
+
+    let display = &*handle;
+
+    #[cfg(feature = "winit-backend")]
+    {
+        display.event_fd
+    }
+
+    #[cfg(not(feature = "winit-backend"))]
+    {
+        -1
+    }
 }
 
 // ============================================================================
@@ -1555,13 +1635,25 @@ pub unsafe extern "C" fn neomacs_display_render_to_widget(
 /// Type for the resize callback function pointer from C
 pub type ResizeCallbackFn = extern "C" fn(user_data: *mut c_void, width: c_int, height: c_int);
 
-/// Set the resize callback (stub)
+/// Set the resize callback for winit windows.
+///
+/// The callback will be invoked when the window is resized.
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_set_resize_callback(
-    _callback: ResizeCallbackFn,
-    _user_data: *mut c_void,
+    callback: ResizeCallbackFn,
+    user_data: *mut c_void,
 ) {
-    // Not implemented without GTK4
+    #[cfg(feature = "winit-backend")]
+    {
+        RESIZE_CALLBACK = Some(callback);
+        RESIZE_CALLBACK_USER_DATA = user_data;
+        log::debug!("Resize callback set");
+    }
+    #[cfg(not(feature = "winit-backend"))]
+    {
+        let _ = callback;
+        let _ = user_data;
+    }
 }
 
 // ============================================================================
@@ -2602,6 +2694,15 @@ pub extern "C" fn neomacs_display_poll_events(handle: *mut NeomacsDisplay) -> i3
         use winit::event_loop::ControlFlow;
         use winit::platform::pump_events::EventLoopExtPumpEvents;
 
+        // Drain the timerfd to acknowledge the wakeup
+        // This prevents select() from returning immediately again
+        if display.event_fd >= 0 {
+            let mut buf: u64 = 0;
+            unsafe {
+                libc::read(display.event_fd, &mut buf as *mut u64 as *mut libc::c_void, 8);
+            }
+        }
+
         // Take the event loop temporarily
         let event_loop = match display.event_loop.take() {
             Some(el) => el,
@@ -2640,29 +2741,33 @@ pub extern "C" fn neomacs_display_poll_events(handle: *mut NeomacsDisplay) -> i3
                                 use winit::event::ElementState;
                                 use winit::platform::scancode::PhysicalKeyExtScancode;
 
-                                let kind = match key_event.state {
-                                    ElementState::Pressed => NEOMACS_EVENT_KEY_PRESS,
-                                    ElementState::Released => NEOMACS_EVENT_KEY_RELEASE,
-                                };
-
                                 let keysym = backend.translate_key_public(&key_event.logical_key);
 
-                                let ev = NeomacsInputEvent {
-                                    kind,
-                                    window_id: 1, // TODO: map winit window_id
-                                    timestamp: 0,
-                                    x: 0,
-                                    y: 0,
-                                    keycode: key_event.physical_key.to_scancode().unwrap_or(0),
-                                    keysym,
-                                    modifiers: backend.get_current_modifiers(),
-                                    button: 0,
-                                    scroll_delta_x: 0.0,
-                                    scroll_delta_y: 0.0,
-                                    width: 0,
-                                    height: 0,
-                                };
-                                collected_events.push(ev);
+                                // Skip modifier-only key events (keysym=0)
+                                // These are Ctrl, Shift, Alt, Super pressed alone
+                                if keysym != 0 {
+                                    let kind = match key_event.state {
+                                        ElementState::Pressed => NEOMACS_EVENT_KEY_PRESS,
+                                        ElementState::Released => NEOMACS_EVENT_KEY_RELEASE,
+                                    };
+
+                                    let ev = NeomacsInputEvent {
+                                        kind,
+                                        window_id: 1, // TODO: map winit window_id
+                                        timestamp: 0,
+                                        x: 0,
+                                        y: 0,
+                                        keycode: key_event.physical_key.to_scancode().unwrap_or(0),
+                                        keysym,
+                                        modifiers: backend.get_current_modifiers(),
+                                        button: 0,
+                                        scroll_delta_x: 0.0,
+                                        scroll_delta_y: 0.0,
+                                        width: 0,
+                                        height: 0,
+                                    };
+                                    collected_events.push(ev);
+                                }
                             }
                             WindowEvent::ModifiersChanged(modifiers) => {
                                 backend.update_modifiers(modifiers);
@@ -2730,6 +2835,21 @@ pub extern "C" fn neomacs_display_poll_events(handle: *mut NeomacsDisplay) -> i3
                                 collected_events.push(ev);
                             }
                             WindowEvent::Resized(size) => {
+                                log::debug!("Window resized to {}x{}", size.width, size.height);
+
+                                // Call the resize callback directly if set
+                                // This updates Emacs frame size immediately
+                                unsafe {
+                                    if let Some(callback) = RESIZE_CALLBACK {
+                                        callback(
+                                            RESIZE_CALLBACK_USER_DATA,
+                                            size.width as i32,
+                                            size.height as i32,
+                                        );
+                                    }
+                                }
+
+                                // Also send as event for any other handlers
                                 let ev = NeomacsInputEvent {
                                     kind: NEOMACS_EVENT_RESIZE,
                                     window_id: 1,

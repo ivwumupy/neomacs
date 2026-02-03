@@ -735,6 +735,14 @@ void neomacs_display_set_event_callback(EventCallback callback);
 int32_t neomacs_display_poll_events(struct NeomacsDisplay *handle);
 
 /**
+ * Get the event fd for Emacs to wait on (winit backend only).
+ *
+ * Returns a file descriptor that becomes readable periodically to trigger
+ * event polling. Returns -1 if not available.
+ */
+int neomacs_display_get_event_fd(struct NeomacsDisplay *handle);
+
+/**
  * Set an animation configuration option (stub)
  */
 int neomacs_display_set_animation_option(struct NeomacsDisplay *handle,
