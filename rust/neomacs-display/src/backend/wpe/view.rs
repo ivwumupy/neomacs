@@ -7,17 +7,12 @@ use std::ffi::{CStr, CString};
 use std::ptr;
 use std::sync::{Mutex, atomic::{AtomicBool, Ordering}};
 
-use gdk4::prelude::*;
-use gdk4::Texture;
-use glib;
-
 use crate::core::error::{DisplayError, DisplayResult};
 
-use super::sys;
 use super::sys::webkit as wk;
 use super::sys::platform as plat;
 use super::platform::{WpePlatformDisplay, buffer_dmabuf_info};
-use super::dmabuf::DmaBufExporter;
+use super::dmabuf::{DmaBufExporter, ExportedDmaBuf};
 
 /// Callback type for new window requests.
 /// Parameters: (view_id, url, frame_name)
@@ -132,10 +127,6 @@ struct BufferCallbackData {
     latest_dmabuf: Mutex<Option<DmaBufFrameData>>,
     /// Latest raw frame data (fallback when DMA-BUF not available)
     latest_frame: Mutex<Option<RawFrameData>>,
-    /// Cached texture created on main thread (kept alive for GSK rendering)
-    /// We keep the current and previous textures to avoid use-after-free when
-    /// GSK is still rendering the previous frame
-    cached_textures: Mutex<Vec<Texture>>,
     /// Flag indicating new frame available
     frame_available: AtomicBool,
     /// Flag indicating DMA-BUF frame available (prefer over raw frame)
@@ -144,8 +135,6 @@ struct BufferCallbackData {
     display: *mut plat::WPEDisplay,
     /// EGL display for DMA-BUF export
     egl_display: *mut libc::c_void,
-    /// GDK display for texture creation (stored as raw pointer for thread safety)
-    gdk_display_ptr: usize,
 }
 
 /// A WPE WebKit browser view using WPE Platform API.
@@ -172,9 +161,6 @@ pub struct WpeWebView {
     /// Loading progress (0.0 - 1.0)
     pub progress: f64,
 
-    /// Latest rendered texture
-    texture: Option<Texture>,
-
     /// The WebKit web view
     web_view: *mut wk::WebKitWebView,
 
@@ -195,9 +181,6 @@ pub struct WpeWebView {
 
     /// DMA-BUF exporter for texture conversion
     dmabuf_exporter: DmaBufExporter,
-
-    /// GDK display for texture creation
-    gdk_display: Option<gdk4::Display>,
 
     /// Whether the view needs redraw
     needs_redraw: bool,
@@ -225,10 +208,6 @@ impl WpeWebView {
         eprintln!("WpeWebView::new: creating DmaBufExporter...");
         let dmabuf_exporter = DmaBufExporter::new(platform_display.egl_display());
         eprintln!("WpeWebView::new: DmaBufExporter created");
-
-        // Get the GDK display
-        let gdk_display = gdk4::Display::default();
-        eprintln!("WpeWebView::new: GDK display: {:?}", gdk_display);
 
         unsafe {
             // Create WebKitNetworkSession (required for WPE Platform)
@@ -273,23 +252,16 @@ impl WpeWebView {
             // Get EGL display for DMA-BUF export
             let egl_display = platform_display.egl_display();
 
-            // Get GDK display pointer for passing to callback
-            let gdk_display_ptr = gdk_display.as_ref()
-                .map(|d| d.as_ptr() as usize)
-                .unwrap_or(0);
-
             // Allocate callback data
             // Store raw pixel data in callback, create textures on main thread
             let callback_data = Box::into_raw(Box::new(BufferCallbackData {
                 view_id,
                 latest_dmabuf: Mutex::new(None),
                 latest_frame: Mutex::new(None),
-                cached_textures: Mutex::new(Vec::with_capacity(8)),
                 frame_available: AtomicBool::new(false),
                 dmabuf_available: AtomicBool::new(false),
                 display,
                 egl_display,
-                gdk_display_ptr,
             }));
             eprintln!("WpeWebView::new: callback_data={:?}", callback_data);
 
@@ -378,7 +350,6 @@ impl WpeWebView {
                 height,
                 title: None,
                 progress: 0.0,
-                texture: None,
                 web_view,
                 wpe_view: wpe_view as *mut _,
                 callback_data,
@@ -386,7 +357,6 @@ impl WpeWebView {
                 decide_policy_handler_id,
                 load_changed_handler_id,
                 dmabuf_exporter,
-                gdk_display,
                 needs_redraw: false,
             })
         }
@@ -550,133 +520,15 @@ impl WpeWebView {
         }
     }
 
-    /// Get the current texture (latest rendered frame)
-    /// This creates the texture on the main thread.
-    /// Prefers zero-copy DMA-BUF path, falls back to raw pixel data.
-    /// Textures are cached to keep them alive while GSK renders them.
-    pub fn texture(&self) -> Option<Texture> {
-        unsafe {
-            if let Some(callback_data) = self.callback_data.as_ref() {
-                // Try zero-copy DMA-BUF path first (preferred)
-                let dmabuf_avail = callback_data.dmabuf_available.load(Ordering::Acquire);
-                if dmabuf_avail {
-                    if let Ok(mut guard) = callback_data.latest_dmabuf.lock() {
-                        if let Some(mut dmabuf_data) = guard.take() {
-                            log::info!("texture(): using zero-copy DMA-BUF path {}x{}",
-                                       dmabuf_data.width, dmabuf_data.height);
-
-                            // Get GDK display for texture creation
-                            if let Some(gdk_display) = &self.gdk_display {
-                                // Take ownership of fds (GTK will close them)
-                                let fds = dmabuf_data.take_fds();
-
-                                // Create DmaBufInfo for the texture builder
-                                let mut planes = Vec::with_capacity(fds.len());
-                                for i in 0..fds.len() {
-                                    planes.push(super::platform::DmaBufPlane {
-                                        fd: fds[i],
-                                        stride: dmabuf_data.strides[i],
-                                        offset: dmabuf_data.offsets[i],
-                                    });
-                                }
-
-                                let dmabuf_info = super::platform::DmaBufInfo {
-                                    fourcc: dmabuf_data.fourcc,
-                                    n_planes: fds.len() as u32,
-                                    modifier: dmabuf_data.modifier,
-                                    width: dmabuf_data.width,
-                                    height: dmabuf_data.height,
-                                    planes,
-                                };
-
-                                // Create zero-copy texture
-                                match super::platform::dmabuf_to_texture(&dmabuf_info, gdk_display) {
-                                    Ok(texture) => {
-                                        log::info!("texture(): zero-copy DMA-BUF texture created {}x{}",
-                                                   texture.width(), texture.height());
-
-                                        // Cache the texture
-                                        if let Ok(mut cache) = callback_data.cached_textures.lock() {
-                                            cache.push(texture.clone());
-                                            while cache.len() > 30 {
-                                                cache.remove(0);
-                                            }
-                                        }
-
-                                        callback_data.dmabuf_available.store(false, Ordering::Release);
-                                        callback_data.frame_available.store(false, Ordering::Release);
-                                        return Some(texture);
-                                    }
-                                    Err(e) => {
-                                        log::warn!("texture(): DMA-BUF texture creation failed: {:?}, falling back to pixel path", e);
-                                        // Close fds since we failed (GTK didn't take ownership)
-                                        for fd in fds {
-                                            if fd >= 0 {
-                                                libc::close(fd);
-                                            }
-                                        }
-                                    }
-                                }
-                            } else {
-                                log::warn!("texture(): no GDK display for DMA-BUF texture");
-                            }
-                        }
-                    }
-                    callback_data.dmabuf_available.store(false, Ordering::Release);
-                }
-
-                // Fallback: raw pixel path
-                match callback_data.latest_frame.lock() {
-                    Ok(mut guard) => {
-                        if let Some(frame_data) = guard.take() {
-                            log::info!("texture(): creating texture from raw data {}x{}",
-                                       frame_data.width, frame_data.height);
-
-                            let glib_bytes = glib::Bytes::from(&frame_data.pixels);
-                            let stride = (frame_data.width * 4) as usize;
-
-                            let texture: Texture = gdk4::MemoryTexture::new(
-                                frame_data.width as i32,
-                                frame_data.height as i32,
-                                gdk4::MemoryFormat::B8g8r8a8,
-                                &glib_bytes,
-                                stride,
-                            ).upcast();
-
-                            // Cache the texture
-                            if let Ok(mut cache) = callback_data.cached_textures.lock() {
-                                cache.push(texture.clone());
-                                while cache.len() > 30 {
-                                    cache.remove(0);
-                                }
-                                log::trace!("texture(): cached texture, cache size = {}", cache.len());
-                            }
-
-                            callback_data.frame_available.store(false, Ordering::Release);
-                            log::info!("texture(): returning new texture {}x{}",
-                                       texture.width(), texture.height());
-                            return Some(texture);
-                        }
-                    }
-                    Err(e) => {
-                        log::warn!("texture(): failed to lock: {:?}", e);
-                    }
-                }
-
-                // No new frame - return most recent cached texture
-                if let Ok(cache) = callback_data.cached_textures.lock() {
-                    if let Some(tex) = cache.last() {
-                        log::trace!("texture(): returning cached texture");
-                        return Some(tex.clone());
-                    }
-                }
-            } else {
-                log::trace!("texture(): callback_data is null");
-            }
-        }
-        // Fall back to cached texture in view
-        log::trace!("texture(): falling back to view cached texture, has_texture = {}", self.texture.is_some());
-        self.texture.clone()
+    /// Get current frame as ExportedDmaBuf for wgpu rendering.
+    ///
+    /// Returns the latest rendered frame as a DMA-BUF that can be imported
+    /// into wgpu for zero-copy GPU-to-GPU texture sharing.
+    pub fn get_frame_dmabuf(&self) -> Option<ExportedDmaBuf> {
+        // Get EGLImage from WPE
+        // Export to DmaBuf using DmaBufExporter
+        // This will be fully implemented when the integration is complete
+        None // Stub for now
     }
 
     /// Check if view needs redraw
@@ -985,13 +837,7 @@ unsafe extern "C" fn buffer_rendered_callback(
             callback_data.dmabuf_available.store(true, Ordering::Release);
             callback_data.frame_available.store(true, Ordering::Release);
 
-            // Queue widget redraw on main thread
-            glib::MainContext::default().invoke(|| {
-                if let Some(widget) = crate::backend::gtk4::get_video_widget() {
-                    use gtk4::prelude::WidgetExt;
-                    widget.queue_draw();
-                }
-            });
+            // Note: Widget redraw notification will be handled by wgpu integration
             return;
         }
     }
@@ -1058,13 +904,7 @@ unsafe extern "C" fn buffer_rendered_callback(
     }
     callback_data.frame_available.store(true, Ordering::Release);
 
-    // Queue widget redraw
-    glib::MainContext::default().invoke(|| {
-        if let Some(widget) = crate::backend::gtk4::get_video_widget() {
-            use gtk4::prelude::WidgetExt;
-            widget.queue_draw();
-        }
-    });
+    // Note: Widget redraw notification will be handled by wgpu integration
 }
 
 /// C callback for buffer-released signal from WPEView
@@ -1130,12 +970,7 @@ unsafe extern "C" fn buffer_released_callback(
             callback_data.dmabuf_available.store(true, Ordering::Release);
             callback_data.frame_available.store(true, Ordering::Release);
 
-            glib::MainContext::default().invoke(|| {
-                if let Some(widget) = crate::backend::gtk4::get_video_widget() {
-                    use gtk4::prelude::WidgetExt;
-                    widget.queue_draw();
-                }
-            });
+            // Note: Widget redraw notification will be handled by wgpu integration
             return;
         }
     }
@@ -1202,12 +1037,7 @@ unsafe extern "C" fn buffer_released_callback(
     }
     callback_data.frame_available.store(true, Ordering::Release);
 
-    glib::MainContext::default().invoke(|| {
-        if let Some(widget) = crate::backend::gtk4::get_video_widget() {
-            use gtk4::prelude::WidgetExt;
-            widget.queue_draw();
-        }
-    });
+    // Note: Widget redraw notification will be handled by wgpu integration
 }
 
 /// C callback for frame-displayed notification from WebKitWebView
@@ -1240,13 +1070,7 @@ unsafe extern "C" fn frame_displayed_callback(
     // Mark that a frame is available
     callback_data.frame_available.store(true, Ordering::Release);
 
-    // Queue widget redraw
-    glib::MainContext::default().invoke(|| {
-        if let Some(widget) = crate::backend::gtk4::get_video_widget() {
-            use gtk4::prelude::WidgetExt;
-            widget.queue_draw();
-        }
-    });
+    // Note: Widget redraw notification will be handled by wgpu integration
 }
 
 /// C callback for decide-policy signal from WebKitWebView

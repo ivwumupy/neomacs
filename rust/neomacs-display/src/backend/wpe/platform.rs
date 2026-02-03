@@ -17,9 +17,7 @@
 
 use std::ptr;
 use std::ffi::CString;
-use gtk4::gdk;
-use gtk4::prelude::*;
-use log::{debug, info, warn, error};
+use log::{debug, info, warn};
 
 use super::sys::platform as plat;
 use super::sys::egl;
@@ -285,48 +283,6 @@ pub fn buffer_to_pixels(buffer: *mut plat::WPEBuffer) -> DisplayResult<(*mut pla
     }
 }
 
-/// Convert GBytes pixel data to GdkTexture
-pub fn pixels_to_texture(
-    bytes: *mut plat::GBytes,
-    width: u32,
-    height: u32,
-) -> DisplayResult<gdk::Texture> {
-    unsafe {
-        if bytes.is_null() {
-            return Err(DisplayError::WebKit("GBytes is null".into()));
-        }
-
-        let mut size: plat::gsize = 0;
-        let data = plat::g_bytes_get_data(bytes, &mut size);
-
-        if data.is_null() || size == 0 {
-            plat::g_bytes_unref(bytes);
-            return Err(DisplayError::WebKit("Empty pixel data".into()));
-        }
-
-        // Create a slice from the pixel data
-        let pixel_slice = std::slice::from_raw_parts(data as *const u8, size as usize);
-
-        // Create GdkMemoryTexture
-        // WPE uses BGRA8888 format (premultiplied)
-        let glib_bytes = gtk4::glib::Bytes::from(pixel_slice);
-        let stride = width * 4; // 4 bytes per pixel (BGRA)
-
-        let texture = gdk::MemoryTexture::new(
-            width as i32,
-            height as i32,
-            gdk::MemoryFormat::B8g8r8a8Premultiplied,
-            &glib_bytes,
-            stride as usize,
-        );
-
-        // Free the original GBytes
-        plat::g_bytes_unref(bytes);
-
-        Ok(texture.upcast())
-    }
-}
-
 /// Check if a WPEBuffer is a DMA-BUF buffer and return its info
 ///
 /// Returns (fourcc, n_planes, modifier, fd, stride, offset) if it's a DMA-BUF buffer
@@ -400,33 +356,6 @@ pub struct DmaBufPlane {
     pub fd: i32,
     pub stride: u32,
     pub offset: u32,
-}
-
-/// Create GdkTexture directly from DMA-BUF info
-pub fn dmabuf_to_texture(info: &DmaBufInfo, gdk_display: &gdk::Display) -> DisplayResult<gdk::Texture> {
-    let builder = gdk::DmabufTextureBuilder::new();
-    builder.set_display(gdk_display);
-    builder.set_width(info.width);
-    builder.set_height(info.height);
-    builder.set_fourcc(info.fourcc);
-    builder.set_modifier(info.modifier);
-    builder.set_n_planes(info.n_planes);
-
-    for (i, plane) in info.planes.iter().enumerate() {
-        builder.set_fd(i as u32, plane.fd);
-        builder.set_stride(i as u32, plane.stride);
-        builder.set_offset(i as u32, plane.offset);
-    }
-
-    match unsafe { builder.build() } {
-        Ok(texture) => {
-            info!("dmabuf_to_texture: created DMA-BUF texture {}x{}", info.width, info.height);
-            Ok(texture.upcast::<gdk::Texture>())
-        }
-        Err(e) => {
-            Err(DisplayError::WebKit(format!("Failed to build DmabufTexture: {}", e)))
-        }
-    }
 }
 
 #[cfg(test)]
