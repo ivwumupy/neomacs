@@ -56,6 +56,7 @@ pub struct NeomacsDisplay {
     current_window_id: i32, // ID of current window being updated
     in_frame: bool,         // Whether we're currently in a frame update
     frame_counter: u64,     // Frame counter for tracking row updates
+    current_render_window_id: u32, // Winit window ID being rendered to (0 = legacy rendering)
 }
 
 impl NeomacsDisplay {
@@ -111,6 +112,7 @@ pub unsafe extern "C" fn neomacs_display_init(backend: BackendType) -> *mut Neom
         current_window_id: -1,
         in_frame: false,
         frame_counter: 0,
+        current_render_window_id: 0, // 0 = legacy rendering
     });
 
     // Create the backend
