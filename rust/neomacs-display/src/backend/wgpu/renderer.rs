@@ -12,6 +12,8 @@ use crate::core::types::Color;
 
 use super::glyph_atlas::{GlyphKey, WgpuGlyphAtlas};
 use super::image_cache::ImageCache;
+#[cfg(feature = "video")]
+use super::video_cache::VideoCache;
 use super::vertex::{GlyphVertex, RectVertex, Uniforms};
 
 /// GPU-accelerated renderer using wgpu.
@@ -27,6 +29,8 @@ pub struct WgpuRenderer {
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
     image_cache: ImageCache,
+    #[cfg(feature = "video")]
+    video_cache: VideoCache,
     width: u32,
     height: u32,
 }
@@ -243,6 +247,12 @@ impl WgpuRenderer {
         // Create image cache (also creates its bind group layout)
         let image_cache = ImageCache::new(&device);
 
+        // Create video cache
+        #[cfg(feature = "video")]
+        let mut video_cache = VideoCache::new();
+        #[cfg(feature = "video")]
+        video_cache.init_gpu(&device);
+
         // Load image shader
         let image_shader_source = include_str!("shaders/image.wgsl");
         let image_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -308,6 +318,8 @@ impl WgpuRenderer {
             uniform_buffer,
             uniform_bind_group,
             image_cache,
+            #[cfg(feature = "video")]
+            video_cache,
             width,
             height,
         }
@@ -748,6 +760,74 @@ impl WgpuRenderer {
         self.image_cache.process_pending(&self.device, &self.queue);
     }
 
+    // =========== Video Loading Methods ===========
+
+    /// Load video from file path (async - returns immediately)
+    /// Returns video ID, frames decode in background
+    #[cfg(feature = "video")]
+    pub fn load_video_file(&mut self, path: &str) -> u32 {
+        self.video_cache.load_file(path)
+    }
+
+    /// Get video dimensions
+    #[cfg(feature = "video")]
+    pub fn get_video_size(&self, id: u32) -> Option<(u32, u32)> {
+        self.video_cache.get_dimensions(id)
+    }
+
+    /// Get video state
+    #[cfg(feature = "video")]
+    pub fn get_video_state(&self, id: u32) -> Option<super::video_cache::VideoState> {
+        self.video_cache.get_state(id)
+    }
+
+    /// Play video
+    #[cfg(feature = "video")]
+    pub fn video_play(&mut self, id: u32) {
+        self.video_cache.play(id)
+    }
+
+    /// Pause video
+    #[cfg(feature = "video")]
+    pub fn video_pause(&mut self, id: u32) {
+        self.video_cache.pause(id)
+    }
+
+    /// Stop video
+    #[cfg(feature = "video")]
+    pub fn video_stop(&mut self, id: u32) {
+        self.video_cache.stop(id)
+    }
+
+    /// Set video loop count (-1 for infinite)
+    #[cfg(feature = "video")]
+    pub fn video_set_loop(&mut self, id: u32, count: i32) {
+        self.video_cache.set_loop(id, count)
+    }
+
+    /// Free a video from cache
+    #[cfg(feature = "video")]
+    pub fn free_video(&mut self, id: u32) {
+        self.video_cache.remove(id)
+    }
+
+    /// Process pending decoded video frames (call each frame before rendering)
+    #[cfg(feature = "video")]
+    pub fn process_pending_videos(&mut self) {
+        log::debug!("process_pending_videos called");
+        // Use image_cache's bind_group_layout and sampler to ensure video bind groups
+        // are compatible with the shared image/video rendering pipeline
+        let layout = self.image_cache.bind_group_layout();
+        let sampler = self.image_cache.sampler();
+        self.video_cache.process_pending(&self.device, &self.queue, layout, sampler);
+    }
+
+    /// Get cached video for rendering
+    #[cfg(feature = "video")]
+    pub fn get_video(&self, id: u32) -> Option<&super::video_cache::CachedVideo> {
+        self.video_cache.get(id)
+    }
+
     /// Render frame glyphs to a texture view
     ///
     /// `surface_width` and `surface_height` should be the actual surface dimensions
@@ -997,6 +1077,43 @@ impl WgpuRenderer {
                 }
             }
 
+            // Draw inline videos
+            #[cfg(feature = "video")]
+            for glyph in &frame_glyphs.glyphs {
+                if let FrameGlyph::Video { video_id, x, y, width, height } = glyph {
+                    // Check if video texture is ready
+                    if let Some(cached) = self.video_cache.get(*video_id) {
+                        log::trace!("Rendering video {} at ({}, {}) size {}x{}, frame_count={}",
+                            video_id, x, y, width, height, cached.frame_count);
+                        if let Some(ref bind_group) = cached.bind_group {
+                            // Create vertices for video quad (white color = no tinting)
+                            let vertices = [
+                                GlyphVertex { position: [*x, *y], tex_coords: [0.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
+                                GlyphVertex { position: [*x + *width, *y], tex_coords: [1.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
+                                GlyphVertex { position: [*x + *width, *y + *height], tex_coords: [1.0, 1.0], color: [1.0, 1.0, 1.0, 1.0] },
+                                GlyphVertex { position: [*x, *y], tex_coords: [0.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
+                                GlyphVertex { position: [*x + *width, *y + *height], tex_coords: [1.0, 1.0], color: [1.0, 1.0, 1.0, 1.0] },
+                                GlyphVertex { position: [*x, *y + *height], tex_coords: [0.0, 1.0], color: [1.0, 1.0, 1.0, 1.0] },
+                            ];
+
+                            let video_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("Video Vertex Buffer"),
+                                contents: bytemuck::cast_slice(&vertices),
+                                usage: wgpu::BufferUsages::VERTEX,
+                            });
+
+                            render_pass.set_bind_group(1, bind_group, &[]);
+                            render_pass.set_vertex_buffer(0, video_buffer.slice(..));
+                            render_pass.draw(0..6, 0..1);
+                        } else {
+                            log::warn!("Video {} has no bind_group!", video_id);
+                        }
+                    } else {
+                        log::warn!("Video {} not found in cache!", video_id);
+                    }
+                }
+            }
+
             // Draw cursors and borders (after text)
             if !cursor_vertices.is_empty() {
                 let cursor_buffer =
@@ -1011,6 +1128,80 @@ impl WgpuRenderer {
                 render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
                 render_pass.set_vertex_buffer(0, cursor_buffer.slice(..));
                 render_pass.draw(0..cursor_vertices.len() as u32, 0..1);
+            }
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+    }
+
+    /// Render floating videos from the scene.
+    ///
+    /// This renders video frames at fixed screen positions (not inline with text).
+    #[cfg(feature = "video")]
+    pub fn render_floating_videos(
+        &self,
+        view: &wgpu::TextureView,
+        floating_videos: &[crate::core::scene::FloatingVideo],
+    ) {
+        use wgpu::util::DeviceExt;
+
+        if floating_videos.is_empty() {
+            return;
+        }
+
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Floating Video Encoder"),
+        });
+
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Floating Video Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load, // Don't clear - render on top
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            render_pass.set_pipeline(&self.image_pipeline);
+            render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+
+            for fv in floating_videos {
+                log::debug!("Rendering floating video {} at ({}, {}) size {}x{}",
+                           fv.video_id, fv.x, fv.y, fv.width, fv.height);
+
+                if let Some(cached) = self.video_cache.get(fv.video_id) {
+                    if let Some(ref bind_group) = cached.bind_group {
+                        let vertices = [
+                            GlyphVertex { position: [fv.x, fv.y], tex_coords: [0.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
+                            GlyphVertex { position: [fv.x + fv.width, fv.y], tex_coords: [1.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
+                            GlyphVertex { position: [fv.x + fv.width, fv.y + fv.height], tex_coords: [1.0, 1.0], color: [1.0, 1.0, 1.0, 1.0] },
+                            GlyphVertex { position: [fv.x, fv.y], tex_coords: [0.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
+                            GlyphVertex { position: [fv.x + fv.width, fv.y + fv.height], tex_coords: [1.0, 1.0], color: [1.0, 1.0, 1.0, 1.0] },
+                            GlyphVertex { position: [fv.x, fv.y + fv.height], tex_coords: [0.0, 1.0], color: [1.0, 1.0, 1.0, 1.0] },
+                        ];
+
+                        let video_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Floating Video Vertex Buffer"),
+                            contents: bytemuck::cast_slice(&vertices),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+
+                        render_pass.set_bind_group(1, bind_group, &[]);
+                        render_pass.set_vertex_buffer(0, video_buffer.slice(..));
+                        render_pass.draw(0..6, 0..1);
+                    } else {
+                        log::debug!("Video {} has no bind_group yet", fv.video_id);
+                    }
+                } else {
+                    log::debug!("Video {} not found in cache", fv.video_id);
+                }
             }
         }
 

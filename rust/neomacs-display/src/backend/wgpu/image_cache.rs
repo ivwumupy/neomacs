@@ -269,6 +269,11 @@ impl ImageCache {
         &self.bind_group_layout
     }
 
+    /// Get sampler (for sharing with video cache)
+    pub fn sampler(&self) -> &wgpu::Sampler {
+        &self.sampler
+    }
+
     /// Query image file dimensions (fast - reads header only)
     pub fn query_file_dimensions(path: &str) -> Option<ImageDimensions> {
         let file = File::open(path).ok()?;

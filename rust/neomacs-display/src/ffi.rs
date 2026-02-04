@@ -1159,58 +1159,171 @@ pub unsafe extern "C" fn neomacs_display_add_video_glyph(
     }
 }
 
-/// Load a video from URI (stub - video not supported without GTK4)
+/// Load a video from file path (async - uses GStreamer)
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_load_video(
-    _handle: *mut NeomacsDisplay,
-    _uri: *const c_char,
+    handle: *mut NeomacsDisplay,
+    path: *const c_char,
 ) -> u32 {
+    let display = match handle.as_mut() {
+        Some(d) => d,
+        None => return 0,
+    };
+
+    let path_str = match std::ffi::CStr::from_ptr(path).to_str() {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
+
+    log::info!("load_video: path={}", path_str);
+
+    #[cfg(all(feature = "winit-backend", feature = "video"))]
+    if let Some(ref mut backend) = display.winit_backend {
+        if let Some(renderer) = backend.renderer_mut() {
+            let id = renderer.load_video_file(path_str);
+            log::info!("load_video: returned id={}", id);
+            return id;
+        }
+    }
+
     0
 }
 
-/// Play a loaded video (stub)
+/// Play a loaded video
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_video_play(
-    _handle: *mut NeomacsDisplay,
-    _video_id: u32,
+    handle: *mut NeomacsDisplay,
+    video_id: u32,
 ) -> c_int {
+    let display = match handle.as_mut() {
+        Some(d) => d,
+        None => return -1,
+    };
+
+    #[cfg(all(feature = "winit-backend", feature = "video"))]
+    if let Some(ref mut backend) = display.winit_backend {
+        if let Some(renderer) = backend.renderer_mut() {
+            renderer.video_play(video_id);
+            return 0;
+        }
+    }
+
     -1
 }
 
-/// Pause a video (stub)
+/// Pause a video
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_video_pause(
-    _handle: *mut NeomacsDisplay,
-    _video_id: u32,
+    handle: *mut NeomacsDisplay,
+    video_id: u32,
 ) -> c_int {
+    let display = match handle.as_mut() {
+        Some(d) => d,
+        None => return -1,
+    };
+
+    #[cfg(all(feature = "winit-backend", feature = "video"))]
+    if let Some(ref mut backend) = display.winit_backend {
+        if let Some(renderer) = backend.renderer_mut() {
+            renderer.video_pause(video_id);
+            return 0;
+        }
+    }
+
     -1
 }
 
-/// Stop a video (stub)
+/// Stop a video
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_video_stop(
-    _handle: *mut NeomacsDisplay,
-    _video_id: u32,
+    handle: *mut NeomacsDisplay,
+    video_id: u32,
 ) -> c_int {
+    let display = match handle.as_mut() {
+        Some(d) => d,
+        None => return -1,
+    };
+
+    #[cfg(all(feature = "winit-backend", feature = "video"))]
+    if let Some(ref mut backend) = display.winit_backend {
+        if let Some(renderer) = backend.renderer_mut() {
+            renderer.video_stop(video_id);
+            return 0;
+        }
+    }
+
     -1
 }
 
-/// Set video loop mode (stub)
+/// Set video loop mode (-1 for infinite)
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_video_set_loop(
-    _handle: *mut NeomacsDisplay,
-    _video_id: u32,
-    _loop_count: c_int,
+    handle: *mut NeomacsDisplay,
+    video_id: u32,
+    loop_count: c_int,
 ) -> c_int {
+    let display = match handle.as_mut() {
+        Some(d) => d,
+        None => return -1,
+    };
+
+    #[cfg(all(feature = "winit-backend", feature = "video"))]
+    if let Some(ref mut backend) = display.winit_backend {
+        if let Some(renderer) = backend.renderer_mut() {
+            renderer.video_set_loop(video_id, loop_count);
+            return 0;
+        }
+    }
+
     -1
 }
 
-/// Update video frame (stub)
+/// Process pending video frames (call each frame)
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_video_update(
-    _handle: *mut NeomacsDisplay,
+    handle: *mut NeomacsDisplay,
     _video_id: u32,
 ) -> c_int {
+    let display = match handle.as_mut() {
+        Some(d) => d,
+        None => return -1,
+    };
+
+    #[cfg(all(feature = "winit-backend", feature = "video"))]
+    if let Some(ref mut backend) = display.winit_backend {
+        if let Some(renderer) = backend.renderer_mut() {
+            renderer.process_pending_videos();
+            return 0;
+        }
+    }
+
+    -1
+}
+
+/// Get video dimensions (works for pending and loaded videos)
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_get_video_size(
+    handle: *mut NeomacsDisplay,
+    video_id: u32,
+    width: *mut c_int,
+    height: *mut c_int,
+) -> c_int {
+    if handle.is_null() || width.is_null() || height.is_null() {
+        return -1;
+    }
+    let display = &mut *handle;
+
+    #[cfg(all(feature = "winit-backend", feature = "video"))]
+    if let Some(ref backend) = display.winit_backend {
+        if let Some(renderer) = backend.renderer() {
+            if let Some((w, h)) = renderer.get_video_size(video_id) {
+                *width = w as c_int;
+                *height = h as c_int;
+                return 0;
+            }
+        }
+    }
+
     -1
 }
 

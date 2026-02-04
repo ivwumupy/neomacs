@@ -11,11 +11,13 @@ var<uniform> uniforms: Uniforms;
 struct VertexInput {
     @location(0) position: vec2<f32>,
     @location(1) tex_coords: vec2<f32>,
+    @location(2) color: vec4<f32>,
 }
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) tex_coords: vec2<f32>,
+    @location(1) color: vec4<f32>,
 }
 
 @vertex
@@ -26,6 +28,7 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     let y = 1.0 - (in.position.y / uniforms.screen_size.y) * 2.0;
     out.clip_position = vec4<f32>(x, y, 0.0, 1.0);
     out.tex_coords = in.tex_coords;
+    out.color = in.color;
     return out;
 }
 
@@ -36,7 +39,7 @@ var s_image: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Sample RGBA from image texture
-    let color = textureSample(t_image, s_image, in.tex_coords);
-    return color;
+    // Sample RGBA from image texture and multiply by vertex color (for tinting)
+    let tex_color = textureSample(t_image, s_image, in.tex_coords);
+    return tex_color * in.color;
 }

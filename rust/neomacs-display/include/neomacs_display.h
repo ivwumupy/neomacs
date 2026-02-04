@@ -302,34 +302,42 @@ void neomacs_display_add_video_glyph(struct NeomacsDisplay *handle,
                                      int pixelHeight);
 
 /**
- * Load a video from URI (stub - video not supported without GTK4)
+ * Load a video from file path (async - uses GStreamer)
  */
-uint32_t neomacs_display_load_video(struct NeomacsDisplay *handle, const char *uri);
+uint32_t neomacs_display_load_video(struct NeomacsDisplay *handle, const char *path);
 
 /**
- * Play a loaded video (stub)
+ * Play a loaded video
  */
 int neomacs_display_video_play(struct NeomacsDisplay *handle, uint32_t videoId);
 
 /**
- * Pause a video (stub)
+ * Pause a video
  */
 int neomacs_display_video_pause(struct NeomacsDisplay *handle, uint32_t videoId);
 
 /**
- * Stop a video (stub)
+ * Stop a video
  */
 int neomacs_display_video_stop(struct NeomacsDisplay *handle, uint32_t videoId);
 
 /**
- * Set video loop mode (stub)
+ * Set video loop mode (-1 for infinite)
  */
 int neomacs_display_video_set_loop(struct NeomacsDisplay *handle, uint32_t videoId, int loopCount);
 
 /**
- * Update video frame (stub)
+ * Process pending video frames (call each frame)
  */
 int neomacs_display_video_update(struct NeomacsDisplay *handle, uint32_t videoId);
+
+/**
+ * Get video dimensions (works for pending and loaded videos)
+ */
+int neomacs_display_get_video_size(struct NeomacsDisplay *handle,
+                                   uint32_t videoId,
+                                   int *width,
+                                   int *height);
 
 /**
  * Load an image from a file path (stub)

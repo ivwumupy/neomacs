@@ -667,6 +667,10 @@ impl WinitBackend {
         // Process any pending decoded images (upload to GPU)
         renderer.process_pending_images();
 
+        // Process any pending decoded video frames (upload to GPU)
+        #[cfg(feature = "video")]
+        renderer.process_pending_videos();
+
         // Get mutable reference to glyph atlas
         if let Some(ref mut glyph_atlas) = self.glyph_atlas {
             log::debug!("end_frame_for_window: calling render_frame_glyphs");
@@ -680,6 +684,12 @@ impl WinitBackend {
             );
         } else {
             log::debug!("end_frame_for_window: no glyph_atlas");
+        }
+
+        // Render floating videos (overlay on top of frame content)
+        #[cfg(feature = "video")]
+        if !state.scene.floating_videos.is_empty() {
+            renderer.render_floating_videos(&view, &state.scene.floating_videos);
         }
 
         output.present();

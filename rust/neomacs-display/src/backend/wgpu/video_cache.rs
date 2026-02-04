@@ -88,10 +88,6 @@ pub struct VideoCache {
     load_tx: mpsc::Sender<LoadRequest>,
     /// Channel to receive decoded frames
     frame_rx: mpsc::Receiver<DecodedFrame>,
-    /// Bind group layout for video textures
-    bind_group_layout: Option<wgpu::BindGroupLayout>,
-    /// Sampler for video textures
-    sampler: Option<wgpu::Sampler>,
 }
 
 impl VideoCache {
@@ -115,46 +111,13 @@ impl VideoCache {
             next_id: 1,
             load_tx,
             frame_rx,
-            bind_group_layout: None,
-            sampler: None,
         }
     }
 
     /// Initialize GPU resources
-    pub fn init_gpu(&mut self, device: &wgpu::Device) {
-        // Create bind group layout for video textures
-        self.bind_group_layout = Some(device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Video Bind Group Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        }));
-
-        self.sampler = Some(device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Video Sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            ..Default::default()
-        }));
+    /// Note: Video bind groups are created using image_pipeline's layout for compatibility.
+    pub fn init_gpu(&mut self, _device: &wgpu::Device) {
+        log::info!("VideoCache: GPU resources initialized (using shared image pipeline layout)");
     }
 
     /// Load a video file
@@ -238,60 +201,62 @@ impl VideoCache {
     }
 
     /// Process pending decoded frames (call each frame)
-    pub fn process_pending(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+    /// Uses the provided bind_group_layout and sampler from image_cache
+    /// to ensure compatibility with the shared image/video rendering pipeline.
+    pub fn process_pending(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        bind_group_layout: &wgpu::BindGroupLayout,
+        sampler: &wgpu::Sampler,
+    ) {
+        // Log entry for debugging
+        log::trace!("VideoCache::process_pending called, videos in cache: {}", self.videos.len());
+
         // Process all available frames
+        let mut frame_count = 0;
         while let Ok(frame) = self.frame_rx.try_recv() {
+            frame_count += 1;
+            let total = self.videos.get(&frame.video_id).map(|v| v.frame_count).unwrap_or(0) + 1;
+
+            log::debug!("VideoCache: frame #{} for video {}, pts={}ms, size={}x{}",
+                total, frame.video_id, frame.pts / 1_000_000, frame.width, frame.height);
             if let Some(video) = self.videos.get_mut(&frame.video_id) {
-                // Update dimensions if first frame
-                if video.width == 0 {
+                // Check if we need to create new texture (first frame or size changed)
+                let need_new_texture = video.texture.is_none()
+                    || video.width != frame.width
+                    || video.height != frame.height;
+
+                if need_new_texture {
+                    // Update dimensions
                     video.width = frame.width;
                     video.height = frame.height;
-                    video.state = VideoState::Playing;
-                }
+                    if video.state == VideoState::Loading {
+                        video.state = VideoState::Playing;
+                    }
 
-                // Create texture from frame data
-                let texture = device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some("Video Frame Texture"),
-                    size: wgpu::Extent3d {
-                        width: frame.width,
-                        height: frame.height,
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                    view_formats: &[],
-                });
+                    // Create new texture (only when dimensions change)
+                    let texture = device.create_texture(&wgpu::TextureDescriptor {
+                        label: Some("Video Frame Texture"),
+                        size: wgpu::Extent3d {
+                            width: frame.width,
+                            height: frame.height,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                        view_formats: &[],
+                    });
 
-                queue.write_texture(
-                    wgpu::ImageCopyTexture {
-                        texture: &texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    &frame.data,
-                    wgpu::ImageDataLayout {
-                        offset: 0,
-                        bytes_per_row: Some(frame.width * 4),
-                        rows_per_image: Some(frame.height),
-                    },
-                    wgpu::Extent3d {
-                        width: frame.width,
-                        height: frame.height,
-                        depth_or_array_layers: 1,
-                    },
-                );
+                    let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-                let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-                // Create bind group
-                if let (Some(layout), Some(sampler)) = (&self.bind_group_layout, &self.sampler) {
+                    // Create bind group
                     let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                         label: Some("Video Bind Group"),
-                        layout,
+                        layout: bind_group_layout,
                         entries: &[
                             wgpu::BindGroupEntry {
                                 binding: 0,
@@ -303,13 +268,36 @@ impl VideoCache {
                             },
                         ],
                     });
+
+                    video.texture = Some(texture);
+                    video.texture_view = Some(texture_view);
                     video.bind_group = Some(bind_group);
                 }
 
-                video.texture = Some(texture);
-                video.texture_view = Some(texture_view);
-                video.frame_count += 1;
+                // Update texture data (reuse existing texture)
+                if let Some(ref texture) = video.texture {
+                    queue.write_texture(
+                        wgpu::ImageCopyTexture {
+                            texture,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d::ZERO,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        &frame.data,
+                        wgpu::ImageDataLayout {
+                            offset: 0,
+                            bytes_per_row: Some(frame.width * 4),
+                            rows_per_image: Some(frame.height),
+                        },
+                        wgpu::Extent3d {
+                            width: frame.width,
+                            height: frame.height,
+                            depth_or_array_layers: 1,
+                        },
+                    );
+                }
 
+                video.frame_count += 1;
                 log::trace!("VideoCache: updated video {} frame {}", frame.video_id, video.frame_count);
             }
         }
@@ -325,15 +313,27 @@ impl VideoCache {
         while let Ok(request) = rx.recv() {
             log::info!("Decoder thread: loading video {}: {}", request.id, request.path);
 
-            // Create GStreamer pipeline
-            // Try VA-API first for hardware acceleration, fall back to software
+            // Strip file:// prefix if present (filesrc needs raw paths)
+            let path = if request.path.starts_with("file://") {
+                &request.path[7..]
+            } else {
+                &request.path
+            };
+
+            // Create GStreamer pipeline with video and audio
+            // decodebin automatically handles demuxing and decoding both streams
             let pipeline_str = format!(
-                "filesrc location=\"{}\" ! decodebin ! videoconvert ! video/x-raw,format=RGBA ! appsink name=sink",
-                request.path.replace("\"", "\\\"")
+                "filesrc location=\"{}\" ! decodebin name=dec \
+                 dec. ! queue ! videoconvert ! video/x-raw,format=RGBA ! appsink name=sink \
+                 dec. ! queue ! audioconvert ! audioresample ! autoaudiosink",
+                path.replace("\"", "\\\"")
             );
+
+            log::debug!("Creating GStreamer pipeline: {}", pipeline_str);
 
             match gst::parse::launch(&pipeline_str) {
                 Ok(pipeline) => {
+                    log::debug!("Pipeline created successfully");
                     let pipeline = pipeline.dynamic_cast::<gst::Pipeline>().unwrap();
 
                     // Get appsink
@@ -354,6 +354,7 @@ impl VideoCache {
                     appsink.set_callbacks(
                         gst_app::AppSinkCallbacks::builder()
                             .new_sample(move |sink| {
+                                log::debug!("AppSink: new_sample callback triggered for video {}", video_id);
                                 if let Ok(sample) = sink.pull_sample() {
                                     if let Some(buffer) = sample.buffer() {
                                         // Get video info from caps
@@ -363,6 +364,8 @@ impl VideoCache {
 
                                         let width = info.width();
                                         let height = info.height();
+
+                                        log::debug!("Decoded frame: {}x{} for video {}", width, height, video_id);
 
                                         // Map buffer and extract data
                                         if let Ok(map) = buffer.map_readable() {
@@ -386,8 +389,11 @@ impl VideoCache {
                     );
 
                     // Start playing
+                    log::debug!("Setting pipeline to Playing state");
                     if let Err(e) = pipeline.set_state(gst::State::Playing) {
                         log::error!("Failed to start pipeline: {:?}", e);
+                    } else {
+                        log::info!("Pipeline started successfully for video {}", request.id);
                     }
 
                     // Wait for EOS or error
