@@ -11,6 +11,7 @@ use crate::core::scene::{CursorStyle, Scene};
 use crate::core::types::Color;
 
 use super::glyph_atlas::{GlyphKey, WgpuGlyphAtlas};
+use super::image_cache::ImageCache;
 use super::vertex::{GlyphVertex, RectVertex, Uniforms};
 
 /// GPU-accelerated renderer using wgpu.
@@ -21,9 +22,11 @@ pub struct WgpuRenderer {
     surface_config: Option<wgpu::SurfaceConfiguration>,
     rect_pipeline: wgpu::RenderPipeline,
     glyph_pipeline: wgpu::RenderPipeline,
+    image_pipeline: wgpu::RenderPipeline,
     glyph_bind_group_layout: wgpu::BindGroupLayout,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
+    image_cache: ImageCache,
     width: u32,
     height: u32,
 }
@@ -237,6 +240,62 @@ impl WgpuRenderer {
             cache: None,
         });
 
+        // Create image cache (also creates its bind group layout)
+        let image_cache = ImageCache::new(&device);
+
+        // Load image shader
+        let image_shader_source = include_str!("shaders/image.wgsl");
+        let image_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Image Shader"),
+            source: wgpu::ShaderSource::Wgsl(image_shader_source.into()),
+        });
+
+        // Image pipeline layout (uniform + image texture)
+        let image_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("Image Pipeline Layout"),
+            bind_group_layouts: &[&bind_group_layout, image_cache.bind_group_layout()],
+            push_constant_ranges: &[],
+        });
+
+        // Create image pipeline (similar to glyph but for RGBA textures)
+        let image_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Image Pipeline"),
+            layout: Some(&image_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &image_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[GlyphVertex::desc()], // Reuse glyph vertex format
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &image_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: target_format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+            cache: None,
+        });
+
         Self {
             device,
             queue,
@@ -244,9 +303,11 @@ impl WgpuRenderer {
             surface_config,
             rect_pipeline,
             glyph_pipeline,
+            image_pipeline,
             glyph_bind_group_layout,
             uniform_buffer,
             uniform_bind_group,
+            image_cache,
             width,
             height,
         }
@@ -644,6 +705,49 @@ impl WgpuRenderer {
         self.height
     }
 
+    // =========== Image Loading Methods ===========
+
+    /// Load image from file path (async - returns immediately)
+    /// Returns image ID, actual texture loads in background
+    pub fn load_image_file(&mut self, path: &str, max_width: u32, max_height: u32) -> u32 {
+        self.image_cache.load_file(path, max_width, max_height)
+    }
+
+    /// Load image from data (async - returns immediately)
+    pub fn load_image_data(&mut self, data: &[u8], max_width: u32, max_height: u32) -> u32 {
+        self.image_cache.load_data(data, max_width, max_height)
+    }
+
+    /// Query image file dimensions (fast - reads header only, does not block)
+    pub fn query_image_file_size(path: &str) -> Option<(u32, u32)> {
+        ImageCache::query_file_dimensions(path).map(|d| (d.width, d.height))
+    }
+
+    /// Query image data dimensions (fast - reads header only)
+    pub fn query_image_data_size(data: &[u8]) -> Option<(u32, u32)> {
+        ImageCache::query_data_dimensions(data).map(|d| (d.width, d.height))
+    }
+
+    /// Get image dimensions (works for pending and loaded images)
+    pub fn get_image_size(&self, id: u32) -> Option<(u32, u32)> {
+        self.image_cache.get_dimensions(id).map(|d| (d.width, d.height))
+    }
+
+    /// Check if image is ready for rendering
+    pub fn is_image_ready(&self, id: u32) -> bool {
+        self.image_cache.is_ready(id)
+    }
+
+    /// Free an image from cache
+    pub fn free_image(&mut self, id: u32) {
+        self.image_cache.free(id)
+    }
+
+    /// Process pending decoded images (call each frame before rendering)
+    pub fn process_pending_images(&mut self) {
+        self.image_cache.process_pending(&self.device, &self.queue);
+    }
+
     /// Render frame glyphs to a texture view
     ///
     /// `surface_width` and `surface_height` should be the actual surface dimensions
@@ -857,6 +961,37 @@ impl WgpuRenderer {
                         render_pass.set_bind_group(1, &cached.bind_group, &[]);
                         let start = (i * 6) as u32;
                         render_pass.draw(start..start + 6, 0..1);
+                    }
+                }
+            }
+
+            // Draw inline images
+            render_pass.set_pipeline(&self.image_pipeline);
+            render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+
+            for glyph in &frame_glyphs.glyphs {
+                if let FrameGlyph::Image { image_id, x, y, width, height } = glyph {
+                    // Check if image texture is ready
+                    if let Some(cached) = self.image_cache.get(*image_id) {
+                        // Create vertices for image quad (white color = no tinting)
+                        let vertices = [
+                            GlyphVertex { position: [*x, *y], tex_coords: [0.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
+                            GlyphVertex { position: [*x + *width, *y], tex_coords: [1.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
+                            GlyphVertex { position: [*x + *width, *y + *height], tex_coords: [1.0, 1.0], color: [1.0, 1.0, 1.0, 1.0] },
+                            GlyphVertex { position: [*x, *y], tex_coords: [0.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
+                            GlyphVertex { position: [*x + *width, *y + *height], tex_coords: [1.0, 1.0], color: [1.0, 1.0, 1.0, 1.0] },
+                            GlyphVertex { position: [*x, *y + *height], tex_coords: [0.0, 1.0], color: [1.0, 1.0, 1.0, 1.0] },
+                        ];
+
+                        let image_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Image Vertex Buffer"),
+                            contents: bytemuck::cast_slice(&vertices),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+
+                        render_pass.set_bind_group(1, &cached.bind_group, &[]);
+                        render_pass.set_vertex_buffer(0, image_buffer.slice(..));
+                        render_pass.draw(0..6, 0..1);
                     }
                 }
             }

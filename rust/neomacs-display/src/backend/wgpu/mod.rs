@@ -18,6 +18,8 @@ mod transition;
 mod window_state;
 #[cfg(feature = "winit-backend")]
 mod events;
+#[cfg(feature = "winit-backend")]
+mod image_cache;
 
 #[cfg(feature = "winit-backend")]
 pub use renderer::WgpuRenderer;
@@ -25,6 +27,8 @@ pub use renderer::WgpuRenderer;
 pub use backend::{WinitBackend, UserEvent, Callbacks, NeomacsApp, run_event_loop};
 #[cfg(feature = "winit-backend")]
 pub use glyph_atlas::{WgpuGlyphAtlas, GlyphKey, CachedGlyph};
+#[cfg(feature = "winit-backend")]
+pub use image_cache::{ImageCache, CachedImage, ImageDimensions, ImageState};
 #[cfg(feature = "winit-backend")]
 pub use vertex::GlyphVertex;
 

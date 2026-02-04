@@ -341,12 +341,12 @@ uint32_t neomacs_display_load_image_rgb24(struct NeomacsDisplay *handle,
                                           int stride);
 
 /**
- * Load an image from a file path (stub)
+ * Load an image from a file path (async - returns ID immediately)
  */
 uint32_t neomacs_display_load_image_file(struct NeomacsDisplay *handle, const char *path);
 
 /**
- * Load an image from a file path with scaling (stub)
+ * Load an image from a file path with scaling (async)
  */
 uint32_t neomacs_display_load_image_file_scaled(struct NeomacsDisplay *handle,
                                                 const char *path,
@@ -354,12 +354,12 @@ uint32_t neomacs_display_load_image_file_scaled(struct NeomacsDisplay *handle,
                                                 int maxHeight);
 
 /**
- * Load an image directly as texture (stub)
+ * Load an image directly as texture (same as load_image_file)
  */
 uint32_t neomacs_display_load_image_file_direct(struct NeomacsDisplay *handle, const char *path);
 
 /**
- * Load an image directly as texture with scaling (stub)
+ * Load an image directly as texture with scaling
  */
 uint32_t neomacs_display_load_image_file_direct_scaled(struct NeomacsDisplay *handle,
                                                        const char *path,
@@ -367,7 +367,7 @@ uint32_t neomacs_display_load_image_file_direct_scaled(struct NeomacsDisplay *ha
                                                        int maxHeight);
 
 /**
- * Get image dimensions (stub)
+ * Get image dimensions (works for pending and loaded images)
  */
 int neomacs_display_get_image_size(struct NeomacsDisplay *handle,
                                    uint32_t imageId,
@@ -375,7 +375,7 @@ int neomacs_display_get_image_size(struct NeomacsDisplay *handle,
                                    int *height);
 
 /**
- * Query image file dimensions without loading (stub)
+ * Query image file dimensions without loading (fast - reads header only)
  */
 int neomacs_display_query_image_file_size(struct NeomacsDisplay *handle,
                                           const char *path,
@@ -383,7 +383,7 @@ int neomacs_display_query_image_file_size(struct NeomacsDisplay *handle,
                                           int *height);
 
 /**
- * Free an image from cache (stub)
+ * Free an image from cache
  */
 int neomacs_display_free_image(struct NeomacsDisplay *handle, uint32_t imageId);
 

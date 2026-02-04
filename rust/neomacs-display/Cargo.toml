@@ -29,6 +29,9 @@ arboard = { version = "3.4", optional = true }
 bytemuck = { version = "1.18", features = ["derive"], optional = true }
 pollster = { version = "0.4", optional = true }
 
+# Image decoding (async)
+image = { version = "0.24", optional = true }
+
 # WPE WebKit - bindings generated via bindgen in build.rs
 # No crate dependency - we generate sys bindings directly
 
@@ -51,7 +54,7 @@ pkg-config = "0.3"
 [features]
 # Default: winit-wgpu backend only
 default = ["winit-backend"]
-winit-backend = ["winit", "wgpu", "raw-window-handle", "arboard", "bytemuck", "pollster"]
+winit-backend = ["winit", "wgpu", "raw-window-handle", "arboard", "bytemuck", "pollster", "image"]
 tty-backend = []
 video = ["gstreamer", "gstreamer-video"]
 # wpe-webkit requires winit-backend and ash for Vulkan DMA-BUF import

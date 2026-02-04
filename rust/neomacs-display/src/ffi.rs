@@ -1263,64 +1263,154 @@ pub unsafe extern "C" fn neomacs_display_load_image_rgb24(
     _stride: c_int,
 ) -> u32 { 0 }
 
-/// Load an image from a file path (stub)
+/// Load an image from a file path (async - returns ID immediately)
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_load_image_file(
-    _handle: *mut NeomacsDisplay,
-    _path: *const c_char,
-) -> u32 { 0 }
+    handle: *mut NeomacsDisplay,
+    path: *const c_char,
+) -> u32 {
+    if handle.is_null() || path.is_null() {
+        return 0;
+    }
+    let display = &mut *handle;
+    let path_str = match std::ffi::CStr::from_ptr(path).to_str() {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
 
-/// Load an image from a file path with scaling (stub)
+    #[cfg(feature = "winit-backend")]
+    if let Some(ref mut backend) = display.winit_backend {
+        if let Some(renderer) = backend.renderer_mut() {
+            return renderer.load_image_file(path_str, 0, 0);
+        }
+    }
+    0
+}
+
+/// Load an image from a file path with scaling (async)
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_load_image_file_scaled(
-    _handle: *mut NeomacsDisplay,
-    _path: *const c_char,
-    _max_width: c_int,
-    _max_height: c_int,
-) -> u32 { 0 }
+    handle: *mut NeomacsDisplay,
+    path: *const c_char,
+    max_width: c_int,
+    max_height: c_int,
+) -> u32 {
+    if handle.is_null() || path.is_null() {
+        return 0;
+    }
+    let display = &mut *handle;
+    let path_str = match std::ffi::CStr::from_ptr(path).to_str() {
+        Ok(s) => s,
+        Err(_) => return 0,
+    };
 
-/// Load an image directly as texture (stub)
+    #[cfg(feature = "winit-backend")]
+    if let Some(ref mut backend) = display.winit_backend {
+        if let Some(renderer) = backend.renderer_mut() {
+            return renderer.load_image_file(
+                path_str,
+                max_width.max(0) as u32,
+                max_height.max(0) as u32,
+            );
+        }
+    }
+    0
+}
+
+/// Load an image directly as texture (same as load_image_file)
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_load_image_file_direct(
-    _handle: *mut NeomacsDisplay,
-    _path: *const c_char,
-) -> u32 { 0 }
+    handle: *mut NeomacsDisplay,
+    path: *const c_char,
+) -> u32 {
+    neomacs_display_load_image_file(handle, path)
+}
 
-/// Load an image directly as texture with scaling (stub)
+/// Load an image directly as texture with scaling
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_load_image_file_direct_scaled(
-    _handle: *mut NeomacsDisplay,
-    _path: *const c_char,
-    _max_width: c_int,
-    _max_height: c_int,
-) -> u32 { 0 }
+    handle: *mut NeomacsDisplay,
+    path: *const c_char,
+    max_width: c_int,
+    max_height: c_int,
+) -> u32 {
+    neomacs_display_load_image_file_scaled(handle, path, max_width, max_height)
+}
 
-/// Get image dimensions (stub)
+/// Get image dimensions (works for pending and loaded images)
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_get_image_size(
-    _handle: *mut NeomacsDisplay,
-    _image_id: u32,
-    _width: *mut c_int,
-    _height: *mut c_int,
-) -> c_int { -1 }
-
-/// Query image file dimensions without loading (stub)
-#[no_mangle]
-pub unsafe extern "C" fn neomacs_display_query_image_file_size(
-    _handle: *mut NeomacsDisplay,
-    _path: *const c_char,
-    _width: *mut c_int,
-    _height: *mut c_int,
+    handle: *mut NeomacsDisplay,
+    image_id: u32,
+    width: *mut c_int,
+    height: *mut c_int,
 ) -> c_int {
+    if handle.is_null() || width.is_null() || height.is_null() {
+        return -1;
+    }
+    let display = &mut *handle;
+
+    #[cfg(feature = "winit-backend")]
+    if let Some(ref backend) = display.winit_backend {
+        if let Some(renderer) = backend.renderer() {
+            if let Some((w, h)) = renderer.get_image_size(image_id) {
+                *width = w as c_int;
+                *height = h as c_int;
+                return 0;
+            }
+        }
+    }
     -1
 }
 
-/// Free an image from cache (stub)
+/// Query image file dimensions without loading (fast - reads header only)
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_query_image_file_size(
+    _handle: *mut NeomacsDisplay,
+    path: *const c_char,
+    width: *mut c_int,
+    height: *mut c_int,
+) -> c_int {
+    if path.is_null() || width.is_null() || height.is_null() {
+        return -1;
+    }
+    let path_str = match std::ffi::CStr::from_ptr(path).to_str() {
+        Ok(s) => s,
+        Err(_) => return -1,
+    };
+
+    #[cfg(feature = "winit-backend")]
+    {
+        use crate::backend::wgpu::WgpuRenderer;
+        if let Some((w, h)) = WgpuRenderer::query_image_file_size(path_str) {
+            *width = w as c_int;
+            *height = h as c_int;
+            return 0;
+        }
+    }
+    -1
+}
+
+/// Free an image from cache
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_free_image(
-    _handle: *mut NeomacsDisplay,
-    _image_id: u32,
-) -> c_int { -1 }
+    handle: *mut NeomacsDisplay,
+    image_id: u32,
+) -> c_int {
+    if handle.is_null() {
+        return -1;
+    }
+    let display = &mut *handle;
+
+    #[cfg(feature = "winit-backend")]
+    if let Some(ref mut backend) = display.winit_backend {
+        if let Some(renderer) = backend.renderer_mut() {
+            renderer.free_image(image_id);
+            return 0;
+        }
+    }
+    -1
+}
 
 /// Set a floating video at a specific screen position
 #[no_mangle]

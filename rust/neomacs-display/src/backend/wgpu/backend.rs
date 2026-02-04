@@ -500,6 +500,16 @@ impl WinitBackend {
         self.window.as_ref()
     }
 
+    /// Get the renderer.
+    pub fn renderer(&self) -> Option<&WgpuRenderer> {
+        self.renderer.as_ref()
+    }
+
+    /// Get mutable access to the renderer.
+    pub fn renderer_mut(&mut self) -> Option<&mut WgpuRenderer> {
+        self.renderer.as_mut()
+    }
+
     /// Create a new window with the specified dimensions and title.
     ///
     /// Returns the window ID if successful, or None if creation failed.
@@ -628,7 +638,7 @@ impl WinitBackend {
     ) {
         log::debug!("end_frame_for_window: window_id={}, glyphs={}", window_id, frame_glyphs.glyphs.len());
 
-        let renderer = match &self.renderer {
+        let renderer = match &mut self.renderer {
             Some(r) => r,
             None => {
                 log::debug!("end_frame_for_window: no renderer");
@@ -653,6 +663,9 @@ impl WinitBackend {
         };
 
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Process any pending decoded images (upload to GPU)
+        renderer.process_pending_images();
 
         // Get mutable reference to glyph atlas
         if let Some(ref mut glyph_atlas) = self.glyph_atlas {
