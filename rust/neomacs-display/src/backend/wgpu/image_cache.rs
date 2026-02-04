@@ -20,8 +20,12 @@ const MAX_TEXTURE_SIZE: u32 = 4096;
 /// Maximum total cache memory in bytes (64MB)
 const MAX_CACHE_MEMORY: usize = 64 * 1024 * 1024;
 
-/// Number of decoder threads
-const DECODER_THREADS: usize = 4;
+/// Get number of decoder threads (use all available CPU cores)
+fn decoder_thread_count() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+}
 
 /// Image loading state
 #[derive(Debug, Clone)]
@@ -143,8 +147,10 @@ impl ImageCache {
         // Wrap receiver in Arc<Mutex> for sharing across threads
         let decode_rx = Arc::new(Mutex::new(decode_rx));
 
-        // Spawn decoder thread pool
-        for i in 0..DECODER_THREADS {
+        // Spawn decoder thread pool (one per CPU core)
+        let num_threads = decoder_thread_count();
+        log::info!("Starting {} image decoder threads", num_threads);
+        for i in 0..num_threads {
             let rx = Arc::clone(&decode_rx);
             let tx = decoded_tx.clone();
             thread::spawn(move || {
