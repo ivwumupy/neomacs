@@ -361,9 +361,9 @@ impl RenderApp {
         }
     }
 
-    /// Pump GLib events (non-blocking)
+    /// Pump GLib events (non-blocking) and update webkit views
     #[cfg(all(feature = "wpe-webkit", wpe_platform_available))]
-    fn pump_glib(&self) {
+    fn pump_glib(&mut self) {
         unsafe {
             // WPEViewHeadless attaches to thread-default context
             let thread_ctx = plat::g_main_context_get_thread_default();
@@ -382,10 +382,41 @@ impl RenderApp {
                 while plat::g_main_context_iteration(default_ctx, 0) != 0 {}
             }
         }
+
+        // Update all webkit views and send state change events
+        for (id, view) in self.webkit_views.iter_mut() {
+            let old_title = view.title.clone();
+            let old_url = view.url.clone();
+            let old_progress = view.progress;
+
+            view.update();
+
+            // Send state change events
+            if view.title != old_title {
+                if let Some(ref title) = view.title {
+                    self.comms.send_input(InputEvent::WebKitTitleChanged {
+                        id: *id,
+                        title: title.clone(),
+                    });
+                }
+            }
+            if view.url != old_url {
+                self.comms.send_input(InputEvent::WebKitUrlChanged {
+                    id: *id,
+                    url: view.url.clone(),
+                });
+            }
+            if (view.progress - old_progress).abs() > 0.01 {
+                self.comms.send_input(InputEvent::WebKitProgressChanged {
+                    id: *id,
+                    progress: view.progress,
+                });
+            }
+        }
     }
 
     #[cfg(not(all(feature = "wpe-webkit", wpe_platform_available)))]
-    fn pump_glib(&self) {}
+    fn pump_glib(&mut self) {}
 
     /// Render the current frame
     fn render(&mut self) {
