@@ -88,7 +88,11 @@ pkgs.mkShell {
 
     # VA-API for hardware video acceleration
     libva
-    
+    libva-utils  # vainfo for debugging
+
+    # VA-API drivers (mesa for AMD/Intel)
+    mesa.drivers
+
     # Weston - nested Wayland compositor for WPE WebKit
     weston
   ] ++ (if wpewebkit != null then [ wpewebkit ] else [])
@@ -171,6 +175,7 @@ pkgs.mkShell {
       pkgs.libxkbcommon
       pkgs.libgbm
       pkgs.libva
+      pkgs.mesa.drivers
     ] ++ (if wpewebkit != null then [ wpewebkit ] else [])
       ++ [ libwpe wpebackendFdo ])}:$LD_LIBRARY_PATH"
     
@@ -186,7 +191,17 @@ pkgs.mkShell {
     
     # Use single web process (simplifies GPU context sharing)
     export WEBKIT_USE_SINGLE_WEB_PROCESS=1
-    
+
+    # VA-API driver configuration for hardware video decoding
+    export LIBVA_DRIVERS_PATH="${pkgs.mesa.drivers}/lib/dri"
+    export LIBVA_DRIVER_NAME="radeonsi"  # For AMD GPUs (use "i965" or "iHD" for Intel)
+
+    # GStreamer plugin path (ensure VA-API plugins are found)
+    export GST_PLUGIN_PATH="${pkgs.gst_all_1.gst-plugins-bad}/lib/gstreamer-1.0:${pkgs.gst_all_1.gst-plugins-base}/lib/gstreamer-1.0:${pkgs.gst_all_1.gst-plugins-good}/lib/gstreamer-1.0"
+
+    # Disable GStreamer registry fork to avoid crashes during plugin loading
+    export GST_REGISTRY_FORK="no"
+
     # Add WPE libexec to PATH for WebProcess helpers
     ${if wpewebkit != null then ''
     export PATH="${wpewebkit}/libexec/wpe-webkit-2.0:$PATH"
