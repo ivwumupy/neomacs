@@ -8,9 +8,14 @@ use std::thread::{self, JoinHandle};
 
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopBuilder};
 use winit::keyboard::{Key, NamedKey};
 use winit::window::{Window, WindowId};
+
+#[cfg(target_os = "linux")]
+use winit::platform::x11::EventLoopBuilderExtX11;
+#[cfg(target_os = "linux")]
+use winit::platform::wayland::EventLoopBuilderExtWayland;
 
 use crate::backend::wgpu::{
     WgpuGlyphAtlas, WgpuRenderer,
@@ -841,7 +846,21 @@ impl ApplicationHandler for RenderApp {
 fn run_render_loop(comms: RenderComms, width: u32, height: u32, title: String) {
     log::info!("Render thread starting");
 
+    // Use any_thread() since we're running on a non-main thread
+    #[cfg(target_os = "linux")]
+    let event_loop = {
+        let mut builder = EventLoopBuilder::new();
+        // Try Wayland first, fall back to X11
+        if std::env::var("WAYLAND_DISPLAY").is_ok() {
+            EventLoopBuilderExtWayland::with_any_thread(&mut builder, true);
+        } else {
+            EventLoopBuilderExtX11::with_any_thread(&mut builder, true);
+        }
+        builder.build().expect("Failed to create event loop")
+    };
+    #[cfg(not(target_os = "linux"))]
     let event_loop = EventLoop::new().expect("Failed to create event loop");
+
     event_loop.set_control_flow(ControlFlow::Poll);
 
     let mut app = RenderApp::new(comms, width, height, title);
