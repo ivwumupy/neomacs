@@ -2,6 +2,7 @@
 //!
 //! Owns winit event loop, wgpu, GLib/WebKit. Runs at native VSync.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
@@ -11,7 +12,9 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key, NamedKey};
 use winit::window::{Window, WindowId};
 
-use crate::core::frame_glyphs::FrameGlyphBuffer;
+use crate::backend::wgpu::{WgpuGlyphAtlas, WgpuRenderer};
+use crate::core::face::Face;
+use crate::core::frame_glyphs::{FrameGlyph, FrameGlyphBuffer};
 use crate::thread_comm::{InputEvent, RenderCommand, RenderComms};
 
 /// Render thread state
@@ -47,7 +50,17 @@ struct RenderApp {
     width: u32,
     height: u32,
     title: String,
-    // TODO: Add wgpu state, GLib context, etc.
+
+    // wgpu state
+    renderer: Option<WgpuRenderer>,
+    surface: Option<wgpu::Surface<'static>>,
+    surface_config: Option<wgpu::SurfaceConfiguration>,
+    device: Option<Arc<wgpu::Device>>,
+    queue: Option<Arc<wgpu::Queue>>,
+    glyph_atlas: Option<WgpuGlyphAtlas>,
+
+    // Face cache built from frame data
+    faces: HashMap<u32, Face>,
 }
 
 impl RenderApp {
@@ -59,8 +72,145 @@ impl RenderApp {
             width,
             height,
             title,
+            renderer: None,
+            surface: None,
+            surface_config: None,
+            device: None,
+            queue: None,
+            glyph_atlas: None,
+            faces: HashMap::new(),
         }
     }
+
+    /// Initialize wgpu with the window
+    fn init_wgpu(&mut self, window: Arc<Window>) {
+        log::info!("Initializing wgpu for render thread");
+
+        // Create wgpu instance
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            ..Default::default()
+        });
+
+        // Create surface from window
+        let surface = match instance.create_surface(window.clone()) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Failed to create wgpu surface: {:?}", e);
+                return;
+            }
+        };
+
+        // Request adapter
+        let adapter = match pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: Some(&surface),
+            force_fallback_adapter: false,
+        })) {
+            Some(a) => a,
+            None => {
+                log::error!("Failed to find suitable GPU adapter");
+                return;
+            }
+        };
+
+        let adapter_info = adapter.get_info();
+        log::info!(
+            "wgpu adapter: {} (vendor={:04x}, device={:04x}, backend={:?})",
+            adapter_info.name,
+            adapter_info.vendor,
+            adapter_info.device,
+            adapter_info.backend
+        );
+
+        // Request device and queue
+        let (device, queue) = match pollster::block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("Neomacs Render Thread Device"),
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                memory_hints: Default::default(),
+            },
+            None,
+        )) {
+            Ok((d, q)) => (d, q),
+            Err(e) => {
+                log::error!("Failed to create wgpu device: {:?}", e);
+                return;
+            }
+        };
+
+        let device = Arc::new(device);
+        let queue = Arc::new(queue);
+
+        // Configure surface
+        let caps = surface.get_capabilities(&adapter);
+        let format = caps
+            .formats
+            .iter()
+            .copied()
+            .find(|f| f.is_srgb())
+            .unwrap_or(caps.formats[0]);
+
+        let config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format,
+            width: self.width,
+            height: self.height,
+            present_mode: wgpu::PresentMode::Fifo, // VSync
+            alpha_mode: caps.alpha_modes[0],
+            view_formats: vec![],
+            desired_maximum_frame_latency: 2,
+        };
+        surface.configure(&device, &config);
+
+        // Create renderer with existing device
+        let renderer = WgpuRenderer::with_device(device.clone(), queue.clone(), self.width, self.height);
+
+        // Create glyph atlas
+        let glyph_atlas = WgpuGlyphAtlas::new(&device);
+
+        log::info!(
+            "wgpu initialized: {}x{}, format: {:?}",
+            self.width,
+            self.height,
+            format
+        );
+
+        self.surface = Some(surface);
+        self.surface_config = Some(config);
+        self.device = Some(device);
+        self.queue = Some(queue);
+        self.renderer = Some(renderer);
+        self.glyph_atlas = Some(glyph_atlas);
+    }
+
+    /// Handle surface resize
+    fn handle_resize(&mut self, width: u32, height: u32) {
+        if width == 0 || height == 0 {
+            return;
+        }
+
+        self.width = width;
+        self.height = height;
+
+        // Reconfigure surface
+        if let (Some(surface), Some(config), Some(device)) =
+            (&self.surface, &mut self.surface_config, &self.device)
+        {
+            config.width = width;
+            config.height = height;
+            surface.configure(device, config);
+        }
+
+        // Resize renderer
+        if let Some(renderer) = &mut self.renderer {
+            renderer.resize(width, height);
+        }
+
+        log::debug!("Surface resized to {}x{}", width, height);
+    }
+
 
     /// Process pending commands from Emacs
     fn process_commands(&mut self) -> bool {
@@ -130,10 +280,91 @@ impl RenderApp {
 
     /// Render the current frame
     fn render(&mut self) {
-        if let Some(ref _frame) = self.current_frame {
-            // TODO: Implement rendering
-            log::trace!("Rendering frame");
+        // Early return checks
+        if self.current_frame.is_none() || self.surface.is_none() || self.renderer.is_none() {
+            return;
         }
+
+        // Build faces from frame data first (while we can mutably borrow self)
+        if let Some(ref frame) = self.current_frame {
+            // Build faces from frame glyphs
+            for glyph in &frame.glyphs {
+                if let FrameGlyph::Char {
+                    face_id,
+                    fg,
+                    bold,
+                    italic,
+                    font_size,
+                    ..
+                } = glyph
+                {
+                    if !self.faces.contains_key(face_id) {
+                        let mut face = Face::new(*face_id);
+                        face.foreground = *fg;
+                        face.font_size = *font_size;
+                        if *bold {
+                            face.font_weight = 700;
+                        }
+                        if *italic {
+                            face.attributes |= crate::core::face::FaceAttributes::ITALIC;
+                        }
+                        if let Some(font_family) = frame.face_fonts.get(face_id) {
+                            face.font_family = font_family.clone();
+                        }
+                        self.faces.insert(*face_id, face);
+                    }
+                }
+            }
+        }
+
+        // Get surface texture
+        let surface = self.surface.as_ref().unwrap();
+        let output = match surface.get_current_texture() {
+            Ok(output) => output,
+            Err(wgpu::SurfaceError::Lost) => {
+                // Reconfigure surface
+                let (w, h) = (self.width, self.height);
+                self.handle_resize(w, h);
+                return;
+            }
+            Err(wgpu::SurfaceError::OutOfMemory) => {
+                log::error!("Out of GPU memory");
+                return;
+            }
+            Err(e) => {
+                log::warn!("Surface error: {:?}", e);
+                return;
+            }
+        };
+
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Now render with immutable borrows
+        let frame = self.current_frame.as_ref().unwrap();
+        let renderer = self.renderer.as_ref().unwrap();
+        let glyph_atlas = self.glyph_atlas.as_mut().unwrap();
+
+        // Render frame glyphs
+        log::trace!(
+            "Rendering frame: {}x{}, {} glyphs",
+            frame.width,
+            frame.height,
+            frame.glyphs.len()
+        );
+
+        renderer.render_frame_glyphs(
+            &view,
+            frame,
+            glyph_atlas,
+            &self.faces,
+            self.width,
+            self.height,
+        );
+
+        // Present the frame
+        output.present();
     }
 
     /// Translate winit key to keysym
@@ -172,8 +403,12 @@ impl ApplicationHandler for RenderApp {
             match event_loop.create_window(attrs) {
                 Ok(window) => {
                     log::info!("Render thread: window created");
-                    self.window = Some(Arc::new(window));
-                    // TODO: Initialize wgpu with this window
+                    let window = Arc::new(window);
+
+                    // Initialize wgpu with the window
+                    self.init_wgpu(window.clone());
+
+                    self.window = Some(window);
                 }
                 Err(e) => {
                     log::error!("Failed to create window: {:?}", e);
@@ -196,13 +431,14 @@ impl ApplicationHandler for RenderApp {
             }
 
             WindowEvent::Resized(size) => {
-                self.width = size.width;
-                self.height = size.height;
+                // Handle wgpu surface resize
+                self.handle_resize(size.width, size.height);
+
+                // Notify Emacs of the resize
                 self.comms.send_input(InputEvent::WindowResize {
                     width: size.width,
                     height: size.height,
                 });
-                // TODO: Resize wgpu surface
             }
 
             WindowEvent::Focused(focused) => {
