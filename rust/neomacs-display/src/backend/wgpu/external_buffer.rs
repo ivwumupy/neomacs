@@ -306,37 +306,66 @@ impl DmaBufBuffer {
         }
     }
 
-    /// Import DMA-BUF as wgpu texture using Vulkan external memory.
+    /// Import DMA-BUF as wgpu texture.
     ///
-    /// This requires the VK_EXT_external_memory_dma_buf extension.
-    /// Returns None if import fails or is not supported.
+    /// Attempts zero-copy Vulkan import first, falls back to mmap copy if not supported.
     pub fn to_wgpu_texture(
         &self,
-        _device: &wgpu::Device,
-        _queue: &wgpu::Queue,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
     ) -> Option<wgpu::Texture> {
-        // TODO: Implement full Vulkan DMA-BUF import
-        // This requires:
-        // 1. Access to raw Vulkan device via wgpu HAL (device.as_hal::<Vulkan, _, _>())
-        // 2. VK_EXT_external_memory_dma_buf extension
-        // 3. Create VkImage with external memory (VkExternalMemoryImageCreateInfo)
-        // 4. Import DMA-BUF fd using VkImportMemoryFdInfoKHR
-        // 5. Wrap as wgpu::Texture using device.create_texture_from_hal()
-        //
-        // Required Vulkan extensions:
-        // - VK_KHR_external_memory
-        // - VK_KHR_external_memory_fd
-        // - VK_EXT_external_memory_dma_buf
-        // - VK_EXT_image_drm_format_modifier
+        // Only support single-plane formats for now
+        if self.num_planes != 1 {
+            log::warn!(
+                "DmaBufBuffer: multi-plane formats not yet supported (planes={})",
+                self.num_planes
+            );
+            return None;
+        }
+
+        // Try Vulkan zero-copy import first
+        #[cfg(feature = "ash")]
+        {
+            use super::vulkan_dmabuf::{VulkanDmaBufImporter, DmaBufImportParams};
+            let importer = VulkanDmaBufImporter::new();
+            let params = DmaBufImportParams {
+                fd: self.fds[0],
+                width: self.width,
+                height: self.height,
+                stride: self.strides[0],
+                fourcc: self.fourcc,
+                modifier: self.modifier,
+                offset: self.offsets[0],
+            };
+            if let Some(texture) = importer.import_dmabuf(device, queue, &params) {
+                log::debug!("DmaBufBuffer: zero-copy Vulkan import succeeded");
+                return Some(texture);
+            }
+        }
+
+        // Fall back to mmap copy
+        #[cfg(feature = "ash")]
+        {
+            use super::vulkan_dmabuf::{import_dmabuf_via_mmap, DmaBufImportParams};
+            let params = DmaBufImportParams {
+                fd: self.fds[0],
+                width: self.width,
+                height: self.height,
+                stride: self.strides[0],
+                fourcc: self.fourcc,
+                modifier: self.modifier,
+                offset: self.offsets[0],
+            };
+            if let Some(texture) = import_dmabuf_via_mmap(device, queue, &params) {
+                return Some(texture);
+            }
+        }
 
         log::warn!(
-            "DmaBufBuffer::to_wgpu_texture not yet fully implemented \
-            ({}x{}, planes={}, fourcc={:#x}, modifier={:#x})",
+            "DmaBufBuffer::to_wgpu_texture failed ({}x{}, fourcc={:#x})",
             self.width,
             self.height,
-            self.num_planes,
-            self.fourcc,
-            self.modifier
+            self.fourcc
         );
         None
     }

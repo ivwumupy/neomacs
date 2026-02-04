@@ -21,6 +21,15 @@ mod events;
 #[cfg(feature = "winit-backend")]
 mod image_cache;
 
+#[cfg(all(feature = "video", target_os = "linux"))]
+mod vulkan_dmabuf;
+
+#[cfg(feature = "video")]
+mod video_cache;
+
+#[cfg(feature = "video")]
+pub use video_cache::{VideoCache, CachedVideo, VideoState, DecodedFrame};
+
 #[cfg(feature = "winit-backend")]
 pub use renderer::WgpuRenderer;
 #[cfg(feature = "winit-backend")]
