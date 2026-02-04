@@ -323,11 +323,11 @@ impl DmaBufBuffer {
             return None;
         }
 
-        // Try Vulkan zero-copy import first
-        #[cfg(feature = "ash")]
+        // Import DMA-BUF as wgpu texture
+        // Tries HAL-based zero-copy first, falls back to mmap copy
+        #[cfg(all(feature = "ash", feature = "wgpu-hal"))]
         {
-            use super::vulkan_dmabuf::{VulkanDmaBufImporter, DmaBufImportParams};
-            let importer = VulkanDmaBufImporter::new();
+            use super::vulkan_dmabuf::{import_dmabuf, DmaBufImportParams};
             let params = DmaBufImportParams {
                 fd: self.fds[0],
                 width: self.width,
@@ -337,14 +337,14 @@ impl DmaBufBuffer {
                 modifier: self.modifier,
                 offset: self.offsets[0],
             };
-            if let Some(texture) = importer.import_dmabuf(device, queue, &params) {
-                log::debug!("DmaBufBuffer: zero-copy Vulkan import succeeded");
+            if let Some(texture) = import_dmabuf(device, queue, &params) {
+                log::debug!("DmaBufBuffer: texture import succeeded");
                 return Some(texture);
             }
         }
 
-        // Fall back to mmap copy
-        #[cfg(feature = "ash")]
+        // Fallback for when only ash is available (no wgpu-hal)
+        #[cfg(all(feature = "ash", not(feature = "wgpu-hal")))]
         {
             use super::vulkan_dmabuf::{import_dmabuf_via_mmap, DmaBufImportParams};
             let params = DmaBufImportParams {

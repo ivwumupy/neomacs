@@ -9,9 +9,7 @@
 //! - VK_EXT_external_memory_dma_buf
 //! - VK_EXT_image_drm_format_modifier
 
-#[cfg(all(target_os = "linux", feature = "ash"))]
-use ash::vk;
-#[cfg(all(target_os = "linux", feature = "ash"))]
+#[cfg(target_os = "linux")]
 use std::os::unix::io::RawFd;
 
 /// DRM format codes (fourcc)
@@ -32,26 +30,6 @@ pub mod drm_fourcc {
     pub const DRM_FORMAT_MOD_LINEAR: u64 = 0;
     /// Invalid modifier
     pub const DRM_FORMAT_MOD_INVALID: u64 = 0x00ffffffffffffff;
-}
-
-/// Convert DRM fourcc to Vulkan format
-#[cfg(all(target_os = "linux", feature = "ash"))]
-pub fn drm_fourcc_to_vk_format(fourcc: u32) -> Option<vk::Format> {
-    match fourcc {
-        drm_fourcc::DRM_FORMAT_ARGB8888 | drm_fourcc::DRM_FORMAT_XRGB8888 => {
-            Some(vk::Format::B8G8R8A8_UNORM)
-        }
-        drm_fourcc::DRM_FORMAT_ABGR8888 | drm_fourcc::DRM_FORMAT_XBGR8888 => {
-            Some(vk::Format::R8G8B8A8_UNORM)
-        }
-        drm_fourcc::DRM_FORMAT_RGBA8888 | drm_fourcc::DRM_FORMAT_RGBX8888 => {
-            Some(vk::Format::R8G8B8A8_UNORM)
-        }
-        drm_fourcc::DRM_FORMAT_BGRA8888 | drm_fourcc::DRM_FORMAT_BGRX8888 => {
-            Some(vk::Format::B8G8R8A8_UNORM)
-        }
-        _ => None,
-    }
 }
 
 /// Convert DRM fourcc to wgpu format
@@ -89,72 +67,329 @@ pub struct DmaBufImportParams {
     pub offset: u32,
 }
 
-/// Vulkan DMA-BUF importer
-///
-/// Manages Vulkan resources for importing DMA-BUF as textures.
-/// This is a zero-copy path that avoids CPU-GPU transfers.
-#[cfg(all(target_os = "linux", feature = "ash"))]
-pub struct VulkanDmaBufImporter {
-    /// Whether the required extensions are available
-    supported: bool,
-}
+// ============================================================================
+// True Zero-Copy Implementation using wgpu_hal
+// ============================================================================
 
-#[cfg(all(target_os = "linux", feature = "ash"))]
-impl VulkanDmaBufImporter {
-    /// Create a new importer, checking for required extensions
-    pub fn new() -> Self {
-        // For now, we'll check extension support when importing
-        // Full validation would require access to the Vulkan instance
-        Self { supported: true }
+#[cfg(all(target_os = "linux", feature = "ash", feature = "wgpu-hal"))]
+mod hal_import {
+    use super::*;
+    use ash::vk;
+    use std::sync::Arc;
+
+    /// Resources that must be kept alive for the imported texture
+    struct ImportedDmaBufResources {
+        device: ash::Device,
+        image: vk::Image,
+        memory: vk::DeviceMemory,
     }
 
-    /// Check if DMA-BUF import is supported
-    pub fn is_supported(&self) -> bool {
-        self.supported
+    impl Drop for ImportedDmaBufResources {
+        fn drop(&mut self) {
+            unsafe {
+                self.device.destroy_image(self.image, None);
+                self.device.free_memory(self.memory, None);
+            }
+            log::debug!("Cleaned up imported DMA-BUF resources");
+        }
     }
 
-    /// Import a DMA-BUF as a wgpu texture
+    /// Convert DRM fourcc to Vulkan format
+    fn drm_fourcc_to_vk_format(fourcc: u32) -> Option<vk::Format> {
+        match fourcc {
+            drm_fourcc::DRM_FORMAT_ARGB8888 | drm_fourcc::DRM_FORMAT_XRGB8888 => {
+                Some(vk::Format::B8G8R8A8_UNORM)
+            }
+            drm_fourcc::DRM_FORMAT_ABGR8888 | drm_fourcc::DRM_FORMAT_XBGR8888 => {
+                Some(vk::Format::R8G8B8A8_UNORM)
+            }
+            drm_fourcc::DRM_FORMAT_RGBA8888 | drm_fourcc::DRM_FORMAT_RGBX8888 => {
+                Some(vk::Format::R8G8B8A8_UNORM)
+            }
+            drm_fourcc::DRM_FORMAT_BGRA8888 | drm_fourcc::DRM_FORMAT_BGRX8888 => {
+                Some(vk::Format::B8G8R8A8_UNORM)
+            }
+            _ => None,
+        }
+    }
+
+    /// Import DMA-BUF as wgpu texture using Vulkan HAL
     ///
-    /// This is a complex operation that:
-    /// 1. Creates a Vulkan image with external memory
-    /// 2. Imports the DMA-BUF fd
-    /// 3. Wraps as wgpu texture
-    ///
-    /// Currently returns None as wgpu doesn't expose the needed HAL access.
-    /// A working implementation would require either:
-    /// - wgpu supporting external memory import directly
-    /// - Using raw Vulkan alongside wgpu (complex ownership)
-    pub fn import_dmabuf(
-        &self,
-        _device: &wgpu::Device,
+    /// This is the true zero-copy path that:
+    /// 1. Creates a VkImage with external memory
+    /// 2. Imports the DMA-BUF fd with DRM modifier
+    /// 3. Wraps as wgpu texture via HAL
+    pub fn import_dmabuf_hal(
+        device: &wgpu::Device,
         _queue: &wgpu::Queue,
-        _params: &DmaBufImportParams,
+        params: &DmaBufImportParams,
     ) -> Option<wgpu::Texture> {
-        // TODO: Full implementation requires HAL access
-        //
-        // The wgpu crate intentionally doesn't expose raw Vulkan handles
-        // for safety. To implement this properly, we would need:
-        //
-        // 1. Use wgpu's HAL layer directly (wgpu_hal crate)
-        // 2. Create texture via HAL with external memory
-        // 3. Use device.create_texture_from_hal()
-        //
-        // For now, we log and fall back to CPU copy path
+        use wgpu::hal::api::Vulkan;
 
-        log::debug!(
-            "VulkanDmaBufImporter: DMA-BUF import not yet implemented (would import fd={})",
-            _params.fd
+        let vk_format = drm_fourcc_to_vk_format(params.fourcc)?;
+        let wgpu_format = drm_fourcc_to_wgpu_format(params.fourcc)?;
+
+        log::info!(
+            "Attempting true zero-copy DMA-BUF import: fd={}, {}x{}, fourcc={:#x}, modifier={:#x}",
+            params.fd, params.width, params.height, params.fourcc, params.modifier
         );
 
+        // Access raw Vulkan device via wgpu HAL
+        unsafe {
+            device.as_hal::<Vulkan, _, _>(|hal_device| {
+                let hal_device = hal_device?;
+
+                // Get raw Vulkan handles
+                let raw_device = hal_device.raw_device();
+
+                import_dmabuf_vulkan(
+                    device,
+                    raw_device,
+                    params,
+                    vk_format,
+                    wgpu_format,
+                )
+            }).flatten()
+        }
+    }
+
+    /// Core Vulkan DMA-BUF import
+    unsafe fn import_dmabuf_vulkan(
+        wgpu_device: &wgpu::Device,
+        vk_device: &ash::Device,
+        params: &DmaBufImportParams,
+        vk_format: vk::Format,
+        wgpu_format: wgpu::TextureFormat,
+    ) -> Option<wgpu::Texture> {
+        // Dup the fd since Vulkan takes ownership
+        let fd_dup = libc::dup(params.fd);
+        if fd_dup < 0 {
+            log::warn!("Failed to dup DMA-BUF fd");
+            return None;
+        }
+
+        // Step 1: Set up DRM format modifier plane layout
+        let subresource_layout = vk::SubresourceLayout {
+            offset: params.offset as u64,
+            size: 0, // Ignored for single-plane formats
+            row_pitch: params.stride as u64,
+            array_pitch: 0,
+            depth_pitch: 0,
+        };
+
+        // Build the pNext chain manually using raw pointers
+        // VkImageDrmFormatModifierExplicitCreateInfoEXT
+        let mut drm_modifier_info = vk::ImageDrmFormatModifierExplicitCreateInfoEXT {
+            s_type: vk::StructureType::IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT,
+            p_next: std::ptr::null(),
+            drm_format_modifier: params.modifier,
+            drm_format_modifier_plane_count: 1,
+            p_plane_layouts: &subresource_layout,
+            ..Default::default()
+        };
+
+        // VkExternalMemoryImageCreateInfo
+        let mut external_memory_info = vk::ExternalMemoryImageCreateInfo {
+            s_type: vk::StructureType::EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
+            p_next: &mut drm_modifier_info as *mut _ as *mut std::ffi::c_void,
+            handle_types: vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT,
+            ..Default::default()
+        };
+
+        // Step 2: Create VkImage with external memory
+        let image_info = vk::ImageCreateInfo {
+            s_type: vk::StructureType::IMAGE_CREATE_INFO,
+            p_next: &mut external_memory_info as *mut _ as *mut std::ffi::c_void,
+            flags: vk::ImageCreateFlags::empty(),
+            image_type: vk::ImageType::TYPE_2D,
+            format: vk_format,
+            extent: vk::Extent3D {
+                width: params.width,
+                height: params.height,
+                depth: 1,
+            },
+            mip_levels: 1,
+            array_layers: 1,
+            samples: vk::SampleCountFlags::TYPE_1,
+            tiling: vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT,
+            usage: vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_SRC,
+            sharing_mode: vk::SharingMode::EXCLUSIVE,
+            queue_family_index_count: 0,
+            p_queue_family_indices: std::ptr::null(),
+            initial_layout: vk::ImageLayout::UNDEFINED,
+            ..Default::default()
+        };
+
+        let image = match vk_device.create_image(&image_info, None) {
+            Ok(img) => img,
+            Err(e) => {
+                log::warn!("Failed to create Vulkan image for DMA-BUF: {:?}", e);
+                libc::close(fd_dup);
+                return None;
+            }
+        };
+
+        // Step 3: Get memory requirements
+        let mem_requirements = vk_device.get_image_memory_requirements(image);
+
+        log::debug!(
+            "VkImage memory requirements: size={}, alignment={}, memory_type_bits={:#x}",
+            mem_requirements.size, mem_requirements.alignment, mem_requirements.memory_type_bits
+        );
+
+        // Step 4: Import DMA-BUF fd as VkDeviceMemory
+        // Build pNext chain for memory allocation
+        let mut import_fd_info = vk::ImportMemoryFdInfoKHR {
+            s_type: vk::StructureType::IMPORT_MEMORY_FD_INFO_KHR,
+            p_next: std::ptr::null(),
+            handle_type: vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT,
+            fd: fd_dup,
+            ..Default::default()
+        };
+
+        let mut dedicated_alloc_info = vk::MemoryDedicatedAllocateInfo {
+            s_type: vk::StructureType::MEMORY_DEDICATED_ALLOCATE_INFO,
+            p_next: &mut import_fd_info as *mut _ as *mut std::ffi::c_void,
+            image,
+            buffer: vk::Buffer::null(),
+            ..Default::default()
+        };
+
+        // Find memory type that supports device local
+        let memory_type_index = find_memory_type(
+            mem_requirements.memory_type_bits,
+        )?;
+
+        let alloc_info = vk::MemoryAllocateInfo {
+            s_type: vk::StructureType::MEMORY_ALLOCATE_INFO,
+            p_next: &mut dedicated_alloc_info as *mut _ as *mut std::ffi::c_void,
+            allocation_size: mem_requirements.size,
+            memory_type_index,
+            ..Default::default()
+        };
+
+        let memory = match vk_device.allocate_memory(&alloc_info, None) {
+            Ok(mem) => mem,
+            Err(e) => {
+                log::warn!("Failed to import DMA-BUF memory: {:?}", e);
+                vk_device.destroy_image(image, None);
+                // fd is consumed by import even on failure
+                return None;
+            }
+        };
+
+        // Step 5: Bind memory to image
+        if let Err(e) = vk_device.bind_image_memory(image, memory, 0) {
+            log::warn!("Failed to bind DMA-BUF memory to image: {:?}", e);
+            vk_device.free_memory(memory, None);
+            vk_device.destroy_image(image, None);
+            return None;
+        }
+
+        log::info!(
+            "Successfully created Vulkan image from DMA-BUF: image={:?}, memory={:?}",
+            image, memory
+        );
+
+        // Step 6: Wrap as wgpu texture via HAL
+        // We need to keep the resources alive
+        let resources = Arc::new(ImportedDmaBufResources {
+            device: vk_device.clone(),
+            image,
+            memory,
+        });
+
+        // Create HAL texture descriptor
+        let hal_desc = wgpu_hal::TextureDescriptor {
+            label: Some("DMA-BUF imported texture"),
+            size: wgpu::Extent3d {
+                width: params.width,
+                height: params.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu_format,
+            usage: wgpu_hal::TextureUses::RESOURCE,
+            memory_flags: wgpu_hal::MemoryFlags::empty(),
+            view_formats: vec![],
+        };
+
+        // Create drop callback to clean up resources
+        // Use Option to allow the Arc to be taken once (FnMut requirement)
+        let resources_clone = Some(resources.clone());
+        let mut resources_opt = resources_clone;
+        let drop_callback: wgpu_hal::DropCallback = Box::new(move || {
+            if let Some(res) = resources_opt.take() {
+                drop(res);
+            }
+        });
+
+        // Create HAL texture from raw Vulkan image
+        // texture_from_raw is a static function in wgpu-hal v23
+        let hal_texture = wgpu_hal::vulkan::Device::texture_from_raw(
+            image,
+            &hal_desc,
+            Some(drop_callback),
+        );
+
+        // Wrap HAL texture as wgpu::Texture
+        let wgpu_texture = wgpu_device.create_texture_from_hal::<wgpu::hal::api::Vulkan>(
+            hal_texture,
+            &wgpu::TextureDescriptor {
+                label: Some("DMA-BUF zero-copy texture"),
+                size: wgpu::Extent3d {
+                    width: params.width,
+                    height: params.height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu_format,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
+            },
+        );
+
+        log::info!("Successfully created wgpu texture from DMA-BUF (true zero-copy!)");
+        Some(wgpu_texture)
+    }
+
+    /// Find suitable memory type
+    fn find_memory_type(
+        type_filter: u32,
+    ) -> Option<u32> {
+        // Return the first compatible memory type
+        // For external memory import, the driver typically provides the correct type
+        for i in 0..32 {
+            if (type_filter & (1 << i)) != 0 {
+                return Some(i);
+            }
+        }
         None
     }
 }
 
-#[cfg(all(target_os = "linux", feature = "ash"))]
-impl Default for VulkanDmaBufImporter {
-    fn default() -> Self {
-        Self::new()
+/// Import DMA-BUF as wgpu texture - main entry point
+#[cfg(target_os = "linux")]
+pub fn import_dmabuf(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    params: &DmaBufImportParams,
+) -> Option<wgpu::Texture> {
+    // Try true zero-copy via HAL first
+    #[cfg(all(feature = "ash", feature = "wgpu-hal"))]
+    {
+        if let Some(texture) = hal_import::import_dmabuf_hal(device, queue, params) {
+            return Some(texture);
+        }
+        log::debug!("HAL DMA-BUF import failed, falling back to mmap");
     }
+
+    // Fall back to mmap-based import (copies to CPU then GPU)
+    import_dmabuf_via_mmap(device, queue, params)
 }
 
 /// Fallback: read DMA-BUF contents via mmap and create texture via CPU copy
@@ -166,10 +401,6 @@ pub fn import_dmabuf_via_mmap(
     queue: &wgpu::Queue,
     params: &DmaBufImportParams,
 ) -> Option<wgpu::Texture> {
-    use std::os::unix::io::FromRawFd;
-    use std::fs::File;
-    use std::io::Read;
-
     let wgpu_format = drm_fourcc_to_wgpu_format(params.fourcc)?;
 
     // Calculate expected size

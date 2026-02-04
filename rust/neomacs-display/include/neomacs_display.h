@@ -81,6 +81,12 @@
  */
 #define DRM_FORMAT_MOD_INVALID 72057594037927935
 
+#define VA_EXPORT_SURFACE_READ_ONLY 1
+
+#define VA_EXPORT_SURFACE_SEPARATE_LAYERS 4
+
+#define VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2 1073741824
+
 /**
  * Backend type selection
  */
@@ -94,6 +100,39 @@ typedef enum BackendType {
    */
   BACKEND_TYPE_WGPU = 1,
 } BackendType;
+
+typedef int VAStatus;
+
+typedef void *VADisplay;
+
+typedef unsigned int VASurfaceID;
+
+typedef struct VADRMObject {
+  int fd;
+  uint32_t size;
+  uint64_t drmFormatModifier;
+} VADRMObject;
+
+typedef struct VADRMLayer {
+  uint32_t drmFormat;
+  uint32_t numPlanes;
+  uint32_t objectIndex[4];
+  uint32_t offset[4];
+  uint32_t pitch[4];
+} VADRMLayer;
+
+/**
+ * VA surface descriptor for DRM PRIME export
+ */
+typedef struct VADRMPRIMESurfaceDescriptor {
+  uint32_t fourcc;
+  uint32_t width;
+  uint32_t height;
+  uint32_t numObjects;
+  struct VADRMObject objects[4];
+  uint32_t numLayers;
+  struct VADRMLayer layers[4];
+} VADRMPRIMESurfaceDescriptor;
 
 /**
  * Type for the resize callback function pointer from C
@@ -154,6 +193,22 @@ typedef struct NeomacsInputEvent {
  * Event callback function type for C FFI
  */
 typedef void (*EventCallback)(const struct NeomacsInputEvent*);
+
+#define VA_STATUS_SUCCESS 0
+
+#define VA_INVALID_SURFACE 4294967295
+
+extern VAStatus vaExportSurfaceHandle(VADisplay dpy,
+                                      VASurfaceID surfaceId,
+                                      unsigned int memType,
+                                      unsigned int flags,
+                                      struct VADRMPRIMESurfaceDescriptor *descriptor);
+
+extern VASurfaceID gst_va_buffer_get_surface(GstBuffer *buffer);
+
+extern struct GstVaDisplay *gst_va_allocator_peek_display(struct GstAllocator *allocator);
+
+extern VADisplay gst_va_display_get_va_dpy(struct GstVaDisplay *display);
 
 /**
  * Initialize the display engine

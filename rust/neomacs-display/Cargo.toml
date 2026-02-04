@@ -26,6 +26,8 @@ gstreamer-allocators = { version = "0.23", optional = true }
 # Winit + wgpu backend
 winit = { version = "0.30", optional = true }
 wgpu = { version = "23", optional = true }
+# wgpu-hal for low-level Vulkan access (DMA-BUF import)
+wgpu-hal = { version = "23", features = ["vulkan"], optional = true }
 raw-window-handle = { version = "0.6", optional = true }
 arboard = { version = "3.4", optional = true }
 bytemuck = { version = "1.18", features = ["derive"], optional = true }
@@ -58,8 +60,8 @@ pkg-config = "0.3"
 default = ["winit-backend", "video"]
 winit-backend = ["winit", "wgpu", "raw-window-handle", "arboard", "bytemuck", "pollster", "image"]
 tty-backend = []
-# Video with GStreamer - includes ash for DMA-BUF zero-copy
-video = ["gstreamer", "gstreamer-video", "gstreamer-app", "gstreamer-allocators", "winit-backend", "ash"]
+# Video with GStreamer - includes ash and wgpu-hal for DMA-BUF zero-copy
+video = ["gstreamer", "gstreamer-video", "gstreamer-app", "gstreamer-allocators", "winit-backend", "ash", "wgpu-hal"]
 # wpe-webkit requires winit-backend and ash for Vulkan DMA-BUF import
 wpe-webkit = ["winit-backend", "ash"]
 

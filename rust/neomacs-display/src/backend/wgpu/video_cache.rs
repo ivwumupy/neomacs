@@ -516,17 +516,16 @@ impl VideoCache {
             // decodebin will auto-select VA-API hardware decoders when available
             // since they have higher rank than software decoders
             let pipeline_str = if has_vapostproc {
-                // VA-API hardware acceleration pipeline:
+                // VA-API hardware acceleration pipeline with true zero-copy:
                 // - decodebin auto-selects VA-API decoders (higher rank)
-                // - vapostproc does GPU-based color conversion (NV12→BGRA on GPU)
-                // - videoconvert ensures CPU-accessible linear memory
-                // Note: True zero-copy with tiled VA memory requires Vulkan HAL import
-                // which isn't implemented yet. For now, use CPU copy path.
-                log::info!("Using VA-API hardware acceleration pipeline (vapostproc available)");
+                // - vapostproc does GPU-based color conversion to BGRA on VA surface
+                // - Output stays in VA memory for DMA-BUF export
+                // - Vulkan HAL imports DMA-BUF directly as texture (zero-copy)
+                log::info!("Using VA-API hardware acceleration pipeline with zero-copy DMA-BUF");
                 format!(
                     "filesrc location=\"{}\" ! decodebin name=dec \
-                     dec. ! queue max-size-buffers=3 ! vapostproc ! videoconvert ! \
-                     video/x-raw,format=RGBA ! appsink name=sink \
+                     dec. ! queue max-size-buffers=3 ! vapostproc ! \
+                     video/x-raw(memory:VAMemory),format=BGRA ! appsink name=sink \
                      dec. ! queue ! audioconvert ! audioresample ! autoaudiosink",
                     path.replace("\"", "\\\"")
                 )
