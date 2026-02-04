@@ -16,6 +16,9 @@ pub mod text;
 pub mod ffi;
 pub mod thread_comm;
 
+#[cfg(feature = "winit-backend")]
+pub mod render_thread;
+
 pub use crate::core::*;
 pub use crate::backend::DisplayBackend;
 pub use crate::text::TextEngine;
