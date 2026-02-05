@@ -24,6 +24,7 @@ pub struct WgpuRenderer {
     queue: Arc<wgpu::Queue>,
     surface: Option<wgpu::Surface<'static>>,
     surface_config: Option<wgpu::SurfaceConfiguration>,
+    surface_format: wgpu::TextureFormat,
     rect_pipeline: wgpu::RenderPipeline,
     glyph_pipeline: wgpu::RenderPipeline,
     image_pipeline: wgpu::RenderPipeline,
@@ -56,24 +57,31 @@ impl WgpuRenderer {
     ///
     /// This is useful when you need to share the wgpu device with other components,
     /// such as when surfaces are created with a specific device.
+    ///
+    /// The `surface_format` parameter specifies the texture format for render pipelines.
+    /// This must match the format of the surface being rendered to.
     pub fn with_device(
         device: Arc<wgpu::Device>,
         queue: Arc<wgpu::Queue>,
         width: u32,
         height: u32,
+        surface_format: wgpu::TextureFormat,
     ) -> Self {
-        Self::create_renderer_internal(device, queue, None, None, width, height)
+        Self::create_renderer_internal(device, queue, None, Some(surface_format), width, height)
     }
 
     /// Internal helper that creates the renderer with the given device/queue.
     ///
     /// This handles pipeline and buffer creation, and is used by both `new_async`
     /// and `with_device`.
+    ///
+    /// The `surface_format` parameter specifies the texture format for render pipelines.
+    /// If None, defaults to Bgra8UnormSrgb.
     fn create_renderer_internal(
         device: Arc<wgpu::Device>,
         queue: Arc<wgpu::Queue>,
         surface: Option<wgpu::Surface<'static>>,
-        surface_config: Option<wgpu::SurfaceConfiguration>,
+        surface_format: Option<wgpu::TextureFormat>,
         width: u32,
         height: u32,
     ) -> Self {
@@ -128,9 +136,7 @@ impl WgpuRenderer {
         });
 
         // Determine the target format
-        let target_format = surface_config
-            .as_ref()
-            .map(|c| c.format)
+        let target_format = surface_format
             .unwrap_or(wgpu::TextureFormat::Bgra8UnormSrgb);
 
         // Create rect pipeline
@@ -314,11 +320,30 @@ impl WgpuRenderer {
             cache: None,
         });
 
+        // Create surface_config from format if we have a surface
+        let surface_config = if let Some(ref s) = surface {
+            let config = wgpu::SurfaceConfiguration {
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                format: target_format,
+                width,
+                height,
+                present_mode: wgpu::PresentMode::Fifo, // VSync
+                alpha_mode: wgpu::CompositeAlphaMode::Auto,
+                view_formats: vec![],
+                desired_maximum_frame_latency: 2,
+            };
+            s.configure(&device, &config);
+            Some(config)
+        } else {
+            None
+        };
+
         Self {
             device,
             queue,
             surface,
             surface_config,
+            surface_format: target_format,
             rect_pipeline,
             glyph_pipeline,
             image_pipeline,
@@ -373,32 +398,18 @@ impl WgpuRenderer {
         let device = Arc::new(device);
         let queue = Arc::new(queue);
 
-        // Configure surface if provided
-        let surface_config = surface.as_ref().map(|s| {
+        // Configure surface if provided and extract format
+        let surface_format = surface.as_ref().map(|s| {
             let caps = s.get_capabilities(&adapter);
-            let format = caps
-                .formats
+            caps.formats
                 .iter()
                 .copied()
                 .find(|f| f.is_srgb())
-                .unwrap_or(caps.formats[0]);
-
-            let config = wgpu::SurfaceConfiguration {
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                format,
-                width,
-                height,
-                present_mode: wgpu::PresentMode::Fifo, // VSync
-                alpha_mode: caps.alpha_modes[0],
-                view_formats: vec![],
-                desired_maximum_frame_latency: 2,
-            };
-            s.configure(&device, &config);
-            config
+                .unwrap_or(caps.formats[0])
         });
 
         // Use the internal helper for pipeline/buffer creation
-        Self::create_renderer_internal(device, queue, surface, surface_config, width, height)
+        Self::create_renderer_internal(device, queue, surface, surface_format, width, height)
     }
 
     /// Resize the renderer's surface.
@@ -650,7 +661,7 @@ impl WgpuRenderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            format: self.surface_format,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });

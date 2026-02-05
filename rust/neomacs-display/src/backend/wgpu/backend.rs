@@ -211,6 +211,7 @@ impl WinitBackend {
             queue,
             self.width,
             self.height,
+            format,
         );
         self.renderer = Some(renderer);
 

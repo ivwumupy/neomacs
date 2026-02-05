@@ -218,8 +218,8 @@ impl RenderApp {
         };
         surface.configure(&device, &config);
 
-        // Create renderer with existing device
-        let renderer = WgpuRenderer::with_device(device.clone(), queue.clone(), self.width, self.height);
+        // Create renderer with existing device and surface format
+        let renderer = WgpuRenderer::with_device(device.clone(), queue.clone(), self.width, self.height, format);
 
         // Create glyph atlas
         let glyph_atlas = WgpuGlyphAtlas::new(&device);
