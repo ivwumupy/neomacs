@@ -509,11 +509,13 @@ neomacs_update_window_begin (struct window *w)
 {
   struct frame *f = XFRAME (WINDOW_FRAME (w));
   struct neomacs_display_info *dpyinfo;
+  struct neomacs_output *output;
 
   if (!FRAME_NEOMACS_P (f))
     return;
 
   dpyinfo = FRAME_NEOMACS_DISPLAY_INFO (f);
+  output = FRAME_NEOMACS_OUTPUT (f);
 
   /* Add this window to the Rust scene graph */
   if (dpyinfo && dpyinfo->display_handle)
@@ -534,6 +536,18 @@ if (0) fprintf (stderr, "DEBUG add_window: x=%d y=%d w=%d h=%d bg=%08lx\n",
                                   (float) width, (float) height,
                                   (uint32_t) bg,
                                   selected);
+
+      /* For GPU widget mode, clear the window's text area to remove stale glyphs.
+         This handles scrolling since scroll_run_hook may not always be called.
+         We clear the text area (excluding mode line) so that when Emacs redraws,
+         old glyphs at different positions are removed. */
+      if (output && output->use_gpu_widget)
+        {
+          int text_x, text_y, text_width, text_height;
+          window_box (w, ANY_AREA, &text_x, &text_y, &text_width, &text_height);
+          neomacs_display_clear_area (dpyinfo->display_handle,
+                                      text_x, text_y, text_width, text_height);
+        }
     }
 }
 
@@ -1742,18 +1756,39 @@ neomacs_draw_window_cursor (struct window *w, struct glyph_row *row,
  * Scrolling
  * ============================================================================ */
 
-/* Scroll the contents of a window */
+/* Scroll the contents of a window.
+   For GPU-accelerated rendering with a glyph buffer, we need to clear
+   the window's text area when scrolling.  Unlike X11 or Haiku which can
+   do hardware blitting (copy regions), our glyph buffer approach requires
+   removing stale glyphs before Emacs redraws at new positions.
+
+   Without this clear, remove_overlapping() only removes glyphs at exact Y
+   positions (within 1px), leaving old glyphs at different Y positions which
+   causes visual corruption (e.g., "End of image 4" appearing where
+   "End of image 2" should be after scrolling). */
 void
 neomacs_scroll_run (struct window *w, struct run *run)
 {
   struct frame *f = XFRAME (w->frame);
   struct neomacs_display_info *dpyinfo = FRAME_NEOMACS_DISPLAY_INFO (f);
+  struct neomacs_output *output = FRAME_NEOMACS_OUTPUT (f);
+  int x, y, width, height;
 
   if (!dpyinfo || !dpyinfo->display_handle)
     return;
 
-  /* For smooth scrolling, use the animation API */
-  /* neomacs_display_smooth_scroll (dpyinfo->display_handle, ...); */
+  /* For GPU widget mode, clear the window text area to remove stale glyphs.
+     Emacs will then redraw the content at correct positions. */
+  if (output && output->use_gpu_widget)
+    {
+      /* Get the frame-relative bounding box of the text display area
+         (excluding mode line, including fringes) */
+      window_box (w, ANY_AREA, &x, &y, &width, &height);
+
+      /* Clear the text area - this removes stale glyphs.
+         x, y, width, height are already frame-relative from window_box */
+      neomacs_display_clear_area (dpyinfo->display_handle, x, y, width, height);
+    }
 }
 
 
