@@ -591,21 +591,23 @@ impl VideoCache {
                 // - vapostproc does GPU-based color conversion to BGRA on VA surface
                 // - Output stays in VA memory for DMA-BUF export
                 // - Vulkan HAL imports DMA-BUF directly as texture (zero-copy)
+                // NOTE: Audio is handled separately - not included here to avoid
+                // pipeline stall when video has no audio track
                 log::info!("Using VA-API hardware acceleration pipeline with zero-copy DMA-BUF");
                 format!(
-                    "filesrc location=\"{}\" ! decodebin name=dec \
-                     dec. ! queue max-size-buffers=3 ! vapostproc ! \
-                     video/x-raw(memory:VAMemory),format=BGRA ! appsink name=sink \
-                     dec. ! queue ! audioconvert ! audioresample ! autoaudiosink",
+                    "filesrc location=\"{}\" ! decodebin ! \
+                     queue max-size-buffers=3 ! vapostproc ! \
+                     video/x-raw(memory:VAMemory),format=BGRA ! appsink name=sink",
                     path.replace("\"", "\\\"")
                 )
             } else {
                 // Software fallback pipeline
+                // NOTE: Audio is handled separately - not included here to avoid
+                // pipeline stall when video has no audio track
                 log::info!("VA-API not available, using software decoding");
                 format!(
-                    "filesrc location=\"{}\" ! decodebin name=dec \
-                     dec. ! queue ! videoconvert ! video/x-raw,format=RGBA ! appsink name=sink \
-                     dec. ! queue ! audioconvert ! audioresample ! autoaudiosink",
+                    "filesrc location=\"{}\" ! decodebin ! \
+                     queue ! videoconvert ! video/x-raw,format=RGBA ! appsink name=sink",
                     path.replace("\"", "\\\"")
                 )
             };
