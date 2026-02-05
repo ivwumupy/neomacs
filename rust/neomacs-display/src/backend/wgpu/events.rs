@@ -14,6 +14,7 @@ pub enum EventKind {
     CloseRequest = 8,
     FocusIn = 9,
     FocusOut = 10,
+    ImageDimensionsReady = 11,
 }
 
 /// Modifier flags matching Emacs.
@@ -33,6 +34,7 @@ pub const NEOMACS_EVENT_RESIZE: u32 = EventKind::Resize as u32;
 pub const NEOMACS_EVENT_CLOSE: u32 = EventKind::CloseRequest as u32;
 pub const NEOMACS_EVENT_FOCUS_IN: u32 = EventKind::FocusIn as u32;
 pub const NEOMACS_EVENT_FOCUS_OUT: u32 = EventKind::FocusOut as u32;
+pub const NEOMACS_EVENT_IMAGE_DIMENSIONS_READY: u32 = EventKind::ImageDimensionsReady as u32;
 
 /// Input event structure passed to C.
 #[repr(C)]

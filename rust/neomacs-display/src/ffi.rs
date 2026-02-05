@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::ffi::{c_char, c_int, c_uint, c_double, c_void, CStr, CString};
 use std::panic;
 use std::ptr;
+use std::sync::{Arc, Mutex};
 
 use log::{debug, trace, warn, info, error};
 
@@ -23,6 +24,7 @@ use crate::backend::wgpu::{
     NEOMACS_EVENT_MOUSE_MOVE, NEOMACS_EVENT_SCROLL,
     NEOMACS_EVENT_RESIZE, NEOMACS_EVENT_CLOSE,
     NEOMACS_EVENT_FOCUS_IN, NEOMACS_EVENT_FOCUS_OUT,
+    NEOMACS_EVENT_IMAGE_DIMENSIONS_READY,
 };
 
 /// Resize callback function type for C FFI
@@ -688,6 +690,8 @@ pub unsafe extern "C" fn neomacs_display_add_image_glyph(
 
     // Hybrid path: append directly to frame glyph buffer
     if display.use_hybrid {
+        log::info!("add_image_glyph: id={}, pos=({},{}) size={}x{}",
+                   image_id, current_x, current_y, pixel_width, pixel_height);
         display.frame_glyphs.add_image(
             image_id,
             current_x as f32,
@@ -1477,7 +1481,28 @@ pub unsafe extern "C" fn neomacs_display_get_image_size(
     width: *mut c_int,
     height: *mut c_int,
 ) -> c_int {
-    if handle.is_null() || width.is_null() || height.is_null() {
+    if width.is_null() || height.is_null() {
+        return -1;
+    }
+
+    // Threaded path: check shared map
+    #[cfg(feature = "winit-backend")]
+    if let Some(ref state) = THREADED_STATE {
+        if let Ok(dims) = state.image_dimensions.lock() {
+            if let Some(&(w, h)) = dims.get(&image_id) {
+                *width = w as c_int;
+                *height = h as c_int;
+                return 0;
+            }
+        }
+        // Not ready yet - return 0,0 so Emacs can retry on next redisplay
+        *width = 0;
+        *height = 0;
+        return -1;
+    }
+
+    // Non-threaded path: direct renderer access
+    if handle.is_null() {
         return -1;
     }
     let display = &mut *handle;
@@ -3218,7 +3243,7 @@ pub unsafe extern "C" fn neomacs_display_has_transition_snapshot(
 #[cfg(feature = "winit-backend")]
 use crate::thread_comm::{EmacsComms, InputEvent, RenderCommand, ThreadComms};
 #[cfg(feature = "winit-backend")]
-use crate::render_thread::RenderThread;
+use crate::render_thread::{RenderThread, SharedImageDimensions};
 
 /// Global state for threaded mode
 #[cfg(feature = "winit-backend")]
@@ -3229,6 +3254,9 @@ struct ThreadedState {
     emacs_comms: EmacsComms,
     render_thread: Option<RenderThread>,
     display_handle: *mut NeomacsDisplay,
+    /// Shared storage for image dimensions (id -> (width, height))
+    /// Populated synchronously when loading images, accessible from main thread
+    image_dimensions: Arc<Mutex<HashMap<u32, (u32, u32)>>>,
 }
 
 /// Initialize display in threaded mode
@@ -3263,8 +3291,17 @@ pub unsafe extern "C" fn neomacs_display_init_threaded(
     let wakeup_fd = comms.wakeup.read_fd();
     let (emacs_comms, render_comms) = comms.split();
 
-    // Spawn render thread
-    let render_thread = RenderThread::spawn(render_comms, width, height, title);
+    // Create shared image dimensions map
+    let image_dimensions = Arc::new(Mutex::new(HashMap::new()));
+
+    // Spawn render thread with shared map
+    let render_thread = RenderThread::spawn(
+        render_comms,
+        width,
+        height,
+        title,
+        Arc::clone(&image_dimensions),
+    );
 
     // Create a NeomacsDisplay handle for C code to use with frame operations
     // This is a lightweight handle that doesn't own the backend (render thread does)
@@ -3296,6 +3333,7 @@ pub unsafe extern "C" fn neomacs_display_init_threaded(
         emacs_comms,
         render_thread: Some(render_thread),
         display_handle: display_ptr,
+        image_dimensions,  // Use the same shared map passed to render thread
     });
 
     wakeup_fd
@@ -3390,6 +3428,12 @@ pub unsafe extern "C" fn neomacs_display_drain_input(
                         } else {
                             NEOMACS_EVENT_FOCUS_OUT
                         };
+                    }
+                    InputEvent::ImageDimensionsReady { id, width, height } => {
+                        out.kind = NEOMACS_EVENT_IMAGE_DIMENSIONS_READY;
+                        out.window_id = id;  // Reuse window_id field for image_id
+                        out.width = width;
+                        out.height = height;
                     }
                     // WebKit events are handled separately via callbacks
                     #[cfg(feature = "wpe-webkit")]

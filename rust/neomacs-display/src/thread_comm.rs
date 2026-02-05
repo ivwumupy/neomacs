@@ -65,6 +65,12 @@ pub enum InputEvent {
     WebKitLoadFinished {
         id: u32,
     },
+    /// Image dimensions ready (sent after async image load)
+    ImageDimensionsReady {
+        id: u32,
+        width: u32,
+        height: u32,
+    },
 }
 
 /// Command from Emacs to render thread

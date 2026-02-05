@@ -1414,7 +1414,21 @@ neomacs_get_or_load_image (struct neomacs_display_info *dpyinfo, struct image *i
   for (i = 0; i < neomacs_image_cache_count; i++)
     {
       if (neomacs_image_cache[i].emacs_img == img)
-        return neomacs_image_cache[i].gpu_id;
+        {
+          uint32_t cached_id = neomacs_image_cache[i].gpu_id;
+          /* If dimensions aren't set yet, try to get them now (async load may have completed) */
+          if (img->width == 0 || img->height == 0)
+            {
+              int actual_w, actual_h;
+              if (neomacs_display_get_image_size (dpyinfo->display_handle, cached_id,
+                                                   &actual_w, &actual_h) == 0)
+                {
+                  img->width = actual_w;
+                  img->height = actual_h;
+                }
+            }
+          return cached_id;
+        }
     }
 
   /* Not in cache - load the image */
@@ -3294,6 +3308,17 @@ neomacs_display_wakeup_handler (int fd, void *data)
           inev.ie.kind = DELETE_WINDOW_EVENT;
           XSETFRAME (inev.ie.frame_or_window, f);
           neomacs_evq_enqueue (&inev);
+          break;
+
+        case NEOMACS_EVENT_IMAGE_DIMENSIONS_READY:
+          /* Image dimensions are now available in the shared map.
+             Trigger a redisplay so Emacs can pick them up. */
+          {
+            /* Mark frame for redisplay */
+            SET_FRAME_GARBAGED (f);
+            /* Force redisplay to pick up new image dimensions */
+            windows_or_buffers_changed = 1;
+          }
           break;
 
         default:

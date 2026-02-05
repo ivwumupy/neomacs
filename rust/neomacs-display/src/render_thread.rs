@@ -3,7 +3,7 @@
 //! Owns winit event loop, wgpu, GLib/WebKit. Runs at native VSync.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 
 use winit::application::ApplicationHandler;
@@ -37,6 +37,9 @@ use crate::backend::wgpu::WgpuWebKitCache;
 #[cfg(feature = "video")]
 use crate::backend::wgpu::VideoCache;
 
+/// Shared storage for image dimensions accessible from both threads
+pub type SharedImageDimensions = Arc<Mutex<HashMap<u32, (u32, u32)>>>;
+
 /// Render thread state
 pub struct RenderThread {
     handle: Option<JoinHandle<()>>,
@@ -44,9 +47,15 @@ pub struct RenderThread {
 
 impl RenderThread {
     /// Spawn the render thread
-    pub fn spawn(comms: RenderComms, width: u32, height: u32, title: String) -> Self {
+    pub fn spawn(
+        comms: RenderComms,
+        width: u32,
+        height: u32,
+        title: String,
+        image_dimensions: SharedImageDimensions,
+    ) -> Self {
         let handle = thread::spawn(move || {
-            run_render_loop(comms, width, height, title);
+            run_render_loop(comms, width, height, title, image_dimensions);
         });
 
         Self {
@@ -88,6 +97,9 @@ struct RenderApp {
     // Last known cursor position
     mouse_pos: (f32, f32),
 
+    // Shared image dimensions (written here, read from main thread)
+    image_dimensions: SharedImageDimensions,
+
     // WebKit state
     #[cfg(feature = "wpe-webkit")]
     wpe_backend: Option<WpeBackend>,
@@ -104,7 +116,13 @@ struct RenderApp {
 }
 
 impl RenderApp {
-    fn new(comms: RenderComms, width: u32, height: u32, title: String) -> Self {
+    fn new(
+        comms: RenderComms,
+        width: u32,
+        height: u32,
+        title: String,
+        image_dimensions: SharedImageDimensions,
+    ) -> Self {
         Self {
             comms,
             window: None,
@@ -121,6 +139,7 @@ impl RenderApp {
             faces: HashMap::new(),
             modifiers: 0,
             mouse_pos: (0.0, 0.0),
+            image_dimensions,
             #[cfg(feature = "wpe-webkit")]
             wpe_backend: None,
             #[cfg(feature = "wpe-webkit")]
@@ -311,6 +330,20 @@ impl RenderApp {
                     log::info!("Loading image {}: {} (max {}x{})", id, path, max_width, max_height);
                     if let Some(ref mut renderer) = self.renderer {
                         renderer.load_image_file_with_id(id, &path, max_width, max_height);
+                        // Get dimensions and notify Emacs
+                        if let Some((w, h)) = renderer.get_image_size(id) {
+                            // Store in shared map for main thread to read
+                            if let Ok(mut dims) = self.image_dimensions.lock() {
+                                dims.insert(id, (w, h));
+                            }
+                            // Send event to Emacs so it can trigger redisplay
+                            self.comms.send_input(InputEvent::ImageDimensionsReady {
+                                id,
+                                width: w,
+                                height: h,
+                            });
+                            log::debug!("Sent ImageDimensionsReady for image {}: {}x{}", id, w, h);
+                        }
                     } else {
                         log::warn!("Renderer not initialized, cannot load image {}", id);
                     }
@@ -549,6 +582,13 @@ impl RenderApp {
     #[cfg(not(feature = "video"))]
     fn process_video_frames(&mut self) {}
 
+    /// Process pending image uploads (decode → GPU texture)
+    fn process_pending_images(&mut self) {
+        if let Some(ref mut renderer) = self.renderer {
+            renderer.process_pending_images();
+        }
+    }
+
     /// Render the current frame
     fn render(&mut self) {
         // Early return checks
@@ -561,6 +601,9 @@ impl RenderApp {
 
         // Process video frames
         self.process_video_frames();
+
+        // Process pending image uploads (decoded images → GPU textures)
+        self.process_pending_images();
 
         // Build/update faces from frame data first (while we can mutably borrow self)
         if let Some(ref frame) = self.current_frame {
@@ -858,7 +901,13 @@ impl ApplicationHandler for RenderApp {
 }
 
 /// Run the render loop (called on render thread)
-fn run_render_loop(comms: RenderComms, width: u32, height: u32, title: String) {
+fn run_render_loop(
+    comms: RenderComms,
+    width: u32,
+    height: u32,
+    title: String,
+    image_dimensions: SharedImageDimensions,
+) {
     log::info!("Render thread starting");
 
     // Use any_thread() since we're running on a non-main thread
@@ -878,7 +927,7 @@ fn run_render_loop(comms: RenderComms, width: u32, height: u32, title: String) {
 
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let mut app = RenderApp::new(comms, width, height, title);
+    let mut app = RenderApp::new(comms, width, height, title, image_dimensions);
 
     if let Err(e) = event_loop.run_app(&mut app) {
         log::error!("Event loop error: {:?}", e);
