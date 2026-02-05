@@ -95,6 +95,22 @@ pub enum RenderCommand {
     WebKitResize { id: u32, width: u32, height: u32 },
     /// Destroy WebKit view
     WebKitDestroy { id: u32 },
+    /// Click in WebKit view
+    WebKitClick { id: u32, x: i32, y: i32, button: u32 },
+    /// Pointer event in WebKit view (raw API)
+    WebKitPointerEvent { id: u32, event_type: u32, x: i32, y: i32, button: u32, state: u32, modifiers: u32 },
+    /// Scroll in WebKit view
+    WebKitScroll { id: u32, x: i32, y: i32, delta_x: i32, delta_y: i32 },
+    /// Keyboard event in WebKit view
+    WebKitKeyEvent { id: u32, keyval: u32, keycode: u32, pressed: bool, modifiers: u32 },
+    /// Navigate back in WebKit view
+    WebKitGoBack { id: u32 },
+    /// Navigate forward in WebKit view
+    WebKitGoForward { id: u32 },
+    /// Reload WebKit view
+    WebKitReload { id: u32 },
+    /// Execute JavaScript in WebKit view
+    WebKitExecuteJavaScript { id: u32, script: String },
     /// Create video player
     VideoCreate { id: u32, path: String },
     /// Control video playback

@@ -2371,6 +2371,15 @@ pub unsafe extern "C" fn neomacs_display_webkit_go_back(
 ) -> c_int {
     #[cfg(feature = "wpe-webkit")]
     {
+        // Use threaded path if available
+        #[cfg(feature = "winit-backend")]
+        if let Some(ref state) = THREADED_STATE {
+            let cmd = RenderCommand::WebKitGoBack { id: view_id };
+            let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+            return 0;
+        }
+
+        // Fallback to old path (non-threaded)
         return WEBKIT_CACHE.with(|cache_cell| {
             let mut cache_borrow = cache_cell.borrow_mut();
             if let Some(cache) = cache_borrow.as_mut() {
@@ -2398,6 +2407,15 @@ pub unsafe extern "C" fn neomacs_display_webkit_go_forward(
 ) -> c_int {
     #[cfg(feature = "wpe-webkit")]
     {
+        // Use threaded path if available
+        #[cfg(feature = "winit-backend")]
+        if let Some(ref state) = THREADED_STATE {
+            let cmd = RenderCommand::WebKitGoForward { id: view_id };
+            let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+            return 0;
+        }
+
+        // Fallback to old path (non-threaded)
         return WEBKIT_CACHE.with(|cache_cell| {
             let mut cache_borrow = cache_cell.borrow_mut();
             if let Some(cache) = cache_borrow.as_mut() {
@@ -2425,6 +2443,15 @@ pub unsafe extern "C" fn neomacs_display_webkit_reload(
 ) -> c_int {
     #[cfg(feature = "wpe-webkit")]
     {
+        // Use threaded path if available
+        #[cfg(feature = "winit-backend")]
+        if let Some(ref state) = THREADED_STATE {
+            let cmd = RenderCommand::WebKitReload { id: view_id };
+            let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+            return 0;
+        }
+
+        // Fallback to old path (non-threaded)
         return WEBKIT_CACHE.with(|cache_cell| {
             let mut cache_borrow = cache_cell.borrow_mut();
             if let Some(cache) = cache_borrow.as_mut() {
@@ -2499,6 +2526,22 @@ pub unsafe extern "C" fn neomacs_display_webkit_execute_js(
 
     #[cfg(feature = "wpe-webkit")]
     {
+        // Use threaded path if available
+        #[cfg(feature = "winit-backend")]
+        if let Some(ref state) = THREADED_STATE {
+            let script_str = match CStr::from_ptr(script).to_str() {
+                Ok(s) => s,
+                Err(_) => return -1,
+            };
+            let cmd = RenderCommand::WebKitExecuteJavaScript {
+                id: view_id,
+                script: script_str.to_string(),
+            };
+            let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+            return 0;
+        }
+
+        // Fallback to old path (non-threaded)
         return WEBKIT_CACHE.with(|cache_cell| {
             let mut cache_borrow = cache_cell.borrow_mut();
             if let Some(cache) = cache_borrow.as_mut() {
@@ -2623,6 +2666,21 @@ pub unsafe extern "C" fn neomacs_display_webkit_send_key(
 ) {
     #[cfg(feature = "wpe-webkit")]
     {
+        // Use threaded path if available
+        #[cfg(feature = "winit-backend")]
+        if let Some(ref state) = THREADED_STATE {
+            let cmd = RenderCommand::WebKitKeyEvent {
+                id: webkit_id,
+                keyval: key_code,
+                keycode: hardware_key_code,
+                pressed: pressed != 0,
+                modifiers,
+            };
+            let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+            return;
+        }
+
+        // Fallback to old path (non-threaded)
         WEBKIT_CACHE.with(|cache| {
             if let Some(ref c) = *cache.borrow() {
                 if let Err(e) = c.send_keyboard_event(
@@ -2658,6 +2716,23 @@ pub unsafe extern "C" fn neomacs_display_webkit_send_pointer(
 ) {
     #[cfg(feature = "wpe-webkit")]
     {
+        // Use threaded path if available
+        #[cfg(feature = "winit-backend")]
+        if let Some(ref state_ref) = THREADED_STATE {
+            let cmd = RenderCommand::WebKitPointerEvent {
+                id: webkit_id,
+                event_type,
+                x: x as i32,
+                y: y as i32,
+                button,
+                state,
+                modifiers,
+            };
+            let _ = state_ref.emacs_comms.cmd_tx.try_send(cmd);
+            return;
+        }
+
+        // Fallback to old path (non-threaded)
         WEBKIT_CACHE.with(|cache| {
             if let Some(ref c) = *cache.borrow() {
                 if let Err(e) = c.send_pointer_event(
@@ -2693,6 +2768,21 @@ pub unsafe extern "C" fn neomacs_display_webkit_send_scroll(
 ) {
     #[cfg(feature = "wpe-webkit")]
     {
+        // Use threaded path if available
+        #[cfg(feature = "winit-backend")]
+        if let Some(ref state) = THREADED_STATE {
+            let cmd = RenderCommand::WebKitScroll {
+                id: webkit_id,
+                x: x as i32,
+                y: y as i32,
+                delta_x: delta_x as i32,
+                delta_y: delta_y as i32,
+            };
+            let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+            return;
+        }
+
+        // Fallback to old path (non-threaded)
         WEBKIT_CACHE.with(|cache| {
             if let Some(ref c) = *cache.borrow() {
                 if let Err(e) = c.send_scroll_event(
@@ -2725,6 +2815,20 @@ pub unsafe extern "C" fn neomacs_display_webkit_click(
 ) {
     #[cfg(feature = "wpe-webkit")]
     {
+        // Use threaded path if available
+        #[cfg(feature = "winit-backend")]
+        if let Some(ref state) = THREADED_STATE {
+            let cmd = RenderCommand::WebKitClick {
+                id: webkit_id,
+                x: x as i32,
+                y: y as i32,
+                button,
+            };
+            let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+            return;
+        }
+
+        // Fallback to old path (non-threaded)
         WEBKIT_CACHE.with(|cache| {
             if let Some(ref c) = *cache.borrow() {
                 if let Err(e) = c.click(webkit_id, x, y, button) {

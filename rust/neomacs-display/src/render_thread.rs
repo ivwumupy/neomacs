@@ -379,6 +379,62 @@ impl RenderApp {
                         }
                     }
                 }
+                RenderCommand::WebKitClick { id, x, y, button } => {
+                    log::debug!("WebKit click view {} at ({}, {}), button {}", id, x, y, button);
+                    #[cfg(feature = "wpe-webkit")]
+                    if let Some(view) = self.webkit_views.get(&id) {
+                        view.click(x, y, button);
+                    }
+                }
+                RenderCommand::WebKitPointerEvent { id, event_type, x, y, button, state, modifiers } => {
+                    log::trace!("WebKit pointer event view {} type {} at ({}, {})", id, event_type, x, y);
+                    #[cfg(feature = "wpe-webkit")]
+                    if let Some(view) = self.webkit_views.get(&id) {
+                        view.send_pointer_event(event_type, x, y, button, state, modifiers);
+                    }
+                }
+                RenderCommand::WebKitScroll { id, x, y, delta_x, delta_y } => {
+                    log::debug!("WebKit scroll view {} at ({}, {}), delta ({}, {})", id, x, y, delta_x, delta_y);
+                    #[cfg(feature = "wpe-webkit")]
+                    if let Some(view) = self.webkit_views.get(&id) {
+                        view.scroll(x, y, delta_x, delta_y);
+                    }
+                }
+                RenderCommand::WebKitKeyEvent { id, keyval, keycode, pressed, modifiers } => {
+                    log::debug!("WebKit key event view {} keyval {} pressed {}", id, keyval, pressed);
+                    #[cfg(feature = "wpe-webkit")]
+                    if let Some(view) = self.webkit_views.get(&id) {
+                        view.send_keyboard_event(keyval, keycode, pressed, modifiers);
+                    }
+                }
+                RenderCommand::WebKitGoBack { id } => {
+                    log::info!("WebKit go back view {}", id);
+                    #[cfg(feature = "wpe-webkit")]
+                    if let Some(view) = self.webkit_views.get_mut(&id) {
+                        let _ = view.go_back();
+                    }
+                }
+                RenderCommand::WebKitGoForward { id } => {
+                    log::info!("WebKit go forward view {}", id);
+                    #[cfg(feature = "wpe-webkit")]
+                    if let Some(view) = self.webkit_views.get_mut(&id) {
+                        let _ = view.go_forward();
+                    }
+                }
+                RenderCommand::WebKitReload { id } => {
+                    log::info!("WebKit reload view {}", id);
+                    #[cfg(feature = "wpe-webkit")]
+                    if let Some(view) = self.webkit_views.get_mut(&id) {
+                        let _ = view.reload();
+                    }
+                }
+                RenderCommand::WebKitExecuteJavaScript { id, script } => {
+                    log::debug!("WebKit execute JS view {}", id);
+                    #[cfg(feature = "wpe-webkit")]
+                    if let Some(view) = self.webkit_views.get(&id) {
+                        let _ = view.execute_javascript(&script);
+                    }
+                }
                 RenderCommand::VideoCreate { id, path } => {
                     log::info!("Loading video {}: {}", id, path);
                     #[cfg(feature = "video")]
@@ -487,8 +543,16 @@ impl RenderApp {
         // Get mutable reference to renderer - we need to update its internal webkit cache
         let renderer = match &mut self.renderer {
             Some(r) => r,
-            None => return,
+            None => {
+                log::trace!("process_webkit_frames: no renderer available");
+                return;
+            }
         };
+
+        if self.webkit_views.is_empty() {
+            log::trace!("process_webkit_frames: no webkit views");
+            return;
+        }
 
         for (view_id, view) in &self.webkit_views {
             // Try DMA-BUF first (zero-copy)
