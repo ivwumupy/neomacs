@@ -38,8 +38,8 @@ else
     echo -e "  ${YELLOW}Image: [not found - will be skipped]${NC}"
 fi
 
-if [ -f ~/Videos/test.mp4 ]; then
-    echo -e "  ${GREEN}Video: ~/Videos/test.mp4${NC}"
+if [ -f ~/Videos/4k_f1.mp4 ]; then
+    echo -e "  ${GREEN}Video: ~/Videos/4k_f1.mp4${NC}"
 elif [ -f test/data/video/test.mp4 ]; then
     echo -e "  ${GREEN}Video: test/data/video/test.mp4${NC}"
 else

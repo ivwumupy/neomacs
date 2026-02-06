@@ -858,6 +858,12 @@ impl WgpuRenderer {
         self.video_cache.process_pending(&self.device, &self.queue, layout, sampler);
     }
 
+    /// Check if any video is currently playing
+    #[cfg(feature = "video")]
+    pub fn has_playing_videos(&self) -> bool {
+        self.video_cache.has_playing_videos()
+    }
+
     /// Get cached video for rendering
     #[cfg(feature = "video")]
     pub fn get_video(&self, id: u32) -> Option<&super::video_cache::CachedVideo> {

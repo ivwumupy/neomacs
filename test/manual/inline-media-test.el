@@ -24,7 +24,7 @@
   "Path to test image, or nil if not found.")
 
 (defvar inline-media-test-video-path
-  (or (let ((home-vid (expand-file-name "~/Videos/test.mp4")))
+  (or (let ((home-vid (expand-file-name "~/Videos/4k_f1.mp4")))
         (and (file-exists-p home-vid) home-vid))
       (let ((test-vid (expand-file-name "test/data/video/test.mp4")))
         (and (file-exists-p test-vid) test-vid))

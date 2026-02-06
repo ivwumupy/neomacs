@@ -627,6 +627,24 @@ impl RenderApp {
     #[cfg(not(feature = "video"))]
     fn process_video_frames(&mut self) {}
 
+    /// Check if any video is currently playing (needs continuous rendering)
+    #[cfg(feature = "video")]
+    fn has_playing_videos(&self) -> bool {
+        self.renderer.as_ref().map_or(false, |r| r.has_playing_videos())
+    }
+
+    #[cfg(not(feature = "video"))]
+    fn has_playing_videos(&self) -> bool { false }
+
+    /// Check if any WebKit view needs redraw
+    #[cfg(feature = "wpe-webkit")]
+    fn has_webkit_needing_redraw(&self) -> bool {
+        self.webkit_views.values().any(|v| v.needs_redraw())
+    }
+
+    #[cfg(not(feature = "wpe-webkit"))]
+    fn has_webkit_needing_redraw(&self) -> bool { false }
+
     /// Process pending image uploads (decode → GPU texture)
     fn process_pending_images(&mut self) {
         if let Some(ref mut renderer) = self.renderer {
@@ -940,8 +958,8 @@ impl ApplicationHandler for RenderApp {
         // Pump GLib for WebKit
         self.pump_glib();
 
-        // Only request redraw when we have new frame data
-        if self.frame_dirty {
+        // Request redraw when we have new frame data, or webkit/video content changed
+        if self.frame_dirty || self.has_webkit_needing_redraw() || self.has_playing_videos() {
             if let Some(ref window) = self.window {
                 window.request_redraw();
             }

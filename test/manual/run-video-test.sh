@@ -38,7 +38,7 @@ if [[ ! -f "$TEST_EL" ]]; then
 fi
 
 # Check for test video
-VIDEO_FILE="/home/exec/Videos/4k2.webm"
+VIDEO_FILE="/home/exec/Videos/4k_f1.mp4"
 if [[ ! -f "$VIDEO_FILE" ]]; then
     echo -e "${YELLOW}WARNING: Test video not found at $VIDEO_FILE${NC}"
     echo "Will try with fallback video..."

@@ -258,6 +258,11 @@ impl VideoCache {
         log::debug!("VideoCache: removed video {}", id);
     }
 
+    /// Check if any video is currently in Playing state
+    pub fn has_playing_videos(&self) -> bool {
+        self.videos.values().any(|v| v.state == VideoState::Playing)
+    }
+
     /// Process pending decoded frames using stored GPU resources (call each frame)
     pub fn process_pending_frames(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         // Take resources temporarily to avoid borrow conflict
