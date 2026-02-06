@@ -1034,16 +1034,18 @@ impl WgpuRenderer {
         self.queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
 
-        // Rendering order for correct z-layering:
+        // Rendering order for correct z-layering (inverse video cursor):
         //   1. Non-overlay backgrounds (window bg, stretches, char bg)
-        //   2. Non-overlay text (buffer content)
-        //   3. Overlay backgrounds (mode-line/echo bg) — covers any buffer text bleed
-        //   4. Overlay text (mode-line/echo text)
-        //   5. Inline media (images, videos, webkits)
-        //   6. Cursors and borders
+        //   2. Cursor bg rect (inverse video background for filled box cursor)
+        //   3. Animated cursor trail (behind text, for filled box cursor motion)
+        //   4. Non-overlay text (with cursor_fg swap for char at cursor position)
+        //   5. Overlay backgrounds (mode-line/echo bg)
+        //   6. Overlay text (mode-line/echo text)
+        //   7. Inline media (images, videos, webkits)
+        //   8. Front cursors (bar, hbar, hollow) and borders
         //
-        // This ensures mode-line backgrounds always cover buffer text that extends
-        // into the mode-line area (e.g. font descenders on the last content line).
+        // Filled box cursor (style 0) is split across steps 2-4 for inverse video.
+        // Bar/hbar/hollow cursors are drawn on top of text in step 8.
 
         // Find minimum Y of overlay chars (mode-line/echo-area) for clipping inline media
         let overlay_y: Option<f32> = frame_glyphs.glyphs.iter()
@@ -1114,8 +1116,19 @@ impl WgpuRenderer {
             }
         }
 
-        // Collect cursors and borders (to be rendered after text)
+        // === Collect cursor bg rect for inverse video (drawn before text) ===
+        // For filled box cursor (style 0), we draw the cursor background BEFORE text
+        // so the character under the cursor can be re-drawn with inverse colors on top.
+        let mut cursor_bg_vertices: Vec<RectVertex> = Vec::new();
+
+        // === Collect behind-text cursor shapes (animated trail for filled box) ===
+        let mut behind_text_cursor_vertices: Vec<RectVertex> = Vec::new();
+
+        // === Collect front cursors and borders (drawn after text) ===
+        // Bar (1), hbar (2), hollow (3), borders — all drawn on top of text.
+        // Filled box (0) is EXCLUDED here — handled by bg rect + trail + fg swap.
         let mut cursor_vertices: Vec<RectVertex> = Vec::new();
+
         for glyph in &frame_glyphs.glyphs {
             match glyph {
                 FrameGlyph::Border {
@@ -1136,63 +1149,84 @@ impl WgpuRenderer {
                     style,
                     color,
                 } => {
-                    // Check if this cursor has animated corner trail
-                    let use_corners = if let Some(ref anim) = animated_cursor {
-                        *window_id == anim.window_id && *style != 3 && anim.corners.is_some()
-                    } else {
-                        false
-                    };
+                    if *style == 0 {
+                        // Filled box cursor: split into bg rect + behind-text trail.
+                        // The static cursor bg rect uses cursor_inverse info if available,
+                        // otherwise falls back to the cursor color at the static position.
+                        if cursor_visible {
+                            if let Some(ref inv) = frame_glyphs.cursor_inverse {
+                                // Draw cursor bg rect at static position (inverse video background)
+                                self.add_rect(&mut cursor_bg_vertices,
+                                    inv.x, inv.y, inv.width, inv.height, &inv.cursor_bg);
+                            } else {
+                                // No inverse info — draw opaque cursor at static position
+                                self.add_rect(&mut cursor_bg_vertices, *x, *y, *width, *height, color);
+                            }
 
-                    if use_corners {
-                        // Draw as a deformed quad from 4 independent corner springs
-                        let anim = animated_cursor.as_ref().unwrap();
-                        let corners = anim.corners.as_ref().unwrap();
-                        let should_draw = cursor_visible;
-                        if should_draw {
-                            self.add_quad(&mut cursor_vertices, corners, color);
+                            // Draw animated trail/rect behind text
+                            let use_corners = if let Some(ref anim) = animated_cursor {
+                                *window_id == anim.window_id && anim.corners.is_some()
+                            } else {
+                                false
+                            };
+
+                            if use_corners {
+                                let anim = animated_cursor.as_ref().unwrap();
+                                let corners = anim.corners.as_ref().unwrap();
+                                self.add_quad(&mut behind_text_cursor_vertices, corners, color);
+                            } else if let Some(ref anim) = animated_cursor {
+                                if *window_id == anim.window_id {
+                                    self.add_rect(&mut behind_text_cursor_vertices,
+                                        anim.x, anim.y, anim.width, anim.height, color);
+                                }
+                            }
                         }
                     } else {
-                        // Use animated coordinates if available and this is the active cursor
-                        let (cx, cy, cw, ch) = if let Some(ref anim) = animated_cursor {
-                            if *window_id == anim.window_id && *style != 3 {
-                                (anim.x, anim.y, anim.width, anim.height)
-                            } else {
-                                (*x, *y, *width, *height)
-                            }
+                        // Non-filled-box cursors: bar, hbar, hollow — drawn ON TOP of text
+                        let use_corners = if let Some(ref anim) = animated_cursor {
+                            *window_id == anim.window_id && *style != 3 && anim.corners.is_some()
                         } else {
-                            (*x, *y, *width, *height)
+                            false
                         };
 
-                        // Hollow cursors (inactive window) never blink;
-                        // other styles blink based on cursor_visible flag.
-                        let should_draw = *style == 3 || cursor_visible;
-                        if should_draw {
-                            match style {
-                                0 => {
-                                    // Filled box
-                                    self.add_rect(&mut cursor_vertices, cx, cy, cw, ch, color);
+                        if use_corners {
+                            let anim = animated_cursor.as_ref().unwrap();
+                            let corners = anim.corners.as_ref().unwrap();
+                            if cursor_visible {
+                                self.add_quad(&mut cursor_vertices, corners, color);
+                            }
+                        } else {
+                            let (cx, cy, cw, ch) = if let Some(ref anim) = animated_cursor {
+                                if *window_id == anim.window_id && *style != 3 {
+                                    (anim.x, anim.y, anim.width, anim.height)
+                                } else {
+                                    (*x, *y, *width, *height)
                                 }
-                                1 => {
-                                    // Bar (thin vertical line)
-                                    self.add_rect(&mut cursor_vertices, cx, cy, 2.0, ch, color);
-                                }
-                                2 => {
-                                    // Underline (hbar at bottom)
-                                    self.add_rect(&mut cursor_vertices, cx, cy + ch - 2.0, cw, 2.0, color);
-                                }
-                                3 => {
-                                    // Hollow box (4 border edges)
-                                    // Top
-                                    self.add_rect(&mut cursor_vertices, cx, cy, cw, 1.0, color);
-                                    // Bottom
-                                    self.add_rect(&mut cursor_vertices, cx, cy + ch - 1.0, cw, 1.0, color);
-                                    // Left
-                                    self.add_rect(&mut cursor_vertices, cx, cy, 1.0, ch, color);
-                                    // Right
-                                    self.add_rect(&mut cursor_vertices, cx + cw - 1.0, cy, 1.0, ch, color);
-                                }
-                                _ => {
-                                    self.add_rect(&mut cursor_vertices, cx, cy, cw, ch, color);
+                            } else {
+                                (*x, *y, *width, *height)
+                            };
+
+                            let should_draw = *style == 3 || cursor_visible;
+                            if should_draw {
+                                match style {
+                                    1 => {
+                                        // Bar (thin vertical line)
+                                        self.add_rect(&mut cursor_vertices, cx, cy, 2.0, ch, color);
+                                    }
+                                    2 => {
+                                        // Underline (hbar at bottom)
+                                        self.add_rect(&mut cursor_vertices, cx, cy + ch - 2.0, cw, 2.0, color);
+                                    }
+                                    3 => {
+                                        // Hollow box (4 border edges)
+                                        self.add_rect(&mut cursor_vertices, cx, cy, cw, 1.0, color);
+                                        self.add_rect(&mut cursor_vertices, cx, cy + ch - 1.0, cw, 1.0, color);
+                                        self.add_rect(&mut cursor_vertices, cx, cy, 1.0, ch, color);
+                                        self.add_rect(&mut cursor_vertices, cx + cw - 1.0, cy, 1.0, ch, color);
+                                    }
+                                    _ => {
+                                        self.add_rect(&mut cursor_vertices, cx, cy, cw, ch, color);
+                                    }
                                 }
                             }
                         }
@@ -1249,12 +1283,48 @@ impl WgpuRenderer {
                 render_pass.draw(0..non_overlay_rect_vertices.len() as u32, 0..1);
             }
 
-            // === Steps 2-4: Draw text and overlay in correct z-order ===
+            // === Step 2: Draw cursor bg rect (inverse video background) ===
+            // Drawn after window/char backgrounds but before text, so the cursor
+            // background color is visible behind the inverse-video character.
+            if !cursor_bg_vertices.is_empty() {
+                let cursor_bg_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Cursor BG Rect Buffer"),
+                            contents: bytemuck::cast_slice(&cursor_bg_vertices),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+
+                render_pass.set_pipeline(&self.rect_pipeline);
+                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                render_pass.set_vertex_buffer(0, cursor_bg_buffer.slice(..));
+                render_pass.draw(0..cursor_bg_vertices.len() as u32, 0..1);
+            }
+
+            // === Step 3: Draw animated cursor trail behind text ===
+            // The spring trail or animated rect for filled box cursor appears
+            // behind text so characters remain readable during cursor motion.
+            if !behind_text_cursor_vertices.is_empty() {
+                let trail_buffer =
+                    self.device
+                        .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("Behind-Text Cursor Buffer"),
+                            contents: bytemuck::cast_slice(&behind_text_cursor_vertices),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+
+                render_pass.set_pipeline(&self.rect_pipeline);
+                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                render_pass.set_vertex_buffer(0, trail_buffer.slice(..));
+                render_pass.draw(0..behind_text_cursor_vertices.len() as u32, 0..1);
+            }
+
+            // === Steps 4-6: Draw text and overlay in correct z-order ===
             // For each overlay pass:
-            //   Pass 0 (non-overlay): draw buffer text after non-overlay backgrounds
+            //   Pass 0 (non-overlay): draw buffer text (with cursor fg swap for inverse video)
             //   Pass 1 (overlay): draw overlay backgrounds first, then overlay text
             //
-            // This ensures: non-overlay bg → non-overlay text → overlay bg → overlay text
+            // This ensures: non-overlay bg → cursor bg → trail → text → overlay bg → overlay text
 
             for overlay_pass in 0..2 {
                 let want_overlay = overlay_pass == 1;
@@ -1299,12 +1369,30 @@ impl WgpuRenderer {
                             let glyph_w = cached.width as f32;
                             let glyph_h = cached.height as f32;
 
+                            // Determine effective foreground color.
+                            // For the character under a filled box cursor, swap to
+                            // cursor_fg (inverse video) when cursor is visible.
+                            let effective_fg = if cursor_visible {
+                                if let Some(ref inv) = frame_glyphs.cursor_inverse {
+                                    // Match if char cell overlaps cursor inverse position
+                                    if (*x - inv.x).abs() < 1.0 && (*y - inv.y).abs() < 1.0 {
+                                        &inv.cursor_fg
+                                    } else {
+                                        fg
+                                    }
+                                } else {
+                                    fg
+                                }
+                            } else {
+                                fg
+                            };
+
                             // Color glyphs use white vertex color (no tinting),
                             // mask glyphs use foreground color for tinting
                             let color = if cached.is_color {
                                 [1.0, 1.0, 1.0, 1.0]
                             } else {
-                                [fg.r, fg.g, fg.b, fg.a]
+                                [effective_fg.r, effective_fg.g, effective_fg.b, effective_fg.a]
                             };
 
                             let vertices = [

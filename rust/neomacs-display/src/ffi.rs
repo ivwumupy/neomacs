@@ -348,6 +348,33 @@ pub unsafe extern "C" fn neomacs_display_set_cursor(
     }
 }
 
+/// Set inverse video info for a filled box cursor
+///
+/// Called from C for style 0 (filled box) cursors. Provides the cursor
+/// background color (the cursor rect) and cursor foreground color (for
+/// redrawing the character under the cursor in inverse video).
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_cursor_inverse(
+    handle: *mut NeomacsDisplay,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    cursor_bg_rgba: u32,
+    cursor_fg_rgba: u32,
+) {
+    if handle.is_null() {
+        return;
+    }
+
+    let display = &mut *handle;
+    display.frame_glyphs.set_cursor_inverse(
+        x, y, width, height,
+        Color::from_pixel(cursor_bg_rgba),
+        Color::from_pixel(cursor_fg_rgba),
+    );
+}
+
 /// Draw a border rectangle (for window dividers)
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_draw_border(

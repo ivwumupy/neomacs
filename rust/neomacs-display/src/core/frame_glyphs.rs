@@ -123,6 +123,19 @@ impl FrameGlyph {
     }
 }
 
+/// Inverse video info for the character under a filled box cursor
+#[derive(Debug, Clone)]
+pub struct CursorInverseInfo {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    /// Cursor rect color (drawn as background)
+    pub cursor_bg: Color,
+    /// Text color for the character at cursor position
+    pub cursor_fg: Color,
+}
+
 /// Per-window metadata for animation transition detection
 #[derive(Debug, Clone, PartialEq)]
 pub struct WindowInfo {
@@ -165,6 +178,9 @@ pub struct FrameGlyphBuffer {
     /// Per-window metadata for animation detection
     pub window_infos: Vec<WindowInfo>,
 
+    /// Inverse video info for filled box cursor (set by C for style 0)
+    pub cursor_inverse: Option<CursorInverseInfo>,
+
     /// Flag: layout changed last frame (kept for compatibility)
     pub layout_changed: bool,
 
@@ -193,6 +209,7 @@ impl FrameGlyphBuffer {
             window_regions: Vec::with_capacity(16),
             prev_window_regions: Vec::with_capacity(16),
             window_infos: Vec::with_capacity(16),
+            cursor_inverse: None,
             layout_changed: false,
             current_face_id: 0,
             current_fg: Color::WHITE,
@@ -222,6 +239,7 @@ impl FrameGlyphBuffer {
         self.glyphs.clear();
         self.window_regions.clear();
         self.window_infos.clear();
+        self.cursor_inverse = None;
     }
 
     /// Start new frame - prepare for new content (compatibility shim)
@@ -248,6 +266,7 @@ impl FrameGlyphBuffer {
         self.height = height;
         self.background = background;
         self.glyphs.clear();
+        self.cursor_inverse = None;
     }
 
     /// Set current face attributes for subsequent char glyphs (with font family)
@@ -375,6 +394,14 @@ impl FrameGlyphBuffer {
             bounds: Rect::new(x, y, width, height),
             mode_line_height,
             selected,
+        });
+    }
+
+    /// Set cursor inverse video info (for filled box cursor)
+    pub fn set_cursor_inverse(&mut self, x: f32, y: f32, width: f32, height: f32,
+                              cursor_bg: Color, cursor_fg: Color) {
+        self.cursor_inverse = Some(CursorInverseInfo {
+            x, y, width, height, cursor_bg, cursor_fg,
         });
     }
 

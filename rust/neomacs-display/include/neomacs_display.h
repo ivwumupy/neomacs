@@ -255,6 +255,21 @@ void neomacs_display_set_cursor(struct NeomacsDisplay *handle,
                                 int visible);
 
 /**
+ * Set inverse video info for a filled box cursor
+ *
+ * Called from C for style 0 (filled box) cursors. Provides the cursor
+ * background color (the cursor rect) and cursor foreground color (for
+ * redrawing the character under the cursor in inverse video).
+ */
+void neomacs_display_set_cursor_inverse(struct NeomacsDisplay *handle,
+                                        float x,
+                                        float y,
+                                        float width,
+                                        float height,
+                                        uint32_t cursorBgRgba,
+                                        uint32_t cursorFgRgba);
+
+/**
  * Draw a border rectangle (for window dividers)
  */
 void neomacs_display_draw_border(struct NeomacsDisplay *handle,

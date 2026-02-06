@@ -2156,6 +2156,31 @@ neomacs_draw_window_cursor (struct window *w, struct glyph_row *row,
                                   (float) frame_x, (float) frame_y,
                                   (float) cursor_w, (float) cursor_h,
                                   style, rgba, 1);
+
+      /* For filled box cursor, compute inverse video colors so the
+         character under the cursor remains visible.  */
+      if (style == 0)
+        {
+          unsigned long cursor_fg;
+          struct face *face = FACE_FROM_ID_OR_NULL (f, cursor_glyph->face_id);
+          if (face)
+            {
+              cursor_fg = face->background;
+              /* If face bg == cursor color, text would be invisible;
+                 fall back to face foreground.  */
+              if (cursor_fg == cursor_color)
+                cursor_fg = face->foreground;
+            }
+          else
+            cursor_fg = FRAME_BACKGROUND_PIXEL (f);
+
+          uint32_t cursor_fg_rgba = 0xFF000000 | (cursor_fg & 0xFFFFFF);
+          neomacs_display_set_cursor_inverse (dpyinfo->display_handle,
+                                              (float) frame_x, (float) frame_y,
+                                              (float) cursor_w, (float) cursor_h,
+                                              rgba, cursor_fg_rgba);
+        }
+
       neomacs_display_reset_cursor_blink (dpyinfo->display_handle);
       return;
     }
