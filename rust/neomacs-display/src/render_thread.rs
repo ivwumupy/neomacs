@@ -23,7 +23,7 @@ use crate::backend::wgpu::{
 };
 use crate::core::face::Face;
 use crate::core::frame_glyphs::{FrameGlyph, FrameGlyphBuffer};
-use crate::core::types::{Color, Rect};
+use crate::core::types::{AnimatedCursor, Color, Rect};
 use crate::thread_comm::{InputEvent, RenderCommand, RenderComms};
 
 #[cfg(all(feature = "wpe-webkit", wpe_platform_available))]
@@ -1013,20 +1013,27 @@ impl RenderApp {
                             }
                         }
                     } else if prev.window_start != info.window_start {
-                        // Scroll → slide
-                        if self.scroll_enabled && info.bounds.height >= 50.0 {
+                        // Scroll → slide (content area only, excluding mode-line)
+                        let content_height = info.bounds.height - info.mode_line_height;
+                        if self.scroll_enabled && content_height >= 50.0 {
                             // Cancel existing transition for this window
                             self.crossfades.remove(&info.window_id);
                             self.scroll_slides.remove(&info.window_id);
 
                             let dir = if info.window_start > prev.window_start { 1 } else { -1 };
 
+                            // Use content-only bounds (exclude mode-line at bottom)
+                            let content_bounds = Rect::new(
+                                info.bounds.x, info.bounds.y,
+                                info.bounds.width, content_height,
+                            );
+
                             if let Some((tex, view, bg)) = self.snapshot_prev_texture() {
-                                log::debug!("Starting scroll slide for window {} (dir={})", info.window_id, dir);
+                                log::debug!("Starting scroll slide for window {} (dir={}, content_h={})", info.window_id, dir, content_height);
                                 self.scroll_slides.insert(info.window_id, ScrollTransition {
                                     started: now,
                                     duration: self.scroll_duration,
-                                    bounds: info.bounds,
+                                    bounds: content_bounds,
                                     direction: dir,
                                     old_texture: tex,
                                     old_view: view,
@@ -1184,13 +1191,13 @@ impl RenderApp {
         // Build animated cursor override if applicable
         let animated_cursor = if self.cursor_anim_enabled && self.cursor_target.is_some() {
             let target = self.cursor_target.as_ref().unwrap();
-            Some((
-                target.window_id,
-                self.cursor_current_x,
-                self.cursor_current_y,
-                self.cursor_current_w,
-                self.cursor_current_h,
-            ))
+            Some(AnimatedCursor {
+                window_id: target.window_id,
+                x: self.cursor_current_x,
+                y: self.cursor_current_y,
+                width: self.cursor_current_w,
+                height: self.cursor_current_h,
+            })
         } else {
             None
         };

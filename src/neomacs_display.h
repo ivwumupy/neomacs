@@ -593,6 +593,7 @@ void neomacs_display_add_window_info(struct NeomacsDisplay *handle,
                                       int64_t window_id, uint64_t buffer_id,
                                       int64_t window_start,
                                       float x, float y, float width, float height,
+                                      float mode_line_height,
                                       int selected);
 
 /**

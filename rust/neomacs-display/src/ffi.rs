@@ -276,6 +276,7 @@ pub unsafe extern "C" fn neomacs_display_add_window_info(
     y: f32,
     width: f32,
     height: f32,
+    mode_line_height: f32,
     selected: c_int,
 ) {
     if handle.is_null() {
@@ -285,6 +286,7 @@ pub unsafe extern "C" fn neomacs_display_add_window_info(
     display.frame_glyphs.add_window_info(
         window_id, buffer_id, window_start,
         x, y, width, height,
+        mode_line_height,
         selected != 0,
     );
 }

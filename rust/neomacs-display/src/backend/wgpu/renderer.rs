@@ -8,7 +8,7 @@ use wgpu::util::DeviceExt;
 use crate::core::face::Face;
 use crate::core::frame_glyphs::{FrameGlyph, FrameGlyphBuffer};
 use crate::core::scene::{CursorStyle, Scene};
-use crate::core::types::Color;
+use crate::core::types::{AnimatedCursor, Color};
 
 use super::glyph_atlas::{GlyphKey, WgpuGlyphAtlas};
 use super::image_cache::ImageCache;
@@ -992,7 +992,7 @@ impl WgpuRenderer {
         surface_width: u32,
         surface_height: u32,
         cursor_visible: bool,
-        animated_cursor: Option<(i32, f32, f32, f32, f32)>,
+        animated_cursor: Option<AnimatedCursor>,
     ) {
         log::debug!(
             "render_frame_glyphs: frame={}x{} surface={}x{}, {} glyphs, {} faces",
@@ -1012,14 +1012,18 @@ impl WgpuRenderer {
         self.queue
             .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
 
-        // Collect rectangles (backgrounds, stretches, cursors, borders)
-        // Frame background is handled by LoadOp::Clear, no need to draw a rectangle.
-        let mut rect_vertices: Vec<RectVertex> = Vec::new();
+        // Rendering order for correct z-layering:
+        //   1. Non-overlay backgrounds (window bg, stretches, char bg)
+        //   2. Non-overlay text (buffer content)
+        //   3. Overlay backgrounds (mode-line/echo bg) — covers any buffer text bleed
+        //   4. Overlay text (mode-line/echo text)
+        //   5. Inline media (images, videos, webkits)
+        //   6. Cursors and borders
+        //
+        // This ensures mode-line backgrounds always cover buffer text that extends
+        // into the mode-line area (e.g. font descenders on the last content line).
 
-        // 1. Process window backgrounds FIRST
         // Find minimum Y of overlay chars (mode-line/echo-area) for clipping inline media
-        // Must find MINIMUM Y because glyphs may be accumulated across frames
-        // Only consider overlay chars within the visible frame bounds
         let overlay_y: Option<f32> = frame_glyphs.glyphs.iter()
             .filter_map(|g| {
                 if let FrameGlyph::Char { y, is_overlay: true, .. } = g {
@@ -1034,54 +1038,55 @@ impl WgpuRenderer {
             })
             .reduce(f32::min);
         log::trace!("Frame {}x{}, overlay_y={:?}", frame_glyphs.width, frame_glyphs.height, overlay_y);
+
+        // --- Collect non-overlay backgrounds ---
+        let mut non_overlay_rect_vertices: Vec<RectVertex> = Vec::new();
+
+        // Window backgrounds
         for glyph in &frame_glyphs.glyphs {
             if let FrameGlyph::Background { bounds, color } = glyph {
                 self.add_rect(
-                    &mut rect_vertices,
-                    bounds.x,
-                    bounds.y,
-                    bounds.width,
-                    bounds.height,
-                    color,
+                    &mut non_overlay_rect_vertices,
+                    bounds.x, bounds.y, bounds.width, bounds.height, color,
                 );
             }
         }
-
-        // 3. Process stretches in two passes (non-overlay first, then overlay)
+        // Non-overlay stretches
         for glyph in &frame_glyphs.glyphs {
             if let FrameGlyph::Stretch { x, y, width, height, bg, is_overlay, .. } = glyph {
                 if !*is_overlay {
-                    self.add_rect(&mut rect_vertices, *x, *y, *width, *height, bg);
+                    self.add_rect(&mut non_overlay_rect_vertices, *x, *y, *width, *height, bg);
                 }
             }
         }
-        for glyph in &frame_glyphs.glyphs {
-            if let FrameGlyph::Stretch { x, y, width, height, bg, is_overlay, .. } = glyph {
-                if *is_overlay {
-                    self.add_rect(&mut rect_vertices, *x, *y, *width, *height, bg);
-                }
-            }
-        }
-
-        // 4. Process char backgrounds in two passes:
-        //    First pass: non-overlay char backgrounds (content area)
-        //    Second pass: overlay char backgrounds (mode-line/echo area)
-        //    This ensures overlay backgrounds are drawn on top.
+        // Non-overlay char backgrounds
         for glyph in &frame_glyphs.glyphs {
             if let FrameGlyph::Char { x, y, width, height, bg, is_overlay, .. } = glyph {
                 if !*is_overlay {
                     if let Some(bg_color) = bg {
-                        self.add_rect(&mut rect_vertices, *x, *y, *width, *height, bg_color);
+                        self.add_rect(&mut non_overlay_rect_vertices, *x, *y, *width, *height, bg_color);
                     }
                 }
             }
         }
-        // Second pass: overlay char backgrounds (mode-line) - drawn last so they're on top
+
+        // --- Collect overlay backgrounds ---
+        let mut overlay_rect_vertices: Vec<RectVertex> = Vec::new();
+
+        // Overlay stretches
+        for glyph in &frame_glyphs.glyphs {
+            if let FrameGlyph::Stretch { x, y, width, height, bg, is_overlay, .. } = glyph {
+                if *is_overlay {
+                    self.add_rect(&mut overlay_rect_vertices, *x, *y, *width, *height, bg);
+                }
+            }
+        }
+        // Overlay char backgrounds
         for glyph in &frame_glyphs.glyphs {
             if let FrameGlyph::Char { x, y, width, height, bg, is_overlay, .. } = glyph {
                 if *is_overlay {
                     if let Some(bg_color) = bg {
-                        self.add_rect(&mut rect_vertices, *x, *y, *width, *height, bg_color);
+                        self.add_rect(&mut overlay_rect_vertices, *x, *y, *width, *height, bg_color);
                     }
                 }
             }
@@ -1110,9 +1115,9 @@ impl WgpuRenderer {
                     color,
                 } => {
                     // Use animated coordinates if available and this is the active cursor
-                    let (cx, cy, cw, ch) = if let Some((anim_wid, ax, ay, aw, ah)) = animated_cursor {
-                        if *window_id == anim_wid && *style != 3 {
-                            (ax, ay, aw, ah)
+                    let (cx, cy, cw, ch) = if let Some(ref anim) = animated_cursor {
+                        if *window_id == anim.window_id && *style != 3 {
+                            (anim.x, anim.y, anim.width, anim.height)
                         } else {
                             (*x, *y, *width, *height)
                         }
@@ -1189,124 +1194,150 @@ impl WgpuRenderer {
                 occlusion_query_set: None,
             });
 
-            // Draw rectangles (backgrounds, stretches - before text)
-            if !rect_vertices.is_empty() {
+            // === Step 1: Draw non-overlay backgrounds ===
+            if !non_overlay_rect_vertices.is_empty() {
                 let rect_buffer =
                     self.device
                         .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("Rect Vertex Buffer"),
-                            contents: bytemuck::cast_slice(&rect_vertices),
+                            label: Some("Non-overlay Rect Buffer"),
+                            contents: bytemuck::cast_slice(&non_overlay_rect_vertices),
                             usage: wgpu::BufferUsages::VERTEX,
                         });
 
                 render_pass.set_pipeline(&self.rect_pipeline);
                 render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
                 render_pass.set_vertex_buffer(0, rect_buffer.slice(..));
-                render_pass.draw(0..rect_vertices.len() as u32, 0..1);
+                render_pass.draw(0..non_overlay_rect_vertices.len() as u32, 0..1);
             }
 
-            // Draw character glyphs in two groups:
-            // - Mask glyphs: alpha-only textures, tinted with foreground color (glyph_pipeline)
-            // - Color glyphs: RGBA textures rendered directly, e.g. color emoji (image_pipeline)
+            // === Steps 2-4: Draw text and overlay in correct z-order ===
+            // For each overlay pass:
+            //   Pass 0 (non-overlay): draw buffer text after non-overlay backgrounds
+            //   Pass 1 (overlay): draw overlay backgrounds first, then overlay text
+            //
+            // This ensures: non-overlay bg → non-overlay text → overlay bg → overlay text
 
-            // First pass: collect glyph keys, vertices, and color flags (ensures all glyphs are cached)
-            let mut mask_data: Vec<(GlyphKey, [GlyphVertex; 6])> = Vec::new();
-            let mut color_data: Vec<(GlyphKey, [GlyphVertex; 6])> = Vec::new();
+            for overlay_pass in 0..2 {
+                let want_overlay = overlay_pass == 1;
 
-            for glyph in &frame_glyphs.glyphs {
-                if let FrameGlyph::Char { char, x, y, width, ascent, fg, face_id, font_size, .. } = glyph {
-                    let key = GlyphKey {
-                        charcode: *char as u32,
-                        face_id: *face_id,
-                        font_size_bits: font_size.to_bits(),
-                    };
+                // === Step 3: Draw overlay backgrounds before overlay text ===
+                if want_overlay && !overlay_rect_vertices.is_empty() {
+                    let rect_buffer =
+                        self.device
+                            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("Overlay Rect Buffer"),
+                                contents: bytemuck::cast_slice(&overlay_rect_vertices),
+                                usage: wgpu::BufferUsages::VERTEX,
+                            });
 
-                    let face = faces.get(face_id);
+                    render_pass.set_pipeline(&self.rect_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, rect_buffer.slice(..));
+                    render_pass.draw(0..overlay_rect_vertices.len() as u32, 0..1);
+                }
 
-                    if let Some(cached) = glyph_atlas.get_or_create(&self.device, &self.queue, &key, face) {
-                        let glyph_x = *x + cached.bearing_x;
-                        let baseline = *y + *ascent;
-                        let glyph_y = baseline - cached.bearing_y;
-                        let glyph_w = cached.width as f32;
-                        let glyph_h = cached.height as f32;
+                let mut mask_data: Vec<(GlyphKey, [GlyphVertex; 6])> = Vec::new();
+                let mut color_data: Vec<(GlyphKey, [GlyphVertex; 6])> = Vec::new();
 
-                        // Color glyphs use white vertex color (no tinting),
-                        // mask glyphs use foreground color for tinting
-                        let color = if cached.is_color {
-                            [1.0, 1.0, 1.0, 1.0]
-                        } else {
-                            [fg.r, fg.g, fg.b, fg.a]
+                for glyph in &frame_glyphs.glyphs {
+                    if let FrameGlyph::Char { char, x, y, width, ascent, fg, face_id, font_size, is_overlay, .. } = glyph {
+                        if *is_overlay != want_overlay {
+                            continue;
+                        }
+
+                        let key = GlyphKey {
+                            charcode: *char as u32,
+                            face_id: *face_id,
+                            font_size_bits: font_size.to_bits(),
                         };
 
-                        let vertices = [
-                            GlyphVertex { position: [glyph_x, glyph_y], tex_coords: [0.0, 0.0], color },
-                            GlyphVertex { position: [glyph_x + glyph_w, glyph_y], tex_coords: [1.0, 0.0], color },
-                            GlyphVertex { position: [glyph_x + glyph_w, glyph_y + glyph_h], tex_coords: [1.0, 1.0], color },
-                            GlyphVertex { position: [glyph_x, glyph_y], tex_coords: [0.0, 0.0], color },
-                            GlyphVertex { position: [glyph_x + glyph_w, glyph_y + glyph_h], tex_coords: [1.0, 1.0], color },
-                            GlyphVertex { position: [glyph_x, glyph_y + glyph_h], tex_coords: [0.0, 1.0], color },
-                        ];
+                        let face = faces.get(face_id);
 
-                        if cached.is_color {
-                            color_data.push((key, vertices));
-                        } else {
-                            mask_data.push((key, vertices));
+                        if let Some(cached) = glyph_atlas.get_or_create(&self.device, &self.queue, &key, face) {
+                            let glyph_x = *x + cached.bearing_x;
+                            let baseline = *y + *ascent;
+                            let glyph_y = baseline - cached.bearing_y;
+                            let glyph_w = cached.width as f32;
+                            let glyph_h = cached.height as f32;
+
+                            // Color glyphs use white vertex color (no tinting),
+                            // mask glyphs use foreground color for tinting
+                            let color = if cached.is_color {
+                                [1.0, 1.0, 1.0, 1.0]
+                            } else {
+                                [fg.r, fg.g, fg.b, fg.a]
+                            };
+
+                            let vertices = [
+                                GlyphVertex { position: [glyph_x, glyph_y], tex_coords: [0.0, 0.0], color },
+                                GlyphVertex { position: [glyph_x + glyph_w, glyph_y], tex_coords: [1.0, 0.0], color },
+                                GlyphVertex { position: [glyph_x + glyph_w, glyph_y + glyph_h], tex_coords: [1.0, 1.0], color },
+                                GlyphVertex { position: [glyph_x, glyph_y], tex_coords: [0.0, 0.0], color },
+                                GlyphVertex { position: [glyph_x + glyph_w, glyph_y + glyph_h], tex_coords: [1.0, 1.0], color },
+                                GlyphVertex { position: [glyph_x, glyph_y + glyph_h], tex_coords: [0.0, 1.0], color },
+                            ];
+
+                            if cached.is_color {
+                                color_data.push((key, vertices));
+                            } else {
+                                mask_data.push((key, vertices));
+                            }
                         }
                     }
                 }
-            }
 
-            log::trace!("render_frame_glyphs: {} mask glyphs, {} color glyphs",
-                mask_data.len(), color_data.len());
+                log::trace!("render_frame_glyphs: overlay={} {} mask glyphs, {} color glyphs",
+                    want_overlay, mask_data.len(), color_data.len());
 
-            // Draw mask glyphs with glyph pipeline (alpha tinted with foreground)
-            if !mask_data.is_empty() {
-                render_pass.set_pipeline(&self.glyph_pipeline);
-                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                // Draw mask glyphs with glyph pipeline (alpha tinted with foreground)
+                if !mask_data.is_empty() {
+                    render_pass.set_pipeline(&self.glyph_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
 
-                let all_vertices: Vec<GlyphVertex> = mask_data.iter()
-                    .flat_map(|(_, verts)| verts.iter().copied())
-                    .collect();
+                    let all_vertices: Vec<GlyphVertex> = mask_data.iter()
+                        .flat_map(|(_, verts)| verts.iter().copied())
+                        .collect();
 
-                let glyph_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Glyph Vertex Buffer"),
-                    contents: bytemuck::cast_slice(&all_vertices),
-                    usage: wgpu::BufferUsages::VERTEX,
-                });
+                    let glyph_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("Glyph Vertex Buffer"),
+                        contents: bytemuck::cast_slice(&all_vertices),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    });
 
-                render_pass.set_vertex_buffer(0, glyph_buffer.slice(..));
+                    render_pass.set_vertex_buffer(0, glyph_buffer.slice(..));
 
-                for (i, (key, _)) in mask_data.iter().enumerate() {
-                    if let Some(cached) = glyph_atlas.get(key) {
-                        render_pass.set_bind_group(1, &cached.bind_group, &[]);
-                        let start = (i * 6) as u32;
-                        render_pass.draw(start..start + 6, 0..1);
+                    for (i, (key, _)) in mask_data.iter().enumerate() {
+                        if let Some(cached) = glyph_atlas.get(key) {
+                            render_pass.set_bind_group(1, &cached.bind_group, &[]);
+                            let start = (i * 6) as u32;
+                            render_pass.draw(start..start + 6, 0..1);
+                        }
                     }
                 }
-            }
 
-            // Draw color glyphs with image pipeline (direct RGBA, e.g. color emoji)
-            if !color_data.is_empty() {
-                render_pass.set_pipeline(&self.image_pipeline);
-                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                // Draw color glyphs with image pipeline (direct RGBA, e.g. color emoji)
+                if !color_data.is_empty() {
+                    render_pass.set_pipeline(&self.image_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
 
-                let all_vertices: Vec<GlyphVertex> = color_data.iter()
-                    .flat_map(|(_, verts)| verts.iter().copied())
-                    .collect();
+                    let all_vertices: Vec<GlyphVertex> = color_data.iter()
+                        .flat_map(|(_, verts)| verts.iter().copied())
+                        .collect();
 
-                let color_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("Color Glyph Vertex Buffer"),
-                    contents: bytemuck::cast_slice(&all_vertices),
-                    usage: wgpu::BufferUsages::VERTEX,
-                });
+                    let color_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("Color Glyph Vertex Buffer"),
+                        contents: bytemuck::cast_slice(&all_vertices),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    });
 
-                render_pass.set_vertex_buffer(0, color_buffer.slice(..));
+                    render_pass.set_vertex_buffer(0, color_buffer.slice(..));
 
-                for (i, (key, _)) in color_data.iter().enumerate() {
-                    if let Some(cached) = glyph_atlas.get(key) {
-                        render_pass.set_bind_group(1, &cached.bind_group, &[]);
-                        let start = (i * 6) as u32;
-                        render_pass.draw(start..start + 6, 0..1);
+                    for (i, (key, _)) in color_data.iter().enumerate() {
+                        if let Some(cached) = glyph_atlas.get(key) {
+                            render_pass.set_bind_group(1, &cached.bind_group, &[]);
+                            let start = (i * 6) as u32;
+                            render_pass.draw(start..start + 6, 0..1);
+                        }
                     }
                 }
             }

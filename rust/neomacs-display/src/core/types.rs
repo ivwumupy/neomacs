@@ -177,6 +177,20 @@ impl Rect {
     pub const ZERO: Self = Self::new(0.0, 0.0, 0.0, 0.0);
 }
 
+/// Animated cursor position override for smooth cursor motion.
+///
+/// When cursor animation is enabled, the render thread interpolates the cursor
+/// position and passes this struct to the renderer instead of using the raw
+/// frame glyph coordinates.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AnimatedCursor {
+    pub window_id: i32,
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
 /// 2D transform matrix
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq)]
