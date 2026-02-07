@@ -70,7 +70,7 @@
               pkgs.texinfo
 
               # For bindgen (generates Rust bindings from C headers)
-              pkgs.llvmPackages.libclang
+              pkgs.llvmPackages.clang
             ];
 
             buildInputs = with pkgs; [
@@ -155,6 +155,7 @@
 
               # xdg-dbus-proxy for WebKit sandbox
               xdg-dbus-proxy
+              gcc
             ];
 
             # pkg-config paths for dev headers
