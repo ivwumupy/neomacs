@@ -2699,11 +2699,9 @@ pub unsafe extern "C" fn neomacs_display_set_floating_webkit(
 
     let display = &mut *handle;
 
-    // Remove existing webkit with same ID
+    // Update local scene (used for hit-testing in webkit_at_position)
     let target_scene = display.get_target_scene();
     target_scene.floating_webkits.retain(|w| w.webkit_id != webkit_id);
-
-    // Add webkit at position
     target_scene.add_floating_webkit(
         webkit_id,
         x as f32,
@@ -2712,6 +2710,18 @@ pub unsafe extern "C" fn neomacs_display_set_floating_webkit(
         height as f32,
     );
     info!("neomacs_display_set_floating_webkit: now have {} floating webkits", target_scene.floating_webkits.len());
+
+    // Send to render thread so it can actually render the floating overlay
+    if let Some(ref state) = THREADED_STATE {
+        let cmd = RenderCommand::WebKitSetFloating {
+            id: webkit_id,
+            x: x as f32,
+            y: y as f32,
+            width: width as f32,
+            height: height as f32,
+        };
+        let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+    }
 }
 
 /// Hide a floating WebKit view
@@ -2726,6 +2736,12 @@ pub unsafe extern "C" fn neomacs_display_hide_floating_webkit(
 
     let display = &mut *handle;
     display.get_target_scene().remove_floating_webkit(webkit_id);
+
+    // Send to render thread
+    if let Some(ref state) = THREADED_STATE {
+        let cmd = RenderCommand::WebKitRemoveFloating { id: webkit_id };
+        let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+    }
 }
 
 /// Find which webkit view (floating or inline) is at the given coordinates

@@ -129,6 +129,10 @@ pub enum RenderCommand {
     WebKitReload { id: u32 },
     /// Execute JavaScript in WebKit view
     WebKitExecuteJavaScript { id: u32, script: String },
+    /// Set floating WebKit overlay position and size
+    WebKitSetFloating { id: u32, x: f32, y: f32, width: f32, height: f32 },
+    /// Remove floating WebKit overlay
+    WebKitRemoveFloating { id: u32 },
     /// Create video player
     VideoCreate { id: u32, path: String },
     /// Control video playback

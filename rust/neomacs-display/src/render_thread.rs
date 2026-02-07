@@ -273,6 +273,10 @@ struct RenderApp {
     #[cfg(feature = "wpe-webkit")]
     webkit_import_policy: WebKitImportPolicy,
 
+    // Floating WebKit overlays (position/size from C side, rendered on render thread)
+    #[cfg(feature = "wpe-webkit")]
+    floating_webkits: Vec<crate::core::scene::FloatingWebKit>,
+
     // Terminal manager (neo-term)
     #[cfg(feature = "neo-term")]
     terminal_manager: crate::terminal::TerminalManager,
@@ -359,6 +363,8 @@ impl RenderApp {
             webkit_views: HashMap::new(),
             #[cfg(feature = "wpe-webkit")]
             webkit_import_policy,
+            #[cfg(feature = "wpe-webkit")]
+            floating_webkits: Vec::new(),
             #[cfg(feature = "neo-term")]
             terminal_manager: crate::terminal::TerminalManager::new(),
         }
@@ -678,6 +684,25 @@ impl RenderApp {
                     #[cfg(feature = "wpe-webkit")]
                     if let Some(view) = self.webkit_views.get(&id) {
                         let _ = view.execute_javascript(&script);
+                    }
+                }
+                RenderCommand::WebKitSetFloating { id, x, y, width, height } => {
+                    log::info!("WebKit set floating: id={} at ({},{}) {}x{}", id, x, y, width, height);
+                    #[cfg(feature = "wpe-webkit")]
+                    {
+                        self.floating_webkits.retain(|w| w.webkit_id != id);
+                        self.floating_webkits.push(crate::core::scene::FloatingWebKit {
+                            webkit_id: id, x, y, width, height,
+                        });
+                        self.frame_dirty = true;
+                    }
+                }
+                RenderCommand::WebKitRemoveFloating { id } => {
+                    log::info!("WebKit remove floating: id={}", id);
+                    #[cfg(feature = "wpe-webkit")]
+                    {
+                        self.floating_webkits.retain(|w| w.webkit_id != id);
+                        self.frame_dirty = true;
                     }
                 }
                 RenderCommand::VideoCreate { id, path } => {
@@ -1951,6 +1976,14 @@ impl RenderApp {
                 self.cursor_blink_on,
                 animated_cursor,
             );
+        }
+
+        // Render floating WebKit overlays on top of everything
+        #[cfg(feature = "wpe-webkit")]
+        if !self.floating_webkits.is_empty() {
+            if let Some(ref renderer) = self.renderer {
+                renderer.render_floating_webkits(&surface_view, &self.floating_webkits);
+            }
         }
 
         // Present the frame

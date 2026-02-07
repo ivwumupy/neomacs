@@ -617,6 +617,110 @@ When enabled, most keys are forwarded to the WebKit view."
       (message "WebKit browser opened: %s" url))
     buffer))
 
+;;; Inline WebKit interaction mode
+;;
+;; Auto-enters keyboard forwarding when clicking on an inline WebKit view.
+;; The C code sets `neomacs-webkit-clicked-view-id' when a click lands on
+;; a WebKit view.  This hook detects that and activates input forwarding.
+
+(defvar-local neomacs-webkit--inline-focused-id nil
+  "View ID of the currently focused inline WebKit view, or nil.")
+
+(defvar neomacs-webkit-interaction-mode-map
+  (let ((map (make-sparse-keymap)))
+    ;; Self-insert for printable ASCII
+    (dotimes (i 128)
+      (when (and (>= i 32) (/= i 127))
+        (define-key map (vector i) #'neomacs-webkit-interaction-self-insert)))
+    ;; Special keys
+    (define-key map (kbd "RET") #'neomacs-webkit-interaction-return)
+    (define-key map (kbd "DEL") #'neomacs-webkit-interaction-backspace)
+    (define-key map (kbd "<backspace>") #'neomacs-webkit-interaction-backspace)
+    (define-key map (kbd "TAB") #'neomacs-webkit-interaction-tab)
+    (define-key map (kbd "<up>") #'neomacs-webkit-interaction-arrow-up)
+    (define-key map (kbd "<down>") #'neomacs-webkit-interaction-arrow-down)
+    (define-key map (kbd "<left>") #'neomacs-webkit-interaction-arrow-left)
+    (define-key map (kbd "<right>") #'neomacs-webkit-interaction-arrow-right)
+    ;; Exit
+    (define-key map (kbd "C-g") #'neomacs-webkit-interaction-quit)
+    (define-key map (kbd "ESC") #'neomacs-webkit-interaction-quit)
+    (define-key map (kbd "C-c C-c") #'neomacs-webkit-interaction-quit)
+    map)
+  "Keymap active when typing into an inline WebKit view.")
+
+(define-minor-mode neomacs-webkit-interaction-mode
+  "Minor mode for keyboard input to inline WebKit views.
+Activated automatically when clicking on a WebKit view.
+Press ESC, C-g, or C-c C-c to exit."
+  :lighter " WebKit-Input"
+  (if neomacs-webkit-interaction-mode
+      (message "WebKit input active (view %s) — ESC to exit"
+               neomacs-webkit--inline-focused-id)
+    (setq neomacs-webkit--inline-focused-id nil)
+    (message "WebKit input off")))
+
+(defun neomacs-webkit-interaction-self-insert ()
+  "Forward character to the focused inline WebKit view."
+  (interactive)
+  (when neomacs-webkit--inline-focused-id
+    (let* ((char last-command-event)
+           (keysym (neomacs-webkit--char-to-keysym char)))
+      (neomacs-webkit-send-key neomacs-webkit--inline-focused-id keysym 0 t 0)
+      (neomacs-webkit-send-key neomacs-webkit--inline-focused-id keysym 0 nil 0))))
+
+(defun neomacs-webkit-interaction--send (keysym keycode)
+  "Send KEYSYM with KEYCODE to focused webkit view."
+  (when neomacs-webkit--inline-focused-id
+    (neomacs-webkit-send-key neomacs-webkit--inline-focused-id keysym keycode t 0)
+    (neomacs-webkit-send-key neomacs-webkit--inline-focused-id keysym keycode nil 0)))
+
+(defun neomacs-webkit-interaction-return ()
+  "Send Return to WebKit." (interactive)
+  (neomacs-webkit-interaction--send #xff0d 36))
+
+(defun neomacs-webkit-interaction-backspace ()
+  "Send Backspace to WebKit." (interactive)
+  (neomacs-webkit-interaction--send #xff08 22))
+
+(defun neomacs-webkit-interaction-tab ()
+  "Send Tab to WebKit." (interactive)
+  (neomacs-webkit-interaction--send #xff09 23))
+
+(defun neomacs-webkit-interaction-arrow-up ()
+  "Send Up to WebKit." (interactive)
+  (neomacs-webkit-interaction--send #xff52 111))
+
+(defun neomacs-webkit-interaction-arrow-down ()
+  "Send Down to WebKit." (interactive)
+  (neomacs-webkit-interaction--send #xff54 116))
+
+(defun neomacs-webkit-interaction-arrow-left ()
+  "Send Left to WebKit." (interactive)
+  (neomacs-webkit-interaction--send #xff51 113))
+
+(defun neomacs-webkit-interaction-arrow-right ()
+  "Send Right to WebKit." (interactive)
+  (neomacs-webkit-interaction--send #xff53 114))
+
+(defun neomacs-webkit-interaction-quit ()
+  "Exit WebKit interaction mode."
+  (interactive)
+  (neomacs-webkit-interaction-mode -1))
+
+(defun neomacs-webkit--check-clicked ()
+  "Check if a WebKit view was clicked and enter interaction mode.
+Called from `post-command-hook'."
+  (when (and (boundp 'neomacs-webkit-clicked-view-id)
+             neomacs-webkit-clicked-view-id
+             (integerp neomacs-webkit-clicked-view-id)
+             (> neomacs-webkit-clicked-view-id 0))
+    (let ((view-id neomacs-webkit-clicked-view-id))
+      (setq neomacs-webkit-clicked-view-id nil)
+      (setq neomacs-webkit--inline-focused-id view-id)
+      (neomacs-webkit-interaction-mode 1))))
+
+(add-hook 'post-command-hook #'neomacs-webkit--check-clicked)
+
 (provide 'neomacs-webkit)
 
 ;;; neomacs-webkit.el ends here

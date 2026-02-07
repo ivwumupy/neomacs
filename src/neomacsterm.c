@@ -4350,7 +4350,11 @@ neomacs_display_wakeup_handler (int fd, void *data)
                   {
                     neomacs_display_webkit_click (dpyinfo->display_handle,
                                                   webkit_id, rel_x, rel_y, ev->button);
-                    break;  /* Event handled by webkit */
+                    /* Store the clicked webkit view ID so Elisp can
+                       auto-enter input mode for keyboard forwarding.  */
+                    Vneomacs_webkit_clicked_view_id = make_fixnum (webkit_id);
+                    /* Fall through to also generate Emacs mouse event,
+                       so Elisp can detect the click position.  */
                   }
               }
 
@@ -4720,6 +4724,14 @@ If nil, the request is ignored. */);
 The function is called with three arguments: VIEW-ID, EVENT, URI.
 EVENT is one of: started, redirected, committed, finished, failed. */);
   Vneomacs_webkit_load_callback = Qnil;
+
+  /* WebKit clicked view ID — set when a mouse click lands on a webkit view */
+  DEFVAR_LISP ("neomacs-webkit-clicked-view-id", Vneomacs_webkit_clicked_view_id,
+    doc: /* View ID of the last WebKit view that was clicked.
+Set automatically when a mouse click lands on an inline or floating
+WebKit view.  Used by `neomacs-webkit-interaction-mode' to auto-enter
+keyboard input forwarding.  Set to nil to clear. */);
+  Vneomacs_webkit_clicked_view_id = Qnil;
 
   /* Required variables for cus-start */
   DEFVAR_BOOL ("x-use-underline-position-properties",
