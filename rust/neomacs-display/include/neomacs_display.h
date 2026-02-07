@@ -608,7 +608,9 @@ void neomacs_display_set_animation_config(struct NeomacsDisplay *handle,
                                           uint32_t scrollDurationMs,
                                           uint32_t scrollEffect,
                                           uint32_t scrollEasing,
-                                          float trailSize);
+                                          float trailSize,
+                                          uint32_t crossfadeEffect,
+                                          uint32_t crossfadeEasing);
 
 /**
  * Check if animations are active

@@ -3780,6 +3780,7 @@ DEFUN ("neomacs-set-animation-config", Fneomacs_set_animation_config, Sneomacs_s
 Arguments: CURSOR-ENABLED CURSOR-SPEED CURSOR-STYLE CURSOR-DURATION
            CROSSFADE-ENABLED CROSSFADE-DURATION SCROLL-ENABLED SCROLL-DURATION
            &optional SCROLL-EFFECT SCROLL-EASING TRAIL-SIZE
+           CROSSFADE-EFFECT CROSSFADE-EASING
 
 CURSOR-ENABLED non-nil enables smooth cursor animation.
 CURSOR-SPEED is the exponential interpolation rate (default 15.0).
@@ -3828,7 +3829,13 @@ Optional TRAIL-SIZE (0.0-1.0) controls the spring cursor trail effect (default 0
   0.0 means no trail (all corners move together like a rigid rectangle).
   0.7 is the default with a visible trailing stretch effect.
   1.0 is maximum trail where leading corners snap almost immediately.
-usage: (neomacs-set-animation-config CURSOR-ENABLED CURSOR-SPEED CURSOR-STYLE CURSOR-DURATION CROSSFADE-ENABLED CROSSFADE-DURATION SCROLL-ENABLED SCROLL-DURATION &optional SCROLL-EFFECT SCROLL-EASING TRAIL-SIZE)  */)
+CROSSFADE-EFFECT is a symbol (or integer index) selecting the buffer-switch
+  transition effect.  Accepts the same symbols as SCROLL-EFFECT.
+  Default is `crossfade' (simple alpha blend).
+CROSSFADE-EASING is a symbol (or integer index) selecting the easing function
+  for buffer-switch transitions.  Accepts the same symbols as SCROLL-EASING.
+  Default is `ease-out-quad'.
+usage: (neomacs-set-animation-config CURSOR-ENABLED CURSOR-SPEED CURSOR-STYLE CURSOR-DURATION CROSSFADE-ENABLED CROSSFADE-DURATION SCROLL-ENABLED SCROLL-DURATION &optional SCROLL-EFFECT SCROLL-EASING TRAIL-SIZE CROSSFADE-EFFECT CROSSFADE-EASING)  */)
   (ptrdiff_t nargs, Lisp_Object *args)
 {
   struct neomacs_display_info *dpyinfo = neomacs_display_list;
@@ -3845,10 +3852,12 @@ usage: (neomacs-set-animation-config CURSOR-ENABLED CURSOR-SPEED CURSOR-STYLE CU
   Lisp_Object scroll_enabled = args[6];
   Lisp_Object scroll_duration = args[7];
 
-  /* Optional args: 8-10 */
+  /* Optional args: 8-12 */
   Lisp_Object scroll_effect = nargs > 8 ? args[8] : Qnil;
   Lisp_Object scroll_easing = nargs > 9 ? args[9] : Qnil;
   Lisp_Object trail_size = nargs > 10 ? args[10] : Qnil;
+  Lisp_Object crossfade_effect = nargs > 11 ? args[11] : Qnil;
+  Lisp_Object crossfade_easing = nargs > 12 ? args[12] : Qnil;
 
   int ce = !NILP (cursor_enabled);
   float cs = 15.0f;
@@ -3937,9 +3946,51 @@ usage: (neomacs-set-animation-config CURSOR-ENABLED CURSOR-SPEED CURSOR-STYLE CU
   if (NUMBERP (trail_size))
     ts = (float) XFLOATINT (trail_size);
 
+  /* Map symbol or integer to crossfade effect ID (same enum as scroll effect) */
+  uint32_t ceff = 1;  /* default: crossfade (index 1 in ScrollEffect) */
+  if (SYMBOLP (crossfade_effect))
+    {
+      if (EQ (crossfade_effect, Qslide))                    ceff = 0;
+      else if (EQ (crossfade_effect, Qcrossfade))            ceff = 1;
+      else if (EQ (crossfade_effect, Qscale_zoom))           ceff = 2;
+      else if (EQ (crossfade_effect, Qfade_edges))           ceff = 3;
+      else if (EQ (crossfade_effect, Qcascade))              ceff = 4;
+      else if (EQ (crossfade_effect, Qparallax))             ceff = 5;
+      else if (EQ (crossfade_effect, Qtilt))                 ceff = 6;
+      else if (EQ (crossfade_effect, Qpage_curl))            ceff = 7;
+      else if (EQ (crossfade_effect, Qcard_flip))            ceff = 8;
+      else if (EQ (crossfade_effect, Qcylinder_roll))        ceff = 9;
+      else if (EQ (crossfade_effect, Qwobbly))               ceff = 10;
+      else if (EQ (crossfade_effect, Qwave))                 ceff = 11;
+      else if (EQ (crossfade_effect, Qper_line_spring))      ceff = 12;
+      else if (EQ (crossfade_effect, Qliquid))               ceff = 13;
+      else if (EQ (crossfade_effect, Qmotion_blur))          ceff = 14;
+      else if (EQ (crossfade_effect, Qchromatic_aberration)) ceff = 15;
+      else if (EQ (crossfade_effect, Qghost_trails))         ceff = 16;
+      else if (EQ (crossfade_effect, Qcolor_temperature))    ceff = 17;
+      else if (EQ (crossfade_effect, Qcrt_scanlines))        ceff = 18;
+      else if (EQ (crossfade_effect, Qdepth_of_field))       ceff = 19;
+      else if (EQ (crossfade_effect, Qtypewriter_reveal))    ceff = 20;
+    }
+  else if (FIXNUMP (crossfade_effect))
+    ceff = (uint32_t) XFIXNUM (crossfade_effect);
+
+  /* Map symbol or integer to crossfade easing ID (same enum as scroll easing) */
+  uint32_t ceas = 0;  /* default: ease-out-quad */
+  if (SYMBOLP (crossfade_easing))
+    {
+      if (EQ (crossfade_easing, Qease_out_quad))           ceas = 0;
+      else if (EQ (crossfade_easing, Qease_out_cubic))     ceas = 1;
+      else if (EQ (crossfade_easing, Qspring))              ceas = 2;
+      else if (EQ (crossfade_easing, Qlinear))              ceas = 3;
+      else if (EQ (crossfade_easing, Qease_in_out_cubic))  ceas = 4;
+    }
+  else if (FIXNUMP (crossfade_easing))
+    ceas = (uint32_t) XFIXNUM (crossfade_easing);
+
   neomacs_display_set_animation_config (dpyinfo->display_handle,
                                          ce, cs, cst, cd, cfe, cfd, se, sd,
-                                         seff, seas, ts);
+                                         seff, seas, ts, ceff, ceas);
   return Qt;
 }
 

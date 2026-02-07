@@ -1952,6 +1952,8 @@ pub unsafe extern "C" fn neomacs_display_set_animation_config(
     scroll_effect: u32,
     scroll_easing: u32,
     trail_size: f32,
+    crossfade_effect: u32,
+    crossfade_easing: u32,
 ) {
     use crate::core::types::CursorAnimStyle;
     let cmd = RenderCommand::SetAnimationConfig {
@@ -1966,6 +1968,8 @@ pub unsafe extern "C" fn neomacs_display_set_animation_config(
         scroll_effect,
         scroll_easing,
         trail_size: if trail_size >= 0.0 { trail_size } else { 0.7 },
+        crossfade_effect,
+        crossfade_easing,
     };
     if let Some(ref state) = THREADED_STATE {
         let _ = state.emacs_comms.cmd_tx.try_send(cmd);

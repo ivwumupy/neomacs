@@ -76,6 +76,8 @@ struct CrossfadeTransition {
     started: std::time::Instant,
     duration: std::time::Duration,
     bounds: Rect,
+    effect: crate::core::scroll_animation::ScrollEffect,
+    easing: crate::core::scroll_animation::ScrollEasing,
     old_texture: wgpu::Texture,
     old_view: wgpu::TextureView,
     old_bind_group: wgpu::BindGroup,
@@ -196,6 +198,8 @@ struct RenderApp {
     // Transition state
     crossfade_enabled: bool,
     crossfade_duration: std::time::Duration,
+    crossfade_effect: crate::core::scroll_animation::ScrollEffect,
+    crossfade_easing: crate::core::scroll_animation::ScrollEasing,
     scroll_enabled: bool,
     scroll_duration: std::time::Duration,
     scroll_effect: crate::core::scroll_animation::ScrollEffect,
@@ -283,6 +287,8 @@ impl RenderApp {
             prev_window_infos: HashMap::new(),
             crossfade_enabled: true,
             crossfade_duration: std::time::Duration::from_millis(200),
+            crossfade_effect: crate::core::scroll_animation::ScrollEffect::Crossfade,
+            crossfade_easing: crate::core::scroll_animation::ScrollEasing::EaseOutQuad,
             scroll_enabled: true,
             scroll_duration: std::time::Duration::from_millis(150),
             scroll_effect: crate::core::scroll_animation::ScrollEffect::default(),
@@ -670,6 +676,7 @@ impl RenderApp {
                     scroll_enabled, scroll_duration_ms,
                     scroll_effect, scroll_easing,
                     trail_size,
+                    crossfade_effect, crossfade_easing,
                 } => {
                     use crate::core::scroll_animation::{ScrollEffect, ScrollEasing};
                     let effect = ScrollEffect::ALL.get(scroll_effect as usize)
@@ -682,9 +689,19 @@ impl RenderApp {
                         4 => ScrollEasing::EaseInOutCubic,
                         _ => ScrollEasing::EaseOutQuad,
                     };
-                    log::debug!("Animation config: cursor={}/{}/style={:?}/{}ms/trail={}, crossfade={}/{}ms, scroll={}/{}ms/effect={:?}/easing={:?}",
+                    let cf_effect = ScrollEffect::ALL.get(crossfade_effect as usize)
+                        .copied().unwrap_or(ScrollEffect::Crossfade);
+                    let cf_easing = match crossfade_easing {
+                        0 => ScrollEasing::EaseOutQuad,
+                        1 => ScrollEasing::EaseOutCubic,
+                        2 => ScrollEasing::Spring,
+                        3 => ScrollEasing::Linear,
+                        4 => ScrollEasing::EaseInOutCubic,
+                        _ => ScrollEasing::EaseOutQuad,
+                    };
+                    log::debug!("Animation config: cursor={}/{}/style={:?}/{}ms/trail={}, crossfade={}/{}ms/effect={:?}/easing={:?}, scroll={}/{}ms/effect={:?}/easing={:?}",
                         cursor_enabled, cursor_speed, cursor_style, cursor_duration_ms, trail_size,
-                        crossfade_enabled, crossfade_duration_ms,
+                        crossfade_enabled, crossfade_duration_ms, cf_effect, cf_easing,
                         scroll_enabled, scroll_duration_ms, effect, easing);
                     self.cursor_anim_enabled = cursor_enabled;
                     self.cursor_anim_speed = cursor_speed;
@@ -693,6 +710,8 @@ impl RenderApp {
                     self.cursor_trail_size = trail_size.clamp(0.0, 1.0);
                     self.crossfade_enabled = crossfade_enabled;
                     self.crossfade_duration = std::time::Duration::from_millis(crossfade_duration_ms as u64);
+                    self.crossfade_effect = cf_effect;
+                    self.crossfade_easing = cf_easing;
                     self.scroll_enabled = scroll_enabled;
                     self.scroll_duration = std::time::Duration::from_millis(scroll_duration_ms as u64);
                     self.scroll_effect = effect;
@@ -1343,11 +1362,13 @@ impl RenderApp {
                             self.scroll_slides.remove(&info.window_id);
 
                             if let Some((tex, view, bg)) = self.snapshot_prev_texture() {
-                                log::debug!("Starting crossfade for window {} (buffer changed)", info.window_id);
+                                log::debug!("Starting crossfade for window {} (buffer changed, effect={:?})", info.window_id, self.crossfade_effect);
                                 self.crossfades.insert(info.window_id, CrossfadeTransition {
                                     started: now,
                                     duration: self.crossfade_duration,
                                     bounds: info.bounds,
+                                    effect: self.crossfade_effect,
+                                    easing: self.crossfade_easing,
                                     old_texture: tex,
                                     old_view: view,
                                     old_bind_group: bg,
@@ -1412,24 +1433,29 @@ impl RenderApp {
             None => return,
         };
 
-        // Render crossfades
+        // Render crossfades (using per-transition effect/easing)
         let mut completed_crossfades = Vec::new();
         for (&wid, transition) in &self.crossfades {
             let elapsed = now.duration_since(transition.started);
-            let t = (elapsed.as_secs_f32() / transition.duration.as_secs_f32()).min(1.0);
+            let raw_t = (elapsed.as_secs_f32() / transition.duration.as_secs_f32()).min(1.0);
+            let elapsed_secs = elapsed.as_secs_f32();
 
             // SAFETY: current_bg is valid for the duration of this function
-            renderer.render_crossfade(
+            renderer.render_scroll_effect(
                 surface_view,
                 &transition.old_bind_group,
                 unsafe { &*current_bg },
-                t,
+                raw_t,
+                elapsed_secs,
+                1, // direction: forward
                 &transition.bounds,
+                transition.effect,
+                transition.easing,
                 self.width,
                 self.height,
             );
 
-            if t >= 1.0 {
+            if raw_t >= 1.0 {
                 completed_crossfades.push(wid);
             }
         }

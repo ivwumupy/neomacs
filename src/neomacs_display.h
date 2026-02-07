@@ -606,7 +606,8 @@ void neomacs_display_set_animation_config(struct NeomacsDisplay *handle,
                                            int crossfade_enabled, uint32_t crossfade_duration_ms,
                                            int scroll_enabled, uint32_t scroll_duration_ms,
                                            uint32_t scroll_effect, uint32_t scroll_easing,
-                                           float trail_size);
+                                           float trail_size,
+                                           uint32_t crossfade_effect, uint32_t crossfade_easing);
 
 /**
  * Add per-window metadata for animation detection

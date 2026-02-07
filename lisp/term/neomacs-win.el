@@ -133,7 +133,8 @@ DISPLAY is the name of the display Emacs should connect to."
                   (cursor-enabled cursor-speed cursor-style cursor-duration
                    crossfade-enabled crossfade-duration
                    scroll-enabled scroll-duration
-                   &optional scroll-effect scroll-easing trail-size))
+                   &optional scroll-effect scroll-easing trail-size
+                   crossfade-effect crossfade-easing))
 
 (defun neomacs--sync-cursor-blink ()
   "Sync `blink-cursor-mode' state to the render thread."
@@ -197,9 +198,17 @@ Scroll easing (scroll-easing parameter, symbol or integer):
   `ease-out-cubic'       - stronger deceleration
   `spring'               - critically damped spring with overshoot
   `linear'               - constant speed
-  `ease-in-out-cubic'    - smooth S-curve"
+  `ease-in-out-cubic'    - smooth S-curve
+
+Crossfade effect (crossfade-effect parameter, symbol or integer):
+  Accepts the same effect symbols as scroll-effect.
+  Default is `crossfade' (simple alpha blend).
+
+Crossfade easing (crossfade-easing parameter, symbol or integer):
+  Accepts the same easing symbols as scroll-easing.
+  Default is `ease-out-quad'."
   (when (fboundp 'neomacs-set-animation-config)
-    (neomacs-set-animation-config t 15.0 'spring 150 t 200 t 150 'slide 'ease-out-quad 0.7)))
+    (neomacs-set-animation-config t 15.0 'spring 150 t 200 t 150 'slide 'ease-out-quad 0.7 'crossfade 'ease-out-quad)))
 
 ;; Provide the feature
 (provide 'neomacs-win)

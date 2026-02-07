@@ -152,6 +152,8 @@ pub enum RenderCommand {
         scroll_effect: u32,
         scroll_easing: u32,
         trail_size: f32,
+        crossfade_effect: u32,
+        crossfade_easing: u32,
     },
     /// Create a terminal
     #[cfg(feature = "neo-term")]
