@@ -314,24 +314,35 @@ impl DmaBufBuffer {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Option<wgpu::Texture> {
-        // For XRGB/ARGB formats with modifiers, the extra plane is auxiliary data (CCS).
-        // We can import just the first plane as the main color data.
+        // For XRGB/ARGB/BGRA single-color-plane formats, extra planes are auxiliary
+        // data (Intel CCS compression metadata). We import just plane 0 (the color data).
         // Multi-plane YUV formats (NV12, etc.) with >2 planes are not yet supported.
-        if self.num_planes > 2 {
-            log::warn!(
-                "DmaBufBuffer: formats with >2 planes not yet supported (planes={})",
-                self.num_planes
+        if self.num_planes > 1 {
+            use super::vulkan_dmabuf::drm_fourcc::*;
+            let is_single_color_plane = matches!(
+                self.fourcc,
+                DRM_FORMAT_ARGB8888 | DRM_FORMAT_XRGB8888 |
+                DRM_FORMAT_ABGR8888 | DRM_FORMAT_XBGR8888 |
+                DRM_FORMAT_RGBA8888 | DRM_FORMAT_RGBX8888 |
+                DRM_FORMAT_BGRA8888 | DRM_FORMAT_BGRX8888
             );
-            return None;
-        }
-
-        // For 2-plane formats, the second plane is typically CCS compression data
-        // for Intel modifiers. We import just the first plane.
-        if self.num_planes == 2 {
-            log::info!(
-                "DmaBufBuffer: 2-plane format fourcc={:08x}, modifier={:#x}, using plane 0 only",
-                self.fourcc, self.modifier
-            );
+            if is_single_color_plane {
+                log::info!(
+                    "DmaBufBuffer: {}-plane format fourcc={:08x}, modifier={:#x}, using plane 0 only (extra planes are CCS metadata)",
+                    self.num_planes, self.fourcc, self.modifier
+                );
+            } else if self.num_planes > 2 {
+                log::warn!(
+                    "DmaBufBuffer: multi-plane YUV format with {} planes not yet supported (fourcc={:08x})",
+                    self.num_planes, self.fourcc
+                );
+                return None;
+            } else {
+                log::info!(
+                    "DmaBufBuffer: 2-plane format fourcc={:08x}, modifier={:#x}, using plane 0 only",
+                    self.fourcc, self.modifier
+                );
+            }
         }
 
         // Import DMA-BUF as wgpu texture

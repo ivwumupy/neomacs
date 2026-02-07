@@ -988,28 +988,43 @@ unsafe extern "C" fn buffer_rendered_callback(
 
     let size = size as usize;
     let expected_size = (width * height * 4) as usize;
-    if size < expected_size || size > expected_size * 2 {
-        log::warn!("buffer_rendered_callback: suspicious size {} for {}x{}", size, width, height);
+    if size < expected_size {
+        log::warn!("buffer_rendered_callback: pixel data too small {} < {} for {}x{}",
+                    size, expected_size, width, height);
         return;
     }
 
     // Copy pixel data before callback returns
     let pixel_data: Vec<u8> = std::slice::from_raw_parts(data as *const u8, size).to_vec();
-    let actual_stride = size / (height as usize);
 
-    // Convert XRGB to BGRA with alpha=255
-    let mut pixels_with_alpha: Vec<u8> = Vec::with_capacity((width * height * 4) as usize);
+    // Calculate actual stride from buffer size.
+    // wpe_buffer_import_to_pixels may return data with GPU-aligned stride
+    // (e.g., 832*4=3328 for a 784px-wide image padded to 64-pixel alignment).
+    let actual_stride = size / (height as usize);
+    let min_stride = (width as usize) * 4;
+    if actual_stride < min_stride {
+        log::warn!("buffer_rendered_callback: stride {} < min {} for width {}",
+                    actual_stride, min_stride, width);
+        return;
+    }
+    log::debug!("buffer_rendered_callback: pixel data size={}, {}x{}, stride={} (min={})",
+                size, width, height, actual_stride, min_stride);
+
+    // Cairo ARGB32 / XRGB8888 format: bytes in memory [B, G, R, A/X] on little-endian.
+    // Target: BGRA for wgpu Bgra8UnormSrgb — same byte order, just force alpha=255.
+    let mut pixels_with_alpha: Vec<u8> = Vec::with_capacity(expected_size);
     for row in 0..(height as usize) {
         let row_start = row * actual_stride;
         for col in 0..(width as usize) {
             let offset = row_start + col * 4;
             if offset + 3 >= pixel_data.len() {
+                log::warn!("buffer_rendered_callback: pixel data underflow at row={} col={}", row, col);
                 return;
             }
             pixels_with_alpha.push(pixel_data[offset]);     // B
             pixels_with_alpha.push(pixel_data[offset + 1]); // G
             pixels_with_alpha.push(pixel_data[offset + 2]); // R
-            pixels_with_alpha.push(255);                     // A
+            pixels_with_alpha.push(255);                     // A (force opaque)
         }
     }
 
