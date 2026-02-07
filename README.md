@@ -297,7 +297,7 @@ cargo build --release --manifest-path rust/neomacs-display/Cargo.toml
 
 # Build Emacs
 ./autogen.sh
-./configure --with-neomacs --with-native-compilation
+./configure --with-neomacs
 make -j$(nproc)
 ```
 
@@ -321,7 +321,7 @@ nix-shell
 
 # Build
 ./autogen.sh
-./configure --with-neomacs --with-native-compilation
+./configure --with-neomacs
 make -j$(nproc)
 ```
 
