@@ -85,6 +85,11 @@
 
 
 
+/**
+ * Maximum number of DMA-BUF planes supported.
+ */
+#define MAX_PLANES 4
+
 #define DRM_FORMAT_ARGB8888 875713089
 
 #define DRM_FORMAT_ARGB8888 875713089
@@ -203,6 +208,8 @@ extern void g_main_context_pop_thread_default(GMainContext *context);
 extern int32_t g_main_context_acquire(GMainContext *context);
 
 extern void g_main_context_release(GMainContext *context);
+
+extern GObject *g_object_new(GType objectType, const char *firstPropertyName, ...);
 
 /**
  * Shutdown the display engine

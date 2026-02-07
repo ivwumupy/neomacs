@@ -43,3 +43,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let tex_color = textureSample(t_image, s_image, in.tex_coords);
     return tex_color * in.color;
 }
+
+@fragment
+fn fs_main_opaque(in: VertexOutput) -> @location(0) vec4<f32> {
+    // Sample from texture, force alpha=1.0 (for XRGB/BGRX DMA-BUF textures
+    // where the alpha channel is unused and may be 0x00)
+    let tex_color = textureSample(t_image, s_image, in.tex_coords);
+    return vec4<f32>(tex_color.rgb * in.color.rgb, in.color.a);
+}

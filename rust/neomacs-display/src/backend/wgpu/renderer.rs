@@ -29,6 +29,7 @@ pub struct WgpuRenderer {
     rounded_rect_pipeline: wgpu::RenderPipeline,
     glyph_pipeline: wgpu::RenderPipeline,
     image_pipeline: wgpu::RenderPipeline,
+    opaque_image_pipeline: wgpu::RenderPipeline,
     glyph_bind_group_layout: wgpu::BindGroupLayout,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
@@ -372,6 +373,46 @@ impl WgpuRenderer {
             cache: None,
         });
 
+        // Opaque image pipeline — for XRGB/BGRX DMA-BUF textures where alpha=0x00.
+        // Uses fs_main_opaque which ignores texture alpha and uses vertex alpha instead.
+        let opaque_image_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Opaque Image Pipeline"),
+            layout: Some(&image_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &image_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[GlyphVertex::desc()],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &image_shader,
+                entry_point: Some("fs_main_opaque"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: target_format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+            cache: None,
+        });
+
         // Create surface_config from format if we have a surface
         let surface_config = if let Some(ref s) = surface {
             let config = wgpu::SurfaceConfiguration {
@@ -400,6 +441,7 @@ impl WgpuRenderer {
             rounded_rect_pipeline,
             glyph_pipeline,
             image_pipeline,
+            opaque_image_pipeline,
             glyph_bind_group_layout,
             uniform_buffer,
             uniform_bind_group,
@@ -1066,7 +1108,7 @@ impl WgpuRenderer {
                 occlusion_query_set: None,
             });
 
-            render_pass.set_pipeline(&self.image_pipeline);
+            render_pass.set_pipeline(&self.opaque_image_pipeline);
             render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
 
             for fw in floating_webkits {
@@ -2059,57 +2101,62 @@ impl WgpuRenderer {
                 }
             }
 
-            // Draw inline webkit views
+            // Draw inline webkit views (use opaque pipeline — DMA-BUF XRGB has alpha=0)
             #[cfg(feature = "wpe-webkit")]
-            for glyph in &frame_glyphs.glyphs {
-                if let FrameGlyph::WebKit { webkit_id, x, y, width, height } = glyph {
-                    // Clip to mode-line boundary if needed
-                    log::trace!("WebKit clip check: webkit {} at y={}, height={}, y+h={}, overlay_y={:?}",
-                        webkit_id, y, height, y + height, overlay_y);
-                    let (clipped_height, tex_v_max) = if let Some(oy) = overlay_y {
-                        if *y + *height > oy {
-                            let clipped = (oy - *y).max(0.0);
-                            let v_max = if *height > 0.0 { clipped / *height } else { 1.0 };
-                            log::trace!("WebKit {} clipped: y={} + h={} > overlay_y={}, clipped_height={}",
-                                webkit_id, y, height, oy, clipped);
-                            (clipped, v_max)
+            {
+                render_pass.set_pipeline(&self.opaque_image_pipeline);
+                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+
+                for glyph in &frame_glyphs.glyphs {
+                    if let FrameGlyph::WebKit { webkit_id, x, y, width, height } = glyph {
+                        // Clip to mode-line boundary if needed
+                        log::trace!("WebKit clip check: webkit {} at y={}, height={}, y+h={}, overlay_y={:?}",
+                            webkit_id, y, height, y + height, overlay_y);
+                        let (clipped_height, tex_v_max) = if let Some(oy) = overlay_y {
+                            if *y + *height > oy {
+                                let clipped = (oy - *y).max(0.0);
+                                let v_max = if *height > 0.0 { clipped / *height } else { 1.0 };
+                                log::trace!("WebKit {} clipped: y={} + h={} > overlay_y={}, clipped_height={}",
+                                    webkit_id, y, height, oy, clipped);
+                                (clipped, v_max)
+                            } else {
+                                (*height, 1.0)
+                            }
                         } else {
                             (*height, 1.0)
+                        };
+
+                        // Skip if fully clipped
+                        if clipped_height <= 0.0 {
+                            continue;
                         }
-                    } else {
-                        (*height, 1.0)
-                    };
 
-                    // Skip if fully clipped
-                    if clipped_height <= 0.0 {
-                        continue;
-                    }
+                        // Check if webkit texture is ready
+                        if let Some(cached) = self.webkit_cache.get(*webkit_id) {
+                            log::debug!("Rendering webkit {} at ({}, {}) size {}x{} (clipped to {})",
+                                webkit_id, x, y, width, height, clipped_height);
+                            // Create vertices for webkit quad (white color = no tinting)
+                            let vertices = [
+                                GlyphVertex { position: [*x, *y], tex_coords: [0.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
+                                GlyphVertex { position: [*x + *width, *y], tex_coords: [1.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
+                                GlyphVertex { position: [*x + *width, *y + clipped_height], tex_coords: [1.0, tex_v_max], color: [1.0, 1.0, 1.0, 1.0] },
+                                GlyphVertex { position: [*x, *y], tex_coords: [0.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
+                                GlyphVertex { position: [*x + *width, *y + clipped_height], tex_coords: [1.0, tex_v_max], color: [1.0, 1.0, 1.0, 1.0] },
+                                GlyphVertex { position: [*x, *y + clipped_height], tex_coords: [0.0, tex_v_max], color: [1.0, 1.0, 1.0, 1.0] },
+                            ];
 
-                    // Check if webkit texture is ready
-                    if let Some(cached) = self.webkit_cache.get(*webkit_id) {
-                        log::debug!("Rendering webkit {} at ({}, {}) size {}x{} (clipped to {})",
-                            webkit_id, x, y, width, height, clipped_height);
-                        // Create vertices for webkit quad (white color = no tinting)
-                        let vertices = [
-                            GlyphVertex { position: [*x, *y], tex_coords: [0.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
-                            GlyphVertex { position: [*x + *width, *y], tex_coords: [1.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
-                            GlyphVertex { position: [*x + *width, *y + clipped_height], tex_coords: [1.0, tex_v_max], color: [1.0, 1.0, 1.0, 1.0] },
-                            GlyphVertex { position: [*x, *y], tex_coords: [0.0, 0.0], color: [1.0, 1.0, 1.0, 1.0] },
-                            GlyphVertex { position: [*x + *width, *y + clipped_height], tex_coords: [1.0, tex_v_max], color: [1.0, 1.0, 1.0, 1.0] },
-                            GlyphVertex { position: [*x, *y + clipped_height], tex_coords: [0.0, tex_v_max], color: [1.0, 1.0, 1.0, 1.0] },
-                        ];
+                            let webkit_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("WebKit Vertex Buffer"),
+                                contents: bytemuck::cast_slice(&vertices),
+                                usage: wgpu::BufferUsages::VERTEX,
+                            });
 
-                        let webkit_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                            label: Some("WebKit Vertex Buffer"),
-                            contents: bytemuck::cast_slice(&vertices),
-                            usage: wgpu::BufferUsages::VERTEX,
-                        });
-
-                        render_pass.set_bind_group(1, &cached.bind_group, &[]);
-                        render_pass.set_vertex_buffer(0, webkit_buffer.slice(..));
-                        render_pass.draw(0..6, 0..1);
-                    } else {
-                        log::debug!("WebKit {} not found in cache", webkit_id);
+                            render_pass.set_bind_group(1, &cached.bind_group, &[]);
+                            render_pass.set_vertex_buffer(0, webkit_buffer.slice(..));
+                            render_pass.draw(0..6, 0..1);
+                        } else {
+                            log::debug!("WebKit {} not found in cache", webkit_id);
+                        }
                     }
                 }
             }

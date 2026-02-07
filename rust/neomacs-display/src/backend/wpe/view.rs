@@ -1041,10 +1041,15 @@ unsafe extern "C" fn buffer_rendered_callback(
     // Note: Widget redraw notification will be handled by wgpu integration
 }
 
-/// C callback for buffer-released signal from WPEView
-/// In headless mode, buffer-rendered doesn't fire, but buffer-released does.
-/// We capture the buffer data here before it's released.
-/// Prefers zero-copy DMA-BUF path, falls back to pixel import.
+/// C callback for buffer-released signal from WPEView.
+///
+/// `buffer-released` means WPE is done with this buffer and will recycle it.
+/// The underlying GPU memory may be reused for the next frame, so we must NOT
+/// store DMA-BUF fds here — a Vulkan texture wrapping this memory would show
+/// stale or in-progress content when WPE renders into the recycled buffer.
+///
+/// We only capture a CPU pixel copy (via wpe_buffer_import_to_pixels) as a
+/// fallback for headless mode where buffer-rendered doesn't fire.
 unsafe extern "C" fn buffer_released_callback(
     _wpe_view: *mut plat::WPEView,
     buffer: *mut plat::WPEBuffer,
@@ -1063,53 +1068,11 @@ unsafe extern "C" fn buffer_released_callback(
         return;
     }
 
-    log::info!("buffer_released_callback: capturing {}x{} buffer", width, height);
+    log::debug!("buffer_released_callback: {}x{} buffer released by WPE", width, height);
 
-    // Try zero-copy DMA-BUF path first
-    if let Some(dmabuf_info) = buffer_dmabuf_info(buffer) {
-        log::info!("buffer_released_callback: using zero-copy DMA-BUF path {}x{}", width, height);
-
-        // Dup the file descriptors so we own them after callback returns
-        let mut fds = Vec::with_capacity(dmabuf_info.planes.len());
-        let mut strides = Vec::with_capacity(dmabuf_info.planes.len());
-        let mut offsets = Vec::with_capacity(dmabuf_info.planes.len());
-
-        for plane in &dmabuf_info.planes {
-            let duped_fd = libc::dup(plane.fd);
-            if duped_fd < 0 {
-                log::warn!("buffer_released_callback: failed to dup fd {}", plane.fd);
-                for fd in &fds {
-                    libc::close(*fd);
-                }
-                break;
-            }
-            fds.push(duped_fd);
-            strides.push(plane.stride);
-            offsets.push(plane.offset);
-        }
-
-        if fds.len() == dmabuf_info.planes.len() {
-            if let Ok(mut guard) = callback_data.latest_dmabuf.lock() {
-                *guard = Some(DmaBufFrameData {
-                    fds,
-                    strides,
-                    offsets,
-                    fourcc: dmabuf_info.fourcc,
-                    modifier: dmabuf_info.modifier,
-                    width: dmabuf_info.width,
-                    height: dmabuf_info.height,
-                });
-                log::info!("buffer_released_callback: DMA-BUF frame stored (zero-copy)");
-            }
-            callback_data.dmabuf_available.store(true, Ordering::Release);
-            callback_data.frame_available.store(true, Ordering::Release);
-
-            // Note: Widget redraw notification will be handled by wgpu integration
-            return;
-        }
-    }
-
-    // Fallback: Import pixels from the buffer
+    // Only capture pixels (CPU copy) — NOT DMA-BUF.
+    // DMA-BUF import here would wrap GPU memory that WPE is about to recycle,
+    // causing stale/flickering content when the buffer is reused.
     log::debug!("buffer_released_callback: falling back to pixel import path");
 
     let mut error: *mut plat::GError = ptr::null_mut();

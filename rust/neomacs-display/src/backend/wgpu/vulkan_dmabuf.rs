@@ -3,6 +3,9 @@
 //! This module implements importing DMA-BUF file descriptors as Vulkan images,
 //! then wrapping them as wgpu textures for zero-copy GPU-to-GPU transfers.
 //!
+//! Supports multi-plane DMA-BUFs (e.g., AMD DCC, Intel CCS) by querying the
+//! Vulkan driver for modifier properties to determine correct plane counts.
+//!
 //! Required Vulkan extensions:
 //! - VK_KHR_external_memory
 //! - VK_KHR_external_memory_fd
@@ -55,24 +58,29 @@ pub fn drm_fourcc_to_wgpu_format(fourcc: u32) -> Option<wgpu::TextureFormat> {
     }
 }
 
-/// DMA-BUF import parameters
+/// Maximum number of DMA-BUF planes supported.
+pub const MAX_PLANES: usize = 4;
+
+/// Multi-plane DMA-BUF import parameters.
 #[cfg(target_os = "linux")]
 #[derive(Debug, Clone)]
 pub struct DmaBufImportParams {
-    /// DMA-BUF file descriptor
-    pub fd: RawFd,
-    /// Width in pixels
+    /// DMA-BUF file descriptors, one per plane.
+    pub fds: Vec<RawFd>,
+    /// Stride (bytes per row) per plane.
+    pub strides: Vec<u32>,
+    /// Byte offset per plane.
+    pub offsets: Vec<u32>,
+    /// Number of planes provided by the buffer.
+    pub num_planes: u32,
+    /// Width in pixels.
     pub width: u32,
-    /// Height in pixels
+    /// Height in pixels.
     pub height: u32,
-    /// Stride (bytes per row)
-    pub stride: u32,
-    /// DRM fourcc format
+    /// DRM fourcc format code.
     pub fourcc: u32,
-    /// DRM modifier
+    /// DRM format modifier.
     pub modifier: u64,
-    /// Offset within the DMA-BUF
-    pub offset: u32,
 }
 
 // ============================================================================
@@ -85,30 +93,39 @@ mod hal_import {
     use ash::vk;
     use std::sync::Arc;
 
-    /// Resources that must be kept alive for the imported texture
+    // ========================================================================
+    // Resource management
+    // ========================================================================
+
+    /// Resources that must be kept alive for the lifetime of an imported texture.
+    ///
+    /// For non-disjoint imports, `memories` contains a single entry.
+    /// For disjoint imports, it contains one entry per plane.
     struct ImportedDmaBufResources {
         device: ash::Device,
         image: vk::Image,
-        memory: vk::DeviceMemory,
+        memories: Vec<vk::DeviceMemory>,
     }
 
     impl Drop for ImportedDmaBufResources {
         fn drop(&mut self) {
             unsafe {
                 self.device.destroy_image(self.image, None);
-                self.device.free_memory(self.memory, None);
+                for &mem in &self.memories {
+                    self.device.free_memory(mem, None);
+                }
             }
-            log::debug!("Cleaned up imported DMA-BUF resources");
+            log::debug!("Cleaned up imported DMA-BUF resources ({} memory allocations)", self.memories.len());
         }
     }
 
-    /// Convert DRM fourcc to Vulkan format
-    ///
-    /// Uses sRGB formats for correct gamma handling. Video content is typically
-    /// encoded with sRGB-like gamma curve (BT.709 transfer function ≈ sRGB).
+    // ========================================================================
+    // Format conversion
+    // ========================================================================
+
+    /// Convert DRM fourcc to Vulkan format (sRGB variants for correct gamma).
     fn drm_fourcc_to_vk_format(fourcc: u32) -> Option<vk::Format> {
         match fourcc {
-            // ARGB8888: bytes [B, G, R, A] in memory = B8G8R8A8_SRGB
             drm_fourcc::DRM_FORMAT_ARGB8888 | drm_fourcc::DRM_FORMAT_XRGB8888 |
             drm_fourcc::DRM_FORMAT_BGRA8888 | drm_fourcc::DRM_FORMAT_BGRX8888 => {
                 Some(vk::Format::B8G8R8A8_SRGB)
@@ -121,12 +138,419 @@ mod hal_import {
         }
     }
 
-    /// Import DMA-BUF as wgpu texture using Vulkan HAL
+    // ========================================================================
+    // Modifier query
+    // ========================================================================
+
+    /// Result of querying a DRM format modifier from the Vulkan driver.
+    #[derive(Debug, Clone, Copy)]
+    struct ModifierProperties {
+        plane_count: u32,
+        tiling_features: vk::FormatFeatureFlags,
+    }
+
+    /// Query the Vulkan driver for properties of a specific DRM format modifier.
     ///
-    /// This is the true zero-copy path that:
-    /// 1. Creates a VkImage with external memory
-    /// 2. Imports the DMA-BUF fd with DRM modifier
-    /// 3. Wraps as wgpu texture via HAL
+    /// Returns the required plane count and supported tiling features, or `None`
+    /// if the modifier is not supported for the given format.
+    unsafe fn query_modifier_properties(
+        instance: &ash::Instance,
+        physical_device: vk::PhysicalDevice,
+        vk_format: vk::Format,
+        modifier: u64,
+    ) -> Option<ModifierProperties> {
+        // First call: get the count of supported modifiers
+        let mut modifier_list = vk::DrmFormatModifierPropertiesListEXT::default();
+        let mut format_props = vk::FormatProperties2::default();
+        format_props.p_next = &mut modifier_list as *mut _ as *mut std::ffi::c_void;
+
+        instance.get_physical_device_format_properties2(physical_device, vk_format, &mut format_props);
+
+        let count = modifier_list.drm_format_modifier_count;
+        if count == 0 {
+            log::debug!("No DRM modifiers supported for format {:?}", vk_format);
+            return None;
+        }
+
+        // Second call: fill the modifier properties array
+        let mut properties = vec![vk::DrmFormatModifierPropertiesEXT::default(); count as usize];
+        modifier_list.drm_format_modifier_count = count;
+        modifier_list.p_drm_format_modifier_properties = properties.as_mut_ptr();
+
+        let mut format_props2 = vk::FormatProperties2::default();
+        format_props2.p_next = &mut modifier_list as *mut _ as *mut std::ffi::c_void;
+
+        instance.get_physical_device_format_properties2(physical_device, vk_format, &mut format_props2);
+
+        // Find the entry matching our modifier
+        for prop in &properties {
+            if prop.drm_format_modifier == modifier {
+                log::info!(
+                    "Modifier {:#x} supported: plane_count={}, features={:?}",
+                    modifier, prop.drm_format_modifier_plane_count, prop.drm_format_modifier_tiling_features
+                );
+                return Some(ModifierProperties {
+                    plane_count: prop.drm_format_modifier_plane_count,
+                    tiling_features: prop.drm_format_modifier_tiling_features,
+                });
+            }
+        }
+
+        log::debug!(
+            "Modifier {:#x} not in the {} modifiers supported for format {:?}",
+            modifier, count, vk_format
+        );
+        None
+    }
+
+    // ========================================================================
+    // Disjoint fd detection
+    // ========================================================================
+
+    /// Check whether the provided fds refer to distinct DMA-BUF allocations.
+    ///
+    /// If all fds share the same inode (same underlying buffer), they are
+    /// "non-disjoint" and can share a single VkDeviceMemory binding.
+    /// If they differ, the image needs `VK_IMAGE_CREATE_DISJOINT_BIT` and
+    /// per-plane memory bindings.
+    unsafe fn are_fds_disjoint(fds: &[RawFd]) -> bool {
+        if fds.len() <= 1 {
+            return false;
+        }
+        let mut first_ino: u64 = 0;
+        for (i, &fd) in fds.iter().enumerate() {
+            let mut stat: libc::stat = std::mem::zeroed();
+            if libc::fstat(fd, &mut stat) != 0 {
+                log::warn!("fstat failed on DMA-BUF fd {}, assuming disjoint", fd);
+                return true;
+            }
+            if i == 0 {
+                first_ino = stat.st_ino;
+            } else if stat.st_ino != first_ino {
+                log::debug!(
+                    "DMA-BUF fds are disjoint: fd[0] ino={}, fd[{}] ino={}",
+                    first_ino, i, stat.st_ino
+                );
+                return true;
+            }
+        }
+        false
+    }
+
+    // ========================================================================
+    // Plane layout helpers
+    // ========================================================================
+
+    /// Map a plane index to its `VK_IMAGE_ASPECT_MEMORY_PLANE_*_BIT_EXT`.
+    fn memory_plane_aspect(plane_index: u32) -> vk::ImageAspectFlags {
+        match plane_index {
+            0 => vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
+            1 => vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
+            2 => vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
+            3 => vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
+            _ => {
+                log::error!("Unsupported plane index {}", plane_index);
+                vk::ImageAspectFlags::MEMORY_PLANE_0_EXT
+            }
+        }
+    }
+
+    /// Build per-plane `VkSubresourceLayout` entries from import params.
+    ///
+    /// The `driver_plane_count` (from the modifier query) may exceed the number
+    /// of planes the buffer actually provides. Missing planes get zero layout.
+    fn build_plane_layouts(params: &DmaBufImportParams, driver_plane_count: u32) -> Vec<vk::SubresourceLayout> {
+        (0..driver_plane_count)
+            .map(|i| {
+                let idx = i as usize;
+                vk::SubresourceLayout {
+                    offset: params.offsets.get(idx).copied().unwrap_or(0) as u64,
+                    size: 0, // Must be 0 — driver calculates it
+                    row_pitch: params.strides.get(idx).copied().unwrap_or(0) as u64,
+                    array_pitch: 0,
+                    depth_pitch: 0,
+                }
+            })
+            .collect()
+    }
+
+    // ========================================================================
+    // Memory allocation helpers
+    // ========================================================================
+
+    /// Find the first compatible memory type index.
+    fn find_memory_type(type_filter: u32) -> Option<u32> {
+        for i in 0..32 {
+            if (type_filter & (1 << i)) != 0 {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    /// Duplicate an fd, returning `None` on failure.
+    unsafe fn dup_fd(fd: RawFd) -> Option<RawFd> {
+        let duped = libc::dup(fd);
+        if duped < 0 {
+            log::warn!("Failed to dup DMA-BUF fd {}", fd);
+            None
+        } else {
+            Some(duped)
+        }
+    }
+
+    /// Allocate and import a DMA-BUF fd as `VkDeviceMemory`.
+    unsafe fn import_fd_as_memory(
+        vk_device: &ash::Device,
+        fd: RawFd,
+        image: vk::Image,
+        allocation_size: u64,
+        memory_type_index: u32,
+    ) -> Option<vk::DeviceMemory> {
+        let fd_dup = dup_fd(fd)?;
+
+        let mut import_fd_info = vk::ImportMemoryFdInfoKHR {
+            s_type: vk::StructureType::IMPORT_MEMORY_FD_INFO_KHR,
+            p_next: std::ptr::null(),
+            handle_type: vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT,
+            fd: fd_dup,
+            ..Default::default()
+        };
+
+        let mut dedicated_alloc_info = vk::MemoryDedicatedAllocateInfo {
+            s_type: vk::StructureType::MEMORY_DEDICATED_ALLOCATE_INFO,
+            p_next: &mut import_fd_info as *mut _ as *mut std::ffi::c_void,
+            image,
+            buffer: vk::Buffer::null(),
+            ..Default::default()
+        };
+
+        let alloc_info = vk::MemoryAllocateInfo {
+            s_type: vk::StructureType::MEMORY_ALLOCATE_INFO,
+            p_next: &mut dedicated_alloc_info as *mut _ as *mut std::ffi::c_void,
+            allocation_size,
+            memory_type_index,
+            ..Default::default()
+        };
+
+        match vk_device.allocate_memory(&alloc_info, None) {
+            Ok(mem) => Some(mem),
+            Err(e) => {
+                log::warn!("Failed to import DMA-BUF memory (fd={}): {:?}", fd, e);
+                // fd is consumed by Vulkan even on failure
+                None
+            }
+        }
+    }
+
+    // ========================================================================
+    // Non-disjoint memory binding (single memory for all planes)
+    // ========================================================================
+
+    /// Bind a single `VkDeviceMemory` to a non-disjoint image.
+    unsafe fn bind_non_disjoint(
+        vk_device: &ash::Device,
+        image: vk::Image,
+        params: &DmaBufImportParams,
+    ) -> Option<Vec<vk::DeviceMemory>> {
+        let mem_requirements = vk_device.get_image_memory_requirements(image);
+
+        log::debug!(
+            "Non-disjoint memory requirements: size={}, alignment={}, type_bits={:#x}",
+            mem_requirements.size, mem_requirements.alignment, mem_requirements.memory_type_bits
+        );
+
+        let memory_type_index = find_memory_type(mem_requirements.memory_type_bits)?;
+        let memory = import_fd_as_memory(
+            vk_device,
+            params.fds[0],
+            image,
+            mem_requirements.size,
+            memory_type_index,
+        )?;
+
+        if let Err(e) = vk_device.bind_image_memory(image, memory, 0) {
+            log::warn!("Failed to bind non-disjoint DMA-BUF memory: {:?}", e);
+            vk_device.free_memory(memory, None);
+            return None;
+        }
+
+        Some(vec![memory])
+    }
+
+    // ========================================================================
+    // Disjoint memory binding (per-plane memory)
+    // ========================================================================
+
+    /// Bind separate `VkDeviceMemory` per plane for a disjoint image.
+    ///
+    /// Uses `vkBindImageMemory2` with `VkBindImagePlaneMemoryInfo` to bind
+    /// each plane's memory independently.
+    unsafe fn bind_disjoint(
+        vk_device: &ash::Device,
+        image: vk::Image,
+        params: &DmaBufImportParams,
+        driver_plane_count: u32,
+    ) -> Option<Vec<vk::DeviceMemory>> {
+        let mut memories = Vec::with_capacity(driver_plane_count as usize);
+
+        for plane_idx in 0..driver_plane_count {
+            let aspect = memory_plane_aspect(plane_idx);
+
+            // Query per-plane memory requirements
+            let mut plane_req_info = vk::ImagePlaneMemoryRequirementsInfo::default()
+                .plane_aspect(aspect);
+            let mut req_info = vk::ImageMemoryRequirementsInfo2::default()
+                .image(image);
+            req_info.p_next = &mut plane_req_info as *mut _ as *const std::ffi::c_void;
+
+            let mut mem_req2 = vk::MemoryRequirements2::default();
+            vk_device.get_image_memory_requirements2(&req_info, &mut mem_req2);
+
+            let mem_req = mem_req2.memory_requirements;
+            log::debug!(
+                "Disjoint plane {} memory requirements: size={}, type_bits={:#x}",
+                plane_idx, mem_req.size, mem_req.memory_type_bits
+            );
+
+            let memory_type_index = match find_memory_type(mem_req.memory_type_bits) {
+                Some(idx) => idx,
+                None => {
+                    log::warn!("No suitable memory type for disjoint plane {}", plane_idx);
+                    // Clean up already-allocated memories
+                    for &mem in &memories {
+                        vk_device.free_memory(mem, None);
+                    }
+                    return None;
+                }
+            };
+
+            let fd_idx = (plane_idx as usize).min(params.fds.len() - 1);
+            let memory = match import_fd_as_memory(
+                vk_device,
+                params.fds[fd_idx],
+                image,
+                mem_req.size,
+                memory_type_index,
+            ) {
+                Some(m) => m,
+                None => {
+                    for &mem in &memories {
+                        vk_device.free_memory(mem, None);
+                    }
+                    return None;
+                }
+            };
+
+            memories.push(memory);
+        }
+
+        // Bind all planes at once via vkBindImageMemory2
+        let mut plane_infos: Vec<vk::BindImagePlaneMemoryInfo> = Vec::with_capacity(driver_plane_count as usize);
+        let mut bind_infos: Vec<vk::BindImageMemoryInfo> = Vec::with_capacity(driver_plane_count as usize);
+
+        for plane_idx in 0..driver_plane_count {
+            plane_infos.push(
+                vk::BindImagePlaneMemoryInfo::default()
+                    .plane_aspect(memory_plane_aspect(plane_idx))
+            );
+        }
+
+        for plane_idx in 0..driver_plane_count as usize {
+            let mut info = vk::BindImageMemoryInfo::default()
+                .image(image)
+                .memory(memories[plane_idx])
+                .memory_offset(0);
+            info.p_next = &mut plane_infos[plane_idx] as *mut _ as *const std::ffi::c_void;
+            bind_infos.push(info);
+        }
+
+        if let Err(e) = vk_device.bind_image_memory2(&bind_infos) {
+            log::warn!("vkBindImageMemory2 failed for disjoint DMA-BUF: {:?}", e);
+            for &mem in &memories {
+                vk_device.free_memory(mem, None);
+            }
+            return None;
+        }
+
+        Some(memories)
+    }
+
+    // ========================================================================
+    // Texture wrapping
+    // ========================================================================
+
+    /// Wrap a Vulkan image + memory as a wgpu texture via HAL.
+    unsafe fn wrap_as_wgpu_texture(
+        wgpu_device: &wgpu::Device,
+        vk_device: &ash::Device,
+        image: vk::Image,
+        memories: Vec<vk::DeviceMemory>,
+        params: &DmaBufImportParams,
+        wgpu_format: wgpu::TextureFormat,
+    ) -> wgpu::Texture {
+        let resources = Arc::new(ImportedDmaBufResources {
+            device: vk_device.clone(),
+            image,
+            memories,
+        });
+
+        let hal_desc = wgpu_hal::TextureDescriptor {
+            label: Some("DMA-BUF imported texture"),
+            size: wgpu::Extent3d {
+                width: params.width,
+                height: params.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu_format,
+            usage: wgpu_hal::TextureUses::RESOURCE,
+            memory_flags: wgpu_hal::MemoryFlags::empty(),
+            view_formats: vec![],
+        };
+
+        let mut resources_opt = Some(resources);
+        let drop_callback: wgpu_hal::DropCallback = Box::new(move || {
+            drop(resources_opt.take());
+        });
+
+        let hal_texture = wgpu_hal::vulkan::Device::texture_from_raw(
+            image,
+            &hal_desc,
+            Some(drop_callback),
+        );
+
+        wgpu_device.create_texture_from_hal::<wgpu::hal::api::Vulkan>(
+            hal_texture,
+            &wgpu::TextureDescriptor {
+                label: Some("DMA-BUF zero-copy texture"),
+                size: wgpu::Extent3d {
+                    width: params.width,
+                    height: params.height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu_format,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
+            },
+        )
+    }
+
+    // ========================================================================
+    // Main entry point
+    // ========================================================================
+
+    /// Import DMA-BUF as wgpu texture using Vulkan HAL (true zero-copy).
+    ///
+    /// 1. Queries the Vulkan driver for modifier support and required plane count
+    /// 2. Creates a VkImage with the correct multi-plane layout
+    /// 3. Detects disjoint vs non-disjoint fds and binds memory accordingly
+    /// 4. Wraps as wgpu texture via HAL
     pub fn import_dmabuf_hal(
         device: &wgpu::Device,
         _queue: &wgpu::Queue,
@@ -138,65 +562,77 @@ mod hal_import {
         let wgpu_format = drm_fourcc_to_wgpu_format(params.fourcc)?;
 
         log::info!(
-            "Attempting true zero-copy DMA-BUF import: fd={}, {}x{}, fourcc={:#x}, modifier={:#x}",
-            params.fd, params.width, params.height, params.fourcc, params.modifier
+            "Attempting DMA-BUF import: {}x{}, fourcc={:#x}, modifier={:#x}, {} planes, fds={:?}",
+            params.width, params.height, params.fourcc, params.modifier,
+            params.num_planes, &params.fds[..params.num_planes as usize]
         );
 
-        // Access raw Vulkan device via wgpu HAL
         unsafe {
             device.as_hal::<Vulkan, _, _>(|hal_device| {
                 let hal_device = hal_device?;
-
-                // Get raw Vulkan handles
-                let raw_device = hal_device.raw_device();
+                let vk_device = hal_device.raw_device();
+                let physical_device = hal_device.raw_physical_device();
+                let instance = hal_device.shared_instance().raw_instance();
+                let vk_queue = hal_device.raw_queue();
+                let queue_family = hal_device.queue_family_index();
 
                 import_dmabuf_vulkan(
-                    device,
-                    raw_device,
-                    params,
-                    vk_format,
-                    wgpu_format,
+                    device, vk_device, instance, physical_device,
+                    vk_queue, queue_family,
+                    params, vk_format, wgpu_format,
                 )
             }).flatten()
         }
     }
 
-    /// Core Vulkan DMA-BUF import
+    /// Core Vulkan DMA-BUF import with modifier query and multi-plane support.
     unsafe fn import_dmabuf_vulkan(
         wgpu_device: &wgpu::Device,
         vk_device: &ash::Device,
+        instance: &ash::Instance,
+        physical_device: vk::PhysicalDevice,
+        vk_queue: vk::Queue,
+        queue_family: u32,
         params: &DmaBufImportParams,
         vk_format: vk::Format,
         wgpu_format: wgpu::TextureFormat,
     ) -> Option<wgpu::Texture> {
-        // Dup the fd since Vulkan takes ownership
-        let fd_dup = libc::dup(params.fd);
-        if fd_dup < 0 {
-            log::warn!("Failed to dup DMA-BUF fd");
+        // Step 1: Query driver for modifier plane count
+        let modifier_props = query_modifier_properties(
+            instance, physical_device, vk_format, params.modifier,
+        )?;
+
+        let driver_plane_count = modifier_props.plane_count;
+        if driver_plane_count == 0 || driver_plane_count > MAX_PLANES as u32 {
+            log::warn!(
+                "Driver reports invalid plane count {} for modifier {:#x}",
+                driver_plane_count, params.modifier
+            );
             return None;
         }
 
-        // Step 1: Set up DRM format modifier plane layout
-        let subresource_layout = vk::SubresourceLayout {
-            offset: params.offset as u64,
-            size: 0, // Ignored for single-plane formats
-            row_pitch: params.stride as u64,
-            array_pitch: 0,
-            depth_pitch: 0,
-        };
+        // Step 2: Determine if fds are disjoint (different DMA-BUF allocations)
+        let active_fds = &params.fds[..params.num_planes.min(driver_plane_count) as usize];
+        let disjoint = are_fds_disjoint(active_fds);
 
-        // Build the pNext chain manually using raw pointers
-        // VkImageDrmFormatModifierExplicitCreateInfoEXT
+        log::debug!(
+            "Import config: driver_plane_count={}, buffer_planes={}, disjoint={}",
+            driver_plane_count, params.num_planes, disjoint
+        );
+
+        // Step 3: Build plane layouts from import params
+        let plane_layouts = build_plane_layouts(params, driver_plane_count);
+
+        // Step 4: Build pNext chain for image creation
         let mut drm_modifier_info = vk::ImageDrmFormatModifierExplicitCreateInfoEXT {
             s_type: vk::StructureType::IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT,
             p_next: std::ptr::null(),
             drm_format_modifier: params.modifier,
-            drm_format_modifier_plane_count: 1,
-            p_plane_layouts: &subresource_layout,
+            drm_format_modifier_plane_count: driver_plane_count,
+            p_plane_layouts: plane_layouts.as_ptr(),
             ..Default::default()
         };
 
-        // VkExternalMemoryImageCreateInfo
         let mut external_memory_info = vk::ExternalMemoryImageCreateInfo {
             s_type: vk::StructureType::EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
             p_next: &mut drm_modifier_info as *mut _ as *mut std::ffi::c_void,
@@ -204,11 +640,16 @@ mod hal_import {
             ..Default::default()
         };
 
-        // Step 2: Create VkImage with external memory
+        let image_flags = if disjoint {
+            vk::ImageCreateFlags::DISJOINT
+        } else {
+            vk::ImageCreateFlags::empty()
+        };
+
         let image_info = vk::ImageCreateInfo {
             s_type: vk::StructureType::IMAGE_CREATE_INFO,
             p_next: &mut external_memory_info as *mut _ as *mut std::ffi::c_void,
-            flags: vk::ImageCreateFlags::empty(),
+            flags: image_flags,
             image_type: vk::ImageType::TYPE_2D,
             format: vk_format,
             extent: vk::Extent3D {
@@ -228,159 +669,136 @@ mod hal_import {
             ..Default::default()
         };
 
+        // Step 5: Create VkImage
         let image = match vk_device.create_image(&image_info, None) {
             Ok(img) => img,
             Err(e) => {
                 log::warn!("Failed to create Vulkan image for DMA-BUF: {:?}", e);
-                libc::close(fd_dup);
                 return None;
             }
         };
 
-        // Step 3: Get memory requirements
-        let mem_requirements = vk_device.get_image_memory_requirements(image);
-
-        log::debug!(
-            "VkImage memory requirements: size={}, alignment={}, memory_type_bits={:#x}",
-            mem_requirements.size, mem_requirements.alignment, mem_requirements.memory_type_bits
-        );
-
-        // Step 4: Import DMA-BUF fd as VkDeviceMemory
-        // Build pNext chain for memory allocation
-        let mut import_fd_info = vk::ImportMemoryFdInfoKHR {
-            s_type: vk::StructureType::IMPORT_MEMORY_FD_INFO_KHR,
-            p_next: std::ptr::null(),
-            handle_type: vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT,
-            fd: fd_dup,
-            ..Default::default()
-        };
-
-        let mut dedicated_alloc_info = vk::MemoryDedicatedAllocateInfo {
-            s_type: vk::StructureType::MEMORY_DEDICATED_ALLOCATE_INFO,
-            p_next: &mut import_fd_info as *mut _ as *mut std::ffi::c_void,
-            image,
-            buffer: vk::Buffer::null(),
-            ..Default::default()
-        };
-
-        // Find memory type that supports device local
-        let memory_type_index = find_memory_type(
-            mem_requirements.memory_type_bits,
-        )?;
-
-        let alloc_info = vk::MemoryAllocateInfo {
-            s_type: vk::StructureType::MEMORY_ALLOCATE_INFO,
-            p_next: &mut dedicated_alloc_info as *mut _ as *mut std::ffi::c_void,
-            allocation_size: mem_requirements.size,
-            memory_type_index,
-            ..Default::default()
-        };
-
-        let memory = match vk_device.allocate_memory(&alloc_info, None) {
-            Ok(mem) => mem,
-            Err(e) => {
-                log::warn!("Failed to import DMA-BUF memory: {:?}", e);
-                vk_device.destroy_image(image, None);
-                // fd is consumed by import even on failure
-                return None;
+        // Step 6: Bind memory (disjoint or non-disjoint)
+        let memories = if disjoint {
+            match bind_disjoint(vk_device, image, params, driver_plane_count) {
+                Some(m) => m,
+                None => {
+                    vk_device.destroy_image(image, None);
+                    return None;
+                }
+            }
+        } else {
+            match bind_non_disjoint(vk_device, image, params) {
+                Some(m) => m,
+                None => {
+                    vk_device.destroy_image(image, None);
+                    return None;
+                }
             }
         };
 
-        // Step 5: Bind memory to image
-        if let Err(e) = vk_device.bind_image_memory(image, memory, 0) {
-            log::warn!("Failed to bind DMA-BUF memory to image: {:?}", e);
-            vk_device.free_memory(memory, None);
+        // Step 7: Transition image layout from UNDEFINED to SHADER_READ_ONLY_OPTIMAL.
+        // DMA-BUF imported images start in UNDEFINED layout. We must perform an
+        // explicit Vulkan barrier to make the external content readable. Without this,
+        // the GPU may return black/garbage when sampling (observed on AMD RADV with DCC).
+        if let Err(e) = transition_image_layout(
+            vk_device, vk_queue, queue_family, image,
+        ) {
+            log::warn!("Failed to transition DMA-BUF image layout: {:?}", e);
+            for &mem in &memories {
+                vk_device.free_memory(mem, None);
+            }
             vk_device.destroy_image(image, None);
             return None;
         }
 
         log::info!(
-            "Successfully created Vulkan image from DMA-BUF: image={:?}, memory={:?}",
-            image, memory
+            "Vulkan DMA-BUF import succeeded: image={:?}, {} memory bindings, disjoint={}",
+            image, memories.len(), disjoint
         );
 
-        // Step 6: Wrap as wgpu texture via HAL
-        // We need to keep the resources alive
-        let resources = Arc::new(ImportedDmaBufResources {
-            device: vk_device.clone(),
-            image,
-            memory,
-        });
-
-        // Create HAL texture descriptor
-        let hal_desc = wgpu_hal::TextureDescriptor {
-            label: Some("DMA-BUF imported texture"),
-            size: wgpu::Extent3d {
-                width: params.width,
-                height: params.height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu_format,
-            usage: wgpu_hal::TextureUses::RESOURCE,
-            memory_flags: wgpu_hal::MemoryFlags::empty(),
-            view_formats: vec![],
-        };
-
-        // Create drop callback to clean up resources
-        // Use Option to allow the Arc to be taken once (FnMut requirement)
-        let resources_clone = Some(resources.clone());
-        let mut resources_opt = resources_clone;
-        let drop_callback: wgpu_hal::DropCallback = Box::new(move || {
-            if let Some(res) = resources_opt.take() {
-                drop(res);
-            }
-        });
-
-        // Create HAL texture from raw Vulkan image
-        // texture_from_raw is a static function in wgpu-hal v23
-        let hal_texture = wgpu_hal::vulkan::Device::texture_from_raw(
-            image,
-            &hal_desc,
-            Some(drop_callback),
+        // Step 8: Wrap as wgpu texture
+        let texture = wrap_as_wgpu_texture(
+            wgpu_device, vk_device, image, memories, params, wgpu_format,
         );
-
-        // Wrap HAL texture as wgpu::Texture
-        let wgpu_texture = wgpu_device.create_texture_from_hal::<wgpu::hal::api::Vulkan>(
-            hal_texture,
-            &wgpu::TextureDescriptor {
-                label: Some("DMA-BUF zero-copy texture"),
-                size: wgpu::Extent3d {
-                    width: params.width,
-                    height: params.height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu_format,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
-                view_formats: &[],
-            },
-        );
-
-        log::info!("Successfully created wgpu texture from DMA-BUF (true zero-copy!)");
-        Some(wgpu_texture)
+        Some(texture)
     }
 
-    /// Find suitable memory type
-    fn find_memory_type(
-        type_filter: u32,
-    ) -> Option<u32> {
-        // Return the first compatible memory type
-        // For external memory import, the driver typically provides the correct type
-        for i in 0..32 {
-            if (type_filter & (1 << i)) != 0 {
-                return Some(i);
-            }
-        }
-        None
+    /// Transition an imported DMA-BUF image from UNDEFINED to SHADER_READ_ONLY_OPTIMAL.
+    ///
+    /// Uses a one-shot command buffer to submit a pipeline barrier. This ensures
+    /// the driver decompresses any tiled/compressed data (e.g., AMD DCC) before
+    /// the image is sampled.
+    unsafe fn transition_image_layout(
+        vk_device: &ash::Device,
+        vk_queue: vk::Queue,
+        queue_family: u32,
+        image: vk::Image,
+    ) -> Result<(), vk::Result> {
+        let pool_info = vk::CommandPoolCreateInfo::default()
+            .flags(vk::CommandPoolCreateFlags::TRANSIENT)
+            .queue_family_index(queue_family);
+
+        let cmd_pool = vk_device.create_command_pool(&pool_info, None)?;
+
+        let alloc_info = vk::CommandBufferAllocateInfo::default()
+            .command_pool(cmd_pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(1);
+
+        let cmd_bufs = vk_device.allocate_command_buffers(&alloc_info)?;
+        let cmd_buf = cmd_bufs[0];
+
+        let begin_info = vk::CommandBufferBeginInfo::default()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        vk_device.begin_command_buffer(cmd_buf, &begin_info)?;
+
+        let barrier = vk::ImageMemoryBarrier::default()
+            .src_access_mask(vk::AccessFlags::empty())
+            .dst_access_mask(vk::AccessFlags::SHADER_READ)
+            .old_layout(vk::ImageLayout::UNDEFINED)
+            .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .image(image)
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            });
+
+        vk_device.cmd_pipeline_barrier(
+            cmd_buf,
+            vk::PipelineStageFlags::TOP_OF_PIPE,
+            vk::PipelineStageFlags::FRAGMENT_SHADER,
+            vk::DependencyFlags::empty(),
+            &[],
+            &[],
+            &[barrier],
+        );
+
+        vk_device.end_command_buffer(cmd_buf)?;
+
+        let cmd_bufs_arr = [cmd_buf];
+        let submit_info = vk::SubmitInfo::default()
+            .command_buffers(&cmd_bufs_arr);
+        vk_device.queue_submit(vk_queue, &[submit_info], vk::Fence::null())?;
+        vk_device.queue_wait_idle(vk_queue)?;
+
+        vk_device.destroy_command_pool(cmd_pool, None);
+
+        log::debug!("DMA-BUF image layout transition: UNDEFINED → SHADER_READ_ONLY_OPTIMAL");
+        Ok(())
     }
 }
 
-/// Import DMA-BUF as wgpu texture - main entry point
+/// Import DMA-BUF as wgpu texture — main entry point.
+///
+/// Fallback chain:
+/// 1. Vulkan HAL zero-copy (queries driver for modifier support)
+/// 2. mmap + CPU upload (only for linear modifiers)
 #[cfg(target_os = "linux")]
 pub fn import_dmabuf(
     device: &wgpu::Device,
@@ -400,22 +818,42 @@ pub fn import_dmabuf(
     import_dmabuf_via_mmap(device, queue, params)
 }
 
-/// Fallback: read DMA-BUF contents via mmap and create texture via CPU copy
+/// Fallback: read DMA-BUF contents via mmap and create texture via CPU copy.
 ///
-/// This is slower than zero-copy but works without special Vulkan extensions.
+/// Only works for linear (untiled) buffers. Tiled/compressed modifiers cannot
+/// be read as linear memory, so this will skip them.
 #[cfg(target_os = "linux")]
 pub fn import_dmabuf_via_mmap(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     params: &DmaBufImportParams,
 ) -> Option<wgpu::Texture> {
+    // Only attempt mmap for linear buffers — tiled data can't be read linearly
+    if params.modifier != drm_fourcc::DRM_FORMAT_MOD_LINEAR
+        && params.modifier != drm_fourcc::DRM_FORMAT_MOD_INVALID
+    {
+        log::debug!(
+            "Skipping mmap for non-linear modifier {:#x} (tiled/compressed data)",
+            params.modifier
+        );
+        return None;
+    }
+
+    if params.fds.is_empty() {
+        log::warn!("import_dmabuf_via_mmap: no fds provided");
+        return None;
+    }
+
     let wgpu_format = drm_fourcc_to_wgpu_format(params.fourcc)?;
 
-    // Calculate expected size
-    let expected_size = (params.stride * params.height) as usize;
+    let stride = params.strides.first().copied().unwrap_or(0);
+    let offset = params.offsets.first().copied().unwrap_or(0);
+    let fd = params.fds[0];
+
+    let expected_size = (stride * params.height) as usize;
 
     // Dup the fd so we don't close the original
-    let fd_dup = unsafe { libc::dup(params.fd) };
+    let fd_dup = unsafe { libc::dup(fd) };
     if fd_dup < 0 {
         log::warn!("import_dmabuf_via_mmap: failed to dup fd");
         return None;
@@ -429,7 +867,7 @@ pub fn import_dmabuf_via_mmap(
             libc::PROT_READ,
             libc::MAP_SHARED,
             fd_dup,
-            params.offset as i64,
+            offset as i64,
         );
 
         if ptr == libc::MAP_FAILED {
@@ -438,18 +876,15 @@ pub fn import_dmabuf_via_mmap(
             return None;
         }
 
-        // Copy data out of mmap
         let slice = std::slice::from_raw_parts(ptr as *const u8, expected_size);
         let data = slice.to_vec();
 
-        // Unmap and close
         libc::munmap(ptr, expected_size);
         libc::close(fd_dup);
 
         data
     };
 
-    // Create texture
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("DMA-BUF mmap texture"),
         size: wgpu::Extent3d {
@@ -465,7 +900,6 @@ pub fn import_dmabuf_via_mmap(
         view_formats: &[],
     });
 
-    // Upload data
     queue.write_texture(
         wgpu::ImageCopyTexture {
             texture: &texture,
@@ -476,7 +910,7 @@ pub fn import_dmabuf_via_mmap(
         &data,
         wgpu::ImageDataLayout {
             offset: 0,
-            bytes_per_row: Some(params.stride),
+            bytes_per_row: Some(stride),
             rows_per_image: Some(params.height),
         },
         wgpu::Extent3d {
@@ -488,8 +922,7 @@ pub fn import_dmabuf_via_mmap(
 
     log::debug!(
         "import_dmabuf_via_mmap: created {}x{} texture via mmap (not zero-copy)",
-        params.width,
-        params.height
+        params.width, params.height
     );
 
     Some(texture)
@@ -501,7 +934,6 @@ mod tests {
 
     #[test]
     fn test_drm_fourcc_to_wgpu() {
-        // sRGB formats for proper color rendering
         assert_eq!(
             drm_fourcc_to_wgpu_format(drm_fourcc::DRM_FORMAT_ARGB8888),
             Some(wgpu::TextureFormat::Bgra8UnormSrgb)

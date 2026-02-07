@@ -1161,8 +1161,23 @@ impl RenderApp {
         }
 
         for (view_id, view) in &self.webkit_views {
-            // Try DMA-BUF first (zero-copy)
-            if let Some(dmabuf) = view.take_latest_dmabuf() {
+            // Prefer pixel upload over DMA-BUF zero-copy.
+            //
+            // wgpu's create_texture_from_hal() always inserts textures with
+            // UNINITIALIZED tracking state, causing a second UNDEFINED layout
+            // transition that discards DMA-BUF content on AMD RADV (and
+            // potentially other drivers with compressed modifiers like DCC/CCS).
+            // Until wgpu supports pre-initialized HAL textures, pixel upload
+            // via wpe_buffer_import_to_pixels() is the reliable path.
+            if let Some(raw_pixels) = view.take_latest_pixels() {
+                // Drain any pending DMA-BUF so it doesn't accumulate
+                let _ = view.take_latest_dmabuf();
+                if renderer.update_webkit_view_pixels(*view_id, raw_pixels.width, raw_pixels.height, &raw_pixels.pixels) {
+                    log::debug!("Uploaded pixels for webkit view {}", view_id);
+                }
+            }
+            // DMA-BUF zero-copy fallback (only if no pixel data available)
+            else if let Some(dmabuf) = view.take_latest_dmabuf() {
                 let num_planes = dmabuf.fds.len().min(4) as u32;
                 let mut fds = [-1i32; 4];
                 let mut strides = [0u32; 4];
@@ -1185,23 +1200,10 @@ impl RenderApp {
                     dmabuf.modifier,
                 );
 
-                // Update the RENDERER's webkit cache, not a separate local cache
                 if renderer.update_webkit_view_dmabuf(*view_id, buffer) {
-                    log::debug!("Imported DMA-BUF for webkit view {}", view_id);
+                    log::debug!("Imported DMA-BUF for webkit view {} (no pixel data available)", view_id);
                 } else {
-                    log::warn!("Failed to import DMA-BUF for webkit view {}", view_id);
-                    // DMA-BUF failed, try pixel fallback
-                    if let Some(raw_pixels) = view.take_latest_pixels() {
-                        if renderer.update_webkit_view_pixels(*view_id, raw_pixels.width, raw_pixels.height, &raw_pixels.pixels) {
-                            log::debug!("Uploaded pixels for webkit view {} (DMA-BUF fallback)", view_id);
-                        }
-                    }
-                }
-            }
-            // Fallback to pixel upload if no DMA-BUF available
-            else if let Some(raw_pixels) = view.take_latest_pixels() {
-                if renderer.update_webkit_view_pixels(*view_id, raw_pixels.width, raw_pixels.height, &raw_pixels.pixels) {
-                    log::debug!("Uploaded pixels for webkit view {}", view_id);
+                    log::warn!("Both pixel and DMA-BUF import failed for webkit view {}", view_id);
                 }
             }
         }

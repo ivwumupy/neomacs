@@ -308,59 +308,32 @@ impl DmaBufBuffer {
 
     /// Import DMA-BUF as wgpu texture.
     ///
-    /// Attempts zero-copy Vulkan import first, falls back to mmap copy if not supported.
+    /// Attempts zero-copy Vulkan import first (with driver modifier query for
+    /// correct multi-plane support), falls back to mmap for linear buffers.
     pub fn to_wgpu_texture(
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) -> Option<wgpu::Texture> {
-        // For XRGB/ARGB/BGRA single-color-plane formats, extra planes are auxiliary
-        // data (Intel CCS compression metadata). We import just plane 0 (the color data).
-        // Multi-plane YUV formats (NV12, etc.) with >2 planes are not yet supported.
-        if self.num_planes > 1 {
-            use super::vulkan_dmabuf::drm_fourcc::*;
-            let is_single_color_plane = matches!(
-                self.fourcc,
-                DRM_FORMAT_ARGB8888 | DRM_FORMAT_XRGB8888 |
-                DRM_FORMAT_ABGR8888 | DRM_FORMAT_XBGR8888 |
-                DRM_FORMAT_RGBA8888 | DRM_FORMAT_RGBX8888 |
-                DRM_FORMAT_BGRA8888 | DRM_FORMAT_BGRX8888
-            );
-            if is_single_color_plane {
-                log::info!(
-                    "DmaBufBuffer: {}-plane format fourcc={:08x}, modifier={:#x}, using plane 0 only (extra planes are CCS metadata)",
-                    self.num_planes, self.fourcc, self.modifier
-                );
-            } else if self.num_planes > 2 {
-                log::warn!(
-                    "DmaBufBuffer: multi-plane YUV format with {} planes not yet supported (fourcc={:08x})",
-                    self.num_planes, self.fourcc
-                );
-                return None;
-            } else {
-                log::info!(
-                    "DmaBufBuffer: 2-plane format fourcc={:08x}, modifier={:#x}, using plane 0 only",
-                    self.fourcc, self.modifier
-                );
-            }
-        }
+        let n = self.num_planes as usize;
 
-        // Import DMA-BUF as wgpu texture
-        // Tries HAL-based zero-copy first, falls back to mmap copy
+        // Build import params with all planes — the Vulkan driver query
+        // determines the correct plane count for the modifier.
         #[cfg(all(feature = "ash", feature = "wgpu-hal"))]
         {
             use super::vulkan_dmabuf::{import_dmabuf, DmaBufImportParams};
             let params = DmaBufImportParams {
-                fd: self.fds[0],
+                fds: self.fds[..n].to_vec(),
+                strides: self.strides[..n].to_vec(),
+                offsets: self.offsets[..n].to_vec(),
+                num_planes: self.num_planes,
                 width: self.width,
                 height: self.height,
-                stride: self.strides[0],
                 fourcc: self.fourcc,
                 modifier: self.modifier,
-                offset: self.offsets[0],
             };
             if let Some(texture) = import_dmabuf(device, queue, &params) {
-                log::debug!("DmaBufBuffer: texture import succeeded");
+                log::debug!("DmaBufBuffer: texture import succeeded ({} planes)", n);
                 return Some(texture);
             }
         }
@@ -370,13 +343,14 @@ impl DmaBufBuffer {
         {
             use super::vulkan_dmabuf::{import_dmabuf_via_mmap, DmaBufImportParams};
             let params = DmaBufImportParams {
-                fd: self.fds[0],
+                fds: self.fds[..n].to_vec(),
+                strides: self.strides[..n].to_vec(),
+                offsets: self.offsets[..n].to_vec(),
+                num_planes: self.num_planes,
                 width: self.width,
                 height: self.height,
-                stride: self.strides[0],
                 fourcc: self.fourcc,
                 modifier: self.modifier,
-                offset: self.offsets[0],
             };
             if let Some(texture) = import_dmabuf_via_mmap(device, queue, &params) {
                 return Some(texture);
@@ -384,10 +358,8 @@ impl DmaBufBuffer {
         }
 
         log::warn!(
-            "DmaBufBuffer::to_wgpu_texture failed ({}x{}, fourcc={:#x})",
-            self.width,
-            self.height,
-            self.fourcc
+            "DmaBufBuffer::to_wgpu_texture failed ({}x{}, fourcc={:#x}, modifier={:#x}, {} planes)",
+            self.width, self.height, self.fourcc, self.modifier, self.num_planes
         );
         None
     }
