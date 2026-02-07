@@ -196,6 +196,10 @@ static struct redisplay_interface neomacs_redisplay_interface = {
 
 /* Forward declaration for wakeup handler (defined in Threaded Mode Support section) */
 static void neomacs_display_wakeup_handler (int fd, void *data);
+/* Forward declarations for image.c terminal hooks */
+static void neomacs_query_colors (struct frame *, Emacs_Color *, int);
+static void neomacs_query_frame_background_color (struct frame *, Emacs_Color *);
+static void neomacs_free_pixmap (struct frame *, Emacs_Pixmap);
 
 /* Create a new Neomacs display connection */
 struct neomacs_display_info *
@@ -400,6 +404,9 @@ neomacs_create_terminal (struct neomacs_display_info *dpyinfo)
   terminal->update_begin_hook = neomacs_update_begin;
   terminal->update_end_hook = neomacs_update_end;
   terminal->defined_color_hook = neomacs_defined_color;
+  terminal->query_colors = neomacs_query_colors;
+  terminal->query_frame_background_color = neomacs_query_frame_background_color;
+  terminal->free_pixmap = neomacs_free_pixmap;
   terminal->get_string_resource_hook = neomacs_get_string_resource;
   terminal->set_new_font_hook = neomacs_new_font;
   terminal->read_socket_hook = neomacs_read_socket;
@@ -1366,6 +1373,40 @@ neomacs_defined_color (struct frame *f, const char *color_name,
     }
 
   return false;
+}
+
+/* Convert pixel values back to 16-bit RGB components.
+   Pixel format: (R << 16) | (G << 8) | B, with 8-bit components.
+   Called by image.c for PBM/XPM/etc. color handling under USE_CAIRO. */
+static void
+neomacs_query_colors (struct frame *f, Emacs_Color *colors, int ncolors)
+{
+  for (int i = 0; i < ncolors; i++)
+    {
+      unsigned long pixel = colors[i].pixel;
+      colors[i].red   = ((pixel >> 16) & 0xff) * 257;
+      colors[i].green = ((pixel >>  8) & 0xff) * 257;
+      colors[i].blue  = ((pixel >>  0) & 0xff) * 257;
+    }
+}
+
+/* Get the frame background color as an Emacs_Color. */
+static void
+neomacs_query_frame_background_color (struct frame *f, Emacs_Color *bgcolor)
+{
+  bgcolor->pixel = FRAME_BACKGROUND_PIXEL (f);
+  neomacs_query_colors (f, bgcolor, 1);
+}
+
+/* Free a Cairo-style pixmap (Emacs_Pix_Container). */
+static void
+neomacs_free_pixmap (struct frame *f, Emacs_Pixmap pixmap)
+{
+  if (pixmap)
+    {
+      xfree (pixmap->data);
+      xfree (pixmap);
+    }
 }
 
 
