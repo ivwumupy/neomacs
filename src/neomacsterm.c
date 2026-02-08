@@ -8385,6 +8385,32 @@ RADIUS is the inset in pixels from each edge (default 80).  */)
   return on ? Qt : Qnil;
 }
 
+DEFUN ("neomacs-set-window-switch-fade",
+       Fneomacs_set_window_switch_fade,
+       Sneomacs_set_window_switch_fade, 0, 3, 0,
+       doc: /* Configure window switch highlight fade effect.
+ENABLED non-nil flashes a brief white overlay on the newly selected window.
+DURATION-MS is the fade duration in milliseconds (default 200).
+INTENSITY is 0-100 for overlay brightness (default 15).  */)
+  (Lisp_Object enabled, Lisp_Object duration_ms, Lisp_Object intensity)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+
+  int on = !NILP (enabled);
+  int dur = 200;
+  int inten = 15;
+  if (FIXNUMP (duration_ms))
+    dur = XFIXNUM (duration_ms);
+  if (FIXNUMP (intensity))
+    inten = XFIXNUM (intensity);
+
+  neomacs_display_set_window_switch_fade (
+    dpyinfo->display_handle, on, dur, inten);
+  return on ? Qt : Qnil;
+}
+
 DEFUN ("neomacs-set-background-pattern",
        Fneomacs_set_background_pattern,
        Sneomacs_set_background_pattern, 0, 4, 0,
@@ -9761,6 +9787,7 @@ syms_of_neomacsterm (void)
   defsubr (&Sneomacs_set_line_animation);
   defsubr (&Sneomacs_set_header_shadow);
   defsubr (&Sneomacs_set_cursor_color_cycle);
+  defsubr (&Sneomacs_set_window_switch_fade);
 
   /* Cursor blink */
   defsubr (&Sneomacs_set_cursor_blink);

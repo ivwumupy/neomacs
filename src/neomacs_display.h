@@ -1377,6 +1377,12 @@ void neomacs_display_set_vignette(
     int intensity,
     int radius);
 
+void neomacs_display_set_window_switch_fade(
+    struct NeomacsDisplay *handle,
+    int enabled,
+    int duration_ms,
+    int intensity);
+
 void neomacs_display_set_mode_line_separator(
     struct NeomacsDisplay *handle,
     int style,

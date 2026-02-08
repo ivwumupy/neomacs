@@ -378,6 +378,12 @@ pub enum RenderCommand {
         /// Radius as percentage of frame diagonal (0-100)
         radius: f32,
     },
+    /// Configure window switch highlight fade
+    SetWindowSwitchFade {
+        enabled: bool,
+        duration_ms: u32,
+        intensity: f32,
+    },
     /// Configure cursor color cycling (rainbow hue rotation)
     SetCursorColorCycle {
         enabled: bool,

@@ -1194,6 +1194,53 @@ spectrum, creating a colorful animated cursor effect."
                 neomacs-cursor-color-cycle-saturation nil)
             val))))
 
+;; --- Window switch highlight fade ---
+(declare-function neomacs-set-window-switch-fade "neomacsterm.c"
+  (&optional enabled duration-ms intensity))
+
+(defcustom neomacs-window-switch-fade nil
+  "Enable highlight fade on window switch.
+Non-nil flashes a brief white overlay on the newly selected window
+when switching between windows, providing visual feedback."
+  :type 'boolean
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-window-switch-fade)
+           (neomacs-set-window-switch-fade val
+            (if (boundp 'neomacs-window-switch-fade-duration)
+                neomacs-window-switch-fade-duration nil)
+            (if (boundp 'neomacs-window-switch-fade-intensity)
+                neomacs-window-switch-fade-intensity nil)))))
+
+(defcustom neomacs-window-switch-fade-duration 200
+  "Duration of window switch fade animation in milliseconds."
+  :type '(integer :tag "Duration (ms)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-window-switch-fade)
+                    (boundp 'neomacs-window-switch-fade)
+                    neomacs-window-switch-fade)
+           (neomacs-set-window-switch-fade t val
+            (if (boundp 'neomacs-window-switch-fade-intensity)
+                neomacs-window-switch-fade-intensity nil)))))
+
+(defcustom neomacs-window-switch-fade-intensity 15
+  "Intensity of window switch fade overlay (0-100).
+Higher values make the flash brighter."
+  :type '(integer :tag "Intensity")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-window-switch-fade)
+                    (boundp 'neomacs-window-switch-fade)
+                    neomacs-window-switch-fade)
+           (neomacs-set-window-switch-fade t
+            (if (boundp 'neomacs-window-switch-fade-duration)
+                neomacs-window-switch-fade-duration nil)
+            val))))
+
 ;; --- Header/mode-line shadow ---
 (declare-function neomacs-set-header-shadow "neomacsterm.c"
   (&optional enabled intensity size))

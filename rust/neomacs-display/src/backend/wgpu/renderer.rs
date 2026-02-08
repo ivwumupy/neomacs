@@ -149,6 +149,21 @@ pub struct WgpuRenderer {
     cursor_color_cycle_saturation: f32,
     cursor_color_cycle_lightness: f32,
     cursor_color_cycle_start: std::time::Instant,
+    /// Window switch highlight fade
+    window_switch_fade_enabled: bool,
+    window_switch_fade_duration_ms: u32,
+    window_switch_fade_intensity: f32,
+    /// Active window switch fades: (window_id, bounds, started, duration, intensity)
+    active_window_fades: Vec<WindowFadeEntry>,
+}
+
+/// Entry for an active window switch highlight fade
+struct WindowFadeEntry {
+    window_id: i64,
+    bounds: Rect,
+    started: std::time::Instant,
+    duration: std::time::Duration,
+    intensity: f32,
 }
 
 /// Entry for an active line insertion/deletion animation
@@ -687,6 +702,10 @@ impl WgpuRenderer {
             cursor_color_cycle_saturation: 0.8,
             cursor_color_cycle_lightness: 0.6,
             cursor_color_cycle_start: std::time::Instant::now(),
+            window_switch_fade_enabled: false,
+            window_switch_fade_duration_ms: 200,
+            window_switch_fade_intensity: 0.15,
+            active_window_fades: Vec::new(),
         }
     }
 
@@ -806,6 +825,26 @@ impl WgpuRenderer {
         if enabled {
             self.cursor_color_cycle_start = std::time::Instant::now();
         }
+    }
+
+    /// Update window switch fade config
+    pub fn set_window_switch_fade(&mut self, enabled: bool, duration_ms: u32, intensity: f32) {
+        self.window_switch_fade_enabled = enabled;
+        self.window_switch_fade_duration_ms = duration_ms;
+        self.window_switch_fade_intensity = intensity;
+    }
+
+    /// Start a window switch fade for a specific window
+    pub fn start_window_fade(&mut self, window_id: i64, bounds: Rect) {
+        // Remove any existing fade for this window
+        self.active_window_fades.retain(|f| f.window_id != window_id);
+        self.active_window_fades.push(WindowFadeEntry {
+            window_id,
+            bounds,
+            started: std::time::Instant::now(),
+            duration: std::time::Duration::from_millis(self.window_switch_fade_duration_ms as u64),
+            intensity: self.window_switch_fade_intensity,
+        });
     }
 
     /// Convert HSL to sRGB Color
@@ -3754,6 +3793,52 @@ impl WgpuRenderer {
                     render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
                     render_pass.set_vertex_buffer(0, vignette_buffer.slice(..));
                     render_pass.draw(0..vignette_vertices.len() as u32, 0..1);
+                }
+            }
+
+            // === Window switch highlight fade ===
+            if !self.active_window_fades.is_empty() {
+                let mut fade_vertices: Vec<RectVertex> = Vec::new();
+                let now = std::time::Instant::now();
+
+                for fade in &self.active_window_fades {
+                    let elapsed = now.duration_since(fade.started);
+                    let t = (elapsed.as_secs_f32() / fade.duration.as_secs_f32()).min(1.0);
+                    if t >= 1.0 { continue; }
+                    // Ease-out: bright flash that fades smoothly
+                    let eased = t * (2.0 - t);
+                    let alpha = fade.intensity * (1.0 - eased);
+
+                    let color = Color::new(1.0, 1.0, 1.0, alpha);
+                    self.add_rect(
+                        &mut fade_vertices,
+                        fade.bounds.x, fade.bounds.y,
+                        fade.bounds.width, fade.bounds.height,
+                        &color,
+                    );
+                }
+
+                // Clean up completed fades
+                self.active_window_fades.retain(|f| {
+                    f.started.elapsed().as_secs_f32() < f.duration.as_secs_f32()
+                });
+
+                if !self.active_window_fades.is_empty() {
+                    self.needs_continuous_redraw = true;
+                }
+
+                if !fade_vertices.is_empty() {
+                    let fade_buffer = self.device.create_buffer_init(
+                        &wgpu::util::BufferInitDescriptor {
+                            label: Some("Window Switch Fade Buffer"),
+                            contents: bytemuck::cast_slice(&fade_vertices),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        },
+                    );
+                    render_pass.set_pipeline(&self.rect_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, fade_buffer.slice(..));
+                    render_pass.draw(0..fade_vertices.len() as u32, 0..1);
                 }
             }
         }

@@ -705,6 +705,11 @@ struct RenderApp {
     cursor_color_cycle_speed: f32,
     cursor_color_cycle_saturation: f32,
     cursor_color_cycle_lightness: f32,
+    /// Window switch highlight fade
+    window_switch_fade_enabled: bool,
+    window_switch_fade_duration_ms: u32,
+    window_switch_fade_intensity: f32,
+    prev_selected_window_id: i64,
 }
 
 /// State for a tooltip displayed as GPU overlay
@@ -916,6 +921,10 @@ impl RenderApp {
             cursor_color_cycle_speed: 0.5,
             cursor_color_cycle_saturation: 0.8,
             cursor_color_cycle_lightness: 0.6,
+            window_switch_fade_enabled: false,
+            window_switch_fade_duration_ms: 200,
+            window_switch_fade_intensity: 0.15,
+            prev_selected_window_id: 0,
         }
     }
 
@@ -1777,6 +1786,15 @@ impl RenderApp {
                     }
                     self.frame_dirty = true;
                 }
+                RenderCommand::SetWindowSwitchFade { enabled, duration_ms, intensity } => {
+                    self.window_switch_fade_enabled = enabled;
+                    self.window_switch_fade_duration_ms = duration_ms;
+                    self.window_switch_fade_intensity = intensity;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_window_switch_fade(enabled, duration_ms, intensity);
+                    }
+                    self.frame_dirty = true;
+                }
             }
         }
 
@@ -2611,6 +2629,26 @@ impl RenderApp {
                         old_bind_group: bg,
                     });
                 }
+            }
+        }
+
+        // Detect window switch (selected window changed) → highlight fade
+        if self.window_switch_fade_enabled {
+            let mut new_selected: Option<(i64, Rect)> = None;
+            for info in &frame.window_infos {
+                if info.selected && !info.is_minibuffer {
+                    new_selected = Some((info.window_id, info.bounds));
+                    break;
+                }
+            }
+            if let Some((wid, bounds)) = new_selected {
+                if self.prev_selected_window_id != 0 && wid != self.prev_selected_window_id {
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.start_window_fade(wid, bounds);
+                        self.frame_dirty = true;
+                    }
+                }
+                self.prev_selected_window_id = wid;
             }
         }
 
