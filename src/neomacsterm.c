@@ -2512,6 +2512,23 @@ neomacs_layout_check_display_prop (void *buffer_ptr, void *window_ptr,
               return 0;
             }
 
+          /* Check :relative-width first — width relative to
+             the character at this position (typically 1 column) */
+          Lisp_Object relw = Fplist_get (plist, QCrelative_width, Qnil);
+          if (!NILP (relw))
+            {
+              float factor = 1.0;
+              if (FIXNUMP (relw))
+                factor = (float) XFIXNUM (relw);
+              else if (FLOATP (relw))
+                factor = (float) XFLOAT_DATA (relw);
+              /* In monospace, relative-width 1 = 1 column */
+              out->space_width = factor;
+              out->type = 2;
+              set_buffer_internal_1 (old);
+              return 0;
+            }
+
           /* Space spec: (space :width N) or (space :width (N)) for pixels */
           Lisp_Object width_val = Fplist_get (plist, QCwidth, Qnil);
           if (FIXNUMP (width_val))
