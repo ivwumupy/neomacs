@@ -1901,6 +1901,22 @@ pub unsafe extern "C" fn neomacs_display_reset_cursor_blink(handle: *mut Neomacs
     // New frames reset the blink timer automatically in poll_frame().
 }
 
+/// Set mouse pointer cursor shape.
+/// Types: 1=default/arrow, 2=text/ibeam, 3=hand/pointer,
+///        4=crosshair, 5=h-resize, 6=v-resize, 7=hourglass
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_mouse_cursor(
+    _handle: *mut NeomacsDisplay,
+    cursor_type: c_int,
+) {
+    let cmd = RenderCommand::SetMouseCursor {
+        cursor_type: cursor_type as i32,
+    };
+    if let Some(ref state) = THREADED_STATE {
+        let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+    }
+}
+
 /// Configure cursor blinking (enable/disable and interval)
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_set_cursor_blink(

@@ -1608,6 +1608,18 @@ If the parameters specify a display, that display is used.  */)
   FRAME_NEOMACS_OUTPUT (f)->cursor_pixel = dpyinfo->black_pixel;
   FRAME_NEOMACS_OUTPUT (f)->cursor_foreground_pixel = dpyinfo->white_pixel;
 
+  /* Initialize mouse pointer cursor shapes.
+     Values are integer constants matching Rust CursorIcon mapping:
+     1=default/arrow, 2=text/ibeam, 3=hand/pointer,
+     4=crosshair, 5=h-resize, 6=v-resize, 7=hourglass */
+  FRAME_NEOMACS_OUTPUT (f)->text_cursor = (Emacs_Cursor) 2;
+  FRAME_NEOMACS_OUTPUT (f)->nontext_cursor = (Emacs_Cursor) 1;
+  FRAME_NEOMACS_OUTPUT (f)->hand_cursor = (Emacs_Cursor) 3;
+  FRAME_NEOMACS_OUTPUT (f)->modeline_cursor = (Emacs_Cursor) 6;
+  FRAME_NEOMACS_OUTPUT (f)->hourglass_cursor = (Emacs_Cursor) 7;
+  FRAME_NEOMACS_OUTPUT (f)->horizontal_drag_cursor = (Emacs_Cursor) 5;
+  FRAME_NEOMACS_OUTPUT (f)->vertical_drag_cursor = (Emacs_Cursor) 6;
+
   /* Store in frame list */
   Vframe_list = Fcons (frame, Vframe_list);
 

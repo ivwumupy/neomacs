@@ -139,6 +139,8 @@ pub enum RenderCommand {
     VideoPlay { id: u32 },
     VideoPause { id: u32 },
     VideoDestroy { id: u32 },
+    /// Change the mouse pointer cursor shape (arrow, hand, ibeam, etc.)
+    SetMouseCursor { cursor_type: i32 },
     /// Configure cursor blinking
     SetCursorBlink { enabled: bool, interval_ms: u32 },
     /// Configure cursor animation (smooth motion)

@@ -63,6 +63,7 @@ static int neomacs_image_cache_count = 0;
 
 /* Forward declarations */
 static void neomacs_extract_full_frame (struct frame *f);
+static void neomacs_define_frame_cursor (struct frame *f, Emacs_Cursor cursor);
 
 /* Rust layout engine FFI entry point (defined in layout/engine.rs via ffi.rs) */
 extern void neomacs_rust_layout_frame (void *display_handle, void *frame_ptr,
@@ -197,7 +198,7 @@ static struct redisplay_interface neomacs_redisplay_interface = {
   .destroy_fringe_bitmap = NULL,
   .compute_glyph_string_overhangs = NULL,
   .draw_glyph_string = neomacs_draw_glyph_string,
-  .define_frame_cursor = NULL,
+  .define_frame_cursor = neomacs_define_frame_cursor,
   .clear_frame_area = neomacs_clear_frame_area,
   .clear_under_internal_border = NULL,
   .draw_window_cursor = neomacs_draw_window_cursor,
@@ -5023,6 +5024,30 @@ neomacs_draw_window_cursor (struct window *w, struct glyph_row *row,
     case NO_CURSOR:
       break;
     }
+}
+
+
+/* ============================================================================
+ * Mouse Pointer Cursor Shape
+ * ============================================================================ */
+
+/* Change the mouse pointer cursor shape for a frame.
+   Called by gui_define_frame_cursor() when the mouse moves over
+   different elements (text, links, mode-line, fringes, etc.).
+   Cursor type values (matching Rust CursorIcon mapping):
+   1=default/arrow, 2=text/ibeam, 3=hand/pointer,
+   4=crosshair, 5=h-resize, 6=v-resize, 7=hourglass */
+static void
+neomacs_define_frame_cursor (struct frame *f, Emacs_Cursor cursor)
+{
+  struct neomacs_display_info *dpyinfo = FRAME_NEOMACS_DISPLAY_INFO (f);
+
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return;
+
+  int cursor_type = (int)(intptr_t) cursor;
+  neomacs_display_set_mouse_cursor (dpyinfo->display_handle,
+                                     cursor_type);
 }
 
 

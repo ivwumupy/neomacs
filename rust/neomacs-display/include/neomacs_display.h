@@ -572,6 +572,10 @@ typedef struct DisplayPropFFI {
    * Fringe face background color (type=6,7)
    */
   uint32_t fringeBg;
+  /**
+   * Font height multiplier (type=5,8): 0.0=default, >0=scale factor
+   */
+  float heightFactor;
 } DisplayPropFFI;
 
 #define VA_STATUS_SUCCESS 0
@@ -975,6 +979,13 @@ void neomacs_display_smooth_scroll(struct NeomacsDisplay *handle,
  * Reset cursor blink (call when cursor moves)
  */
 void neomacs_display_reset_cursor_blink(struct NeomacsDisplay *handle);
+
+/**
+ * Set mouse pointer cursor shape.
+ * Types: 1=default/arrow, 2=text/ibeam, 3=hand/pointer,
+ *        4=crosshair, 5=h-resize, 6=v-resize, 7=hourglass
+ */
+void neomacs_display_set_mouse_cursor(struct NeomacsDisplay *handle, int cursorType);
 
 /**
  * Configure cursor blinking (enable/disable and interval)
@@ -1714,5 +1725,17 @@ extern int neomacs_layout_check_line_spacing(EmacsBuffer buffer,
                                              int64_t charpos,
                                              float baseHeight,
                                              float *extraHeightOut);
+
+/**
+ * Check line-prefix or wrap-prefix text property at a position.
+ * prefix_type: 0=line-prefix, 1=wrap-prefix
+ * Returns prefix width in columns via width_out.
+ * width_out = -1.0 means no override (use window default).
+ */
+extern int neomacs_layout_check_line_prefix(EmacsBuffer buffer,
+                                            EmacsWindow window,
+                                            int64_t charpos,
+                                            int prefixType,
+                                            float *widthOut);
 
 #endif  /* NEOMACS_DISPLAY_H */

@@ -734,6 +734,21 @@ impl RenderApp {
                         renderer.video_stop(id);
                     }
                 }
+                RenderCommand::SetMouseCursor { cursor_type } => {
+                    use winit::window::CursorIcon;
+                    let icon = match cursor_type {
+                        2 => CursorIcon::Text,      // I-beam
+                        3 => CursorIcon::Pointer,    // Hand/pointer
+                        4 => CursorIcon::Crosshair,
+                        5 => CursorIcon::EwResize,   // Horizontal resize
+                        6 => CursorIcon::NsResize,   // Vertical resize
+                        7 => CursorIcon::Wait,       // Hourglass
+                        _ => CursorIcon::Default,    // Arrow
+                    };
+                    if let Some(ref window) = self.window {
+                        window.set_cursor(icon);
+                    }
+                }
                 RenderCommand::SetCursorBlink { enabled, interval_ms } => {
                     log::debug!("Cursor blink: enabled={}, interval={}ms", enabled, interval_ms);
                     self.cursor_blink_enabled = enabled;

@@ -581,6 +581,14 @@ void neomacs_display_smooth_scroll(struct NeomacsDisplay *handle,
                                    float toOffset);
 
 /**
+ * Set mouse pointer cursor shape.
+ * Types: 1=default/arrow, 2=text/ibeam, 3=hand/pointer,
+ *        4=crosshair, 5=h-resize, 6=v-resize, 7=hourglass
+ */
+void neomacs_display_set_mouse_cursor(struct NeomacsDisplay *handle,
+                                       int cursor_type);
+
+/**
  * Reset cursor blink (call when cursor moves)
  */
 void neomacs_display_reset_cursor_blink(struct NeomacsDisplay *handle);
