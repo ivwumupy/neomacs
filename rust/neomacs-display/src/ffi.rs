@@ -2781,6 +2781,26 @@ pub unsafe extern "C" fn neomacs_display_set_title_fade(
     }
 }
 
+/// Configure selection region glow highlight
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_region_glow(
+    _handle: *mut NeomacsDisplay,
+    enabled: c_int,
+    face_id: c_int,
+    radius: c_int,
+    opacity: c_int,
+) {
+    let cmd = RenderCommand::SetRegionGlow {
+        enabled: enabled != 0,
+        face_id: face_id as u32,
+        radius: radius as f32,
+        opacity: opacity as f32 / 100.0,
+    };
+    if let Some(ref state) = THREADED_STATE {
+        let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+    }
+}
+
 /// Configure idle screen dimming after inactivity
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_set_idle_dim(

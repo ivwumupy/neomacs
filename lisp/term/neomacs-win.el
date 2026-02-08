@@ -1411,6 +1411,47 @@ on mode-line areas to simulate a blurred glass appearance."
                 neomacs-frosted-glass-opacity nil)
             val))))
 
+;; --- Selection region glow ---
+(declare-function neomacs-set-region-glow "neomacsterm.c"
+  (&optional enabled face-id radius opacity))
+
+(defcustom neomacs-region-glow nil
+  "Enable selection region glow highlight.
+Non-nil renders a soft glow around the active text selection, using
+the region face background color for the glow tint."
+  :type 'boolean
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-region-glow)
+           (neomacs-set-region-glow val nil
+            (if (boundp 'neomacs-region-glow-radius)
+                neomacs-region-glow-radius nil)
+            (if (boundp 'neomacs-region-glow-opacity)
+                neomacs-region-glow-opacity nil)))))
+
+(defcustom neomacs-region-glow-radius 6
+  "Glow radius in pixels for region highlight."
+  :type '(integer :tag "Radius")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-region-glow)
+                    (boundp 'neomacs-region-glow)
+                    neomacs-region-glow)
+           (neomacs-set-region-glow t nil val))))
+
+(defcustom neomacs-region-glow-opacity 30
+  "Glow opacity for region highlight (0-100)."
+  :type '(integer :tag "Opacity")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-region-glow)
+                    (boundp 'neomacs-region-glow)
+                    neomacs-region-glow)
+           (neomacs-set-region-glow t nil nil val))))
+
 ;; --- Idle screen dimming ---
 (declare-function neomacs-set-idle-dim "neomacsterm.c"
   (&optional enabled delay-secs opacity fade-ms))

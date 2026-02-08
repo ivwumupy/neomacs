@@ -735,6 +735,11 @@ struct RenderApp {
     /// Buffer-local accent color strip
     accent_strip_enabled: bool,
     accent_strip_width: f32,
+    /// Selection region glow
+    region_glow_enabled: bool,
+    region_glow_face_id: u32,
+    region_glow_radius: f32,
+    region_glow_opacity: f32,
     /// Idle screen dimming
     idle_dim_enabled: bool,
     idle_dim_delay: std::time::Duration,
@@ -1009,6 +1014,10 @@ impl RenderApp {
             border_transition_duration_ms: 200,
             accent_strip_enabled: false,
             accent_strip_width: 3.0,
+            region_glow_enabled: false,
+            region_glow_face_id: 0,
+            region_glow_radius: 6.0,
+            region_glow_opacity: 0.3,
             idle_dim_enabled: false,
             idle_dim_delay: std::time::Duration::from_secs(60),
             idle_dim_opacity: 0.4,
@@ -1974,6 +1983,16 @@ impl RenderApp {
                     self.accent_strip_width = width;
                     if let Some(renderer) = self.renderer.as_mut() {
                         renderer.set_accent_strip(enabled, width);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetRegionGlow { enabled, face_id, radius, opacity } => {
+                    self.region_glow_enabled = enabled;
+                    self.region_glow_face_id = face_id;
+                    self.region_glow_radius = radius;
+                    self.region_glow_opacity = opacity;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_region_glow(enabled, face_id, radius, opacity);
                     }
                     self.frame_dirty = true;
                 }

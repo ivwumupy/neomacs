@@ -1376,6 +1376,15 @@ void neomacs_display_set_typing_speed(struct NeomacsDisplay *handle, int enabled
 void neomacs_display_set_title_fade(struct NeomacsDisplay *handle, int enabled, int durationMs);
 
 /**
+ * Configure selection region glow highlight
+ */
+void neomacs_display_set_region_glow(struct NeomacsDisplay *handle,
+                                     int enabled,
+                                     int faceId,
+                                     int radius,
+                                     int opacity);
+
+/**
  * Configure idle screen dimming after inactivity
  */
 void neomacs_display_set_idle_dim(struct NeomacsDisplay *handle,

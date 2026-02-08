@@ -450,6 +450,16 @@ pub enum RenderCommand {
         /// Blur radius (noise spread in pixels)
         blur: f32,
     },
+    /// Configure selection region glow highlight
+    SetRegionGlow {
+        enabled: bool,
+        /// Face ID of the region face
+        face_id: u32,
+        /// Glow radius in pixels
+        radius: f32,
+        /// Glow opacity (0.0-1.0)
+        opacity: f32,
+    },
     /// Configure idle screen dimming after inactivity
     SetIdleDim {
         enabled: bool,

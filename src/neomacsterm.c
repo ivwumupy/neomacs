@@ -8624,6 +8624,44 @@ BLUR is the blur spread radius in pixels (default 4).  */)
   return on ? Qt : Qnil;
 }
 
+DEFUN ("neomacs-set-region-glow",
+       Fneomacs_set_region_glow,
+       Sneomacs_set_region_glow, 0, 4, 0,
+       doc: /* Configure selection region glow highlight.
+ENABLED non-nil renders a soft glow around the active text selection
+region, using the region face background color.
+FACE-ID is the numeric face ID of the region face (auto-detected if nil).
+RADIUS is glow radius in pixels (default 6).
+OPACITY is 0-100 for glow intensity (default 30).  */)
+  (Lisp_Object enabled, Lisp_Object face_id, Lisp_Object radius,
+   Lisp_Object opacity)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+
+  int on = !NILP (enabled);
+  int fid = 0;
+  int rad = 6;
+  int op = 30;
+
+  if (FIXNUMP (face_id))
+    fid = XFIXNUM (face_id);
+  else if (on)
+    {
+      /* Auto-detect region face ID */
+      Lisp_Object region_sym = intern ("region");
+      fid = lookup_named_face (NULL, NULL, region_sym, false);
+      if (fid < 0) fid = 0;
+    }
+
+  if (FIXNUMP (radius)) rad = XFIXNUM (radius);
+  if (FIXNUMP (opacity)) op = XFIXNUM (opacity);
+
+  neomacs_display_set_region_glow (dpyinfo->display_handle, on, fid, rad, op);
+  return on ? Qt : Qnil;
+}
+
 DEFUN ("neomacs-set-idle-dim",
        Fneomacs_set_idle_dim,
        Sneomacs_set_idle_dim, 0, 4, 0,
@@ -10144,6 +10182,7 @@ syms_of_neomacsterm (void)
   defsubr (&Sneomacs_set_padding_gradient);
   defsubr (&Sneomacs_set_noise_grain);
   defsubr (&Sneomacs_set_idle_dim);
+  defsubr (&Sneomacs_set_region_glow);
   defsubr (&Sneomacs_set_window_glow);
   defsubr (&Sneomacs_set_scroll_progress);
   defsubr (&Sneomacs_set_inactive_tint);

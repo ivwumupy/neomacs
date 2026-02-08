@@ -170,6 +170,11 @@ pub struct WgpuRenderer {
     /// Buffer-local accent color strip
     accent_strip_enabled: bool,
     accent_strip_width: f32,
+    /// Selection region glow
+    region_glow_enabled: bool,
+    region_glow_face_id: u32,
+    region_glow_radius: f32,
+    region_glow_opacity: f32,
     /// Idle screen dimming alpha (0.0 = no dim, >0 = overlay)
     idle_dim_alpha: f32,
     /// Noise/film grain overlay
@@ -776,6 +781,10 @@ impl WgpuRenderer {
             prev_border_selected: 0,
             accent_strip_enabled: false,
             accent_strip_width: 3.0,
+            region_glow_enabled: false,
+            region_glow_face_id: 0,
+            region_glow_radius: 6.0,
+            region_glow_opacity: 0.3,
             idle_dim_alpha: 0.0,
             noise_grain_enabled: false,
             noise_grain_intensity: 0.03,
@@ -974,6 +983,14 @@ impl WgpuRenderer {
     pub fn set_accent_strip(&mut self, enabled: bool, width: f32) {
         self.accent_strip_enabled = enabled;
         self.accent_strip_width = width;
+    }
+
+    /// Update region glow config
+    pub fn set_region_glow(&mut self, enabled: bool, face_id: u32, radius: f32, opacity: f32) {
+        self.region_glow_enabled = enabled;
+        self.region_glow_face_id = face_id;
+        self.region_glow_radius = radius;
+        self.region_glow_opacity = opacity;
     }
 
     /// Update idle dim alpha
@@ -4020,6 +4037,83 @@ impl WgpuRenderer {
                     }
 
                     self.needs_continuous_redraw = true;
+                }
+            }
+
+            // === Selection region glow highlight ===
+            if self.region_glow_enabled && self.region_glow_face_id > 0 {
+                let target_face = self.region_glow_face_id;
+                let glow_radius = self.region_glow_radius.max(1.0);
+                let glow_opacity = self.region_glow_opacity.clamp(0.0, 1.0);
+
+                // Collect per-row bounding boxes for region glyphs
+                let mut row_bounds: Vec<(f32, f32, f32, f32)> = Vec::new(); // (x, y, w, h)
+                let mut current_row_y: f32 = -9999.0;
+                let mut row_min_x: f32 = f32::MAX;
+                let mut row_max_x: f32 = f32::MIN;
+                let mut row_h: f32 = 0.0;
+
+                for glyph in &frame_glyphs.glyphs {
+                    if let FrameGlyph::Char { x, y, width, height, face_id, .. } = glyph {
+                        if *face_id == target_face {
+                            if (*y - current_row_y).abs() > 1.0 {
+                                // New row; flush previous
+                                if row_min_x < row_max_x {
+                                    row_bounds.push((row_min_x, current_row_y, row_max_x - row_min_x, row_h));
+                                }
+                                current_row_y = *y;
+                                row_min_x = *x;
+                                row_max_x = *x + *width;
+                                row_h = *height;
+                            } else {
+                                row_min_x = row_min_x.min(*x);
+                                row_max_x = row_max_x.max(*x + *width);
+                                row_h = row_h.max(*height);
+                            }
+                        }
+                    }
+                }
+                // Flush last row
+                if row_min_x < row_max_x {
+                    row_bounds.push((row_min_x, current_row_y, row_max_x - row_min_x, row_h));
+                }
+
+                if !row_bounds.is_empty() {
+                    // Get region background color from face
+                    let region_color = faces.get(&target_face)
+                        .map(|f| (f.background.r, f.background.g, f.background.b))
+                        .unwrap_or((0.4, 0.6, 1.0));
+
+                    let mut glow_vertices: Vec<RectVertex> = Vec::new();
+                    let steps = (glow_radius as i32).max(2);
+
+                    for (rx, ry, rw, rh) in &row_bounds {
+                        for i in 1..=steps {
+                            let t = i as f32 / steps as f32;
+                            let alpha = glow_opacity * (1.0 - t) * (1.0 - t);
+                            if alpha < 0.005 { continue; }
+                            let pad = t * glow_radius;
+                            let c = Color::new(region_color.0, region_color.1, region_color.2, alpha);
+                            self.add_rect(&mut glow_vertices,
+                                rx - pad, ry - pad,
+                                rw + pad * 2.0, rh + pad * 2.0,
+                                &c);
+                        }
+                    }
+
+                    if !glow_vertices.is_empty() {
+                        let glow_buffer = self.device.create_buffer_init(
+                            &wgpu::util::BufferInitDescriptor {
+                                label: Some("Region Glow Buffer"),
+                                contents: bytemuck::cast_slice(&glow_vertices),
+                                usage: wgpu::BufferUsages::VERTEX,
+                            },
+                        );
+                        render_pass.set_pipeline(&self.rect_pipeline);
+                        render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                        render_pass.set_vertex_buffer(0, glow_buffer.slice(..));
+                        render_pass.draw(0..glow_vertices.len() as u32, 0..1);
+                    }
                 }
             }
 
