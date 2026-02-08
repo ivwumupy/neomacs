@@ -260,6 +260,11 @@ pub struct WgpuRenderer {
     cursor_wake_scale: f32,
     /// Timestamp of last cursor wake trigger
     cursor_wake_started: Option<std::time::Instant>,
+    /// Cursor error pulse (brief color flash on bell)
+    cursor_error_pulse_enabled: bool,
+    cursor_error_pulse_color: (f32, f32, f32),
+    cursor_error_pulse_duration_ms: u32,
+    cursor_error_pulse_started: Option<std::time::Instant>,
     /// Line wrap indicator overlay
     wrap_indicator_enabled: bool,
     wrap_indicator_color: (f32, f32, f32),
@@ -945,6 +950,10 @@ impl WgpuRenderer {
             cursor_wake_duration_ms: 120,
             cursor_wake_scale: 1.3,
             cursor_wake_started: None,
+            cursor_error_pulse_enabled: false,
+            cursor_error_pulse_color: (1.0, 0.2, 0.2),
+            cursor_error_pulse_duration_ms: 250,
+            cursor_error_pulse_started: None,
             wrap_indicator_enabled: false,
             wrap_indicator_color: (0.5, 0.6, 0.8),
             wrap_indicator_opacity: 0.3,
@@ -1186,6 +1195,39 @@ impl WgpuRenderer {
             1.0 + (self.cursor_wake_scale - 1.0) * (1.0 - ease)
         } else {
             1.0
+        }
+    }
+
+    /// Update cursor error pulse config
+    pub fn set_cursor_error_pulse(&mut self, enabled: bool, r: f32, g: f32, b: f32, duration_ms: u32) {
+        self.cursor_error_pulse_enabled = enabled;
+        self.cursor_error_pulse_color = (r, g, b);
+        self.cursor_error_pulse_duration_ms = duration_ms;
+    }
+
+    /// Trigger a cursor error pulse
+    pub fn trigger_cursor_error_pulse(&mut self, now: std::time::Instant) {
+        self.cursor_error_pulse_started = Some(now);
+    }
+
+    /// Get the cursor error pulse color override, if active
+    fn cursor_error_pulse_override(&self) -> Option<Color> {
+        if !self.cursor_error_pulse_enabled {
+            return None;
+        }
+        if let Some(started) = self.cursor_error_pulse_started {
+            let elapsed = started.elapsed().as_millis() as f32;
+            let duration = self.cursor_error_pulse_duration_ms as f32;
+            if elapsed >= duration {
+                return None;
+            }
+            let t = elapsed / duration;
+            // Flash: bright at start, fade out
+            let alpha = (1.0 - t) * (1.0 - t);
+            let (r, g, b) = self.cursor_error_pulse_color;
+            Some(Color::new(r, g, b, alpha))
+        } else {
+            None
         }
     }
 
@@ -2302,6 +2344,16 @@ impl WgpuRenderer {
             }
         }
 
+        // Clear expired cursor error pulse
+        if let Some(started) = self.cursor_error_pulse_started {
+            let dur = std::time::Duration::from_millis(self.cursor_error_pulse_duration_ms as u64);
+            if started.elapsed() >= dur {
+                self.cursor_error_pulse_started = None;
+            } else {
+                self.needs_continuous_redraw = true;
+            }
+        }
+
         // Clean up expired scroll momentum entries
         self.active_scroll_momentums.retain(|e| e.started.elapsed() < e.duration);
         if !self.active_scroll_momentums.is_empty() {
@@ -2781,6 +2833,19 @@ impl WgpuRenderer {
                         &cycle_color
                     } else {
                         color
+                    };
+                    // Cursor error pulse: override color on bell
+                    let error_pulse_color;
+                    let effective_color = if let Some(pulse) = self.cursor_error_pulse_override() {
+                        if *style != 3 {
+                            error_pulse_color = pulse;
+                            self.needs_continuous_redraw = true;
+                            &error_pulse_color
+                        } else {
+                            effective_color
+                        }
+                    } else {
+                        effective_color
                     };
                     // Cursor wake animation: scale factor for pop effect
                     let wake = self.cursor_wake_factor();

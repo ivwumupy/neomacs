@@ -1459,6 +1459,16 @@ void neomacs_display_set_cursor_wake(struct NeomacsDisplay *handle,
                                      int scalePct);
 
 /**
+ * Configure cursor error pulse (brief color flash on bell)
+ */
+void neomacs_display_set_cursor_error_pulse(struct NeomacsDisplay *handle,
+                                            int enabled,
+                                            int r,
+                                            int g,
+                                            int b,
+                                            int durationMs);
+
+/**
  * Configure line wrap indicator overlay
  */
 void neomacs_display_set_wrap_indicator(struct NeomacsDisplay *handle,

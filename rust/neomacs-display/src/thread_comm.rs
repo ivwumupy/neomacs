@@ -592,6 +592,16 @@ pub enum RenderCommand {
         /// Duration of the spacing animation in milliseconds
         duration_ms: u32,
     },
+    /// Configure cursor error pulse (brief color flash on bell)
+    SetCursorErrorPulse {
+        enabled: bool,
+        /// Pulse color (sRGB floats)
+        r: f32,
+        g: f32,
+        b: f32,
+        /// Pulse duration in milliseconds
+        duration_ms: u32,
+    },
     /// Configure line wrap indicator overlay
     SetWrapIndicator {
         enabled: bool,

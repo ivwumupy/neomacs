@@ -8885,6 +8885,41 @@ SCALE-PCT is the initial scale percentage (default 130, meaning 130%).  */)
   return on ? Qt : Qnil;
 }
 
+DEFUN ("neomacs-set-cursor-error-pulse",
+       Fneomacs_set_cursor_error_pulse,
+       Sneomacs_set_cursor_error_pulse, 0, 3, 0,
+       doc: /* Configure cursor error pulse animation.
+ENABLED non-nil makes the cursor briefly flash a color when Emacs
+rings the bell (e.g., on errors like end-of-buffer).
+COLOR is an RGB hex string (default "#FF3333").
+DURATION-MS is the pulse duration in milliseconds (default 250).  */)
+  (Lisp_Object enabled, Lisp_Object color, Lisp_Object duration_ms)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+
+  int on = !NILP (enabled);
+  int r = 255, g = 51, b = 51;
+  int dur = 250;
+  if (STRINGP (color))
+    {
+      const char *s = SSDATA (color);
+      if (s[0] == '#' && strlen (s) == 7)
+        {
+          unsigned int hex;
+          sscanf (s + 1, "%06x", &hex);
+          r = (hex >> 16) & 0xFF;
+          g = (hex >> 8) & 0xFF;
+          b = hex & 0xFF;
+        }
+    }
+  if (FIXNUMP (duration_ms)) dur = XFIXNUM (duration_ms);
+
+  neomacs_display_set_cursor_error_pulse (dpyinfo->display_handle, on, r, g, b, dur);
+  return on ? Qt : Qnil;
+}
+
 DEFUN ("neomacs-set-wrap-indicator",
        Fneomacs_set_wrap_indicator,
        Sneomacs_set_wrap_indicator, 0, 3, 0,
@@ -10471,6 +10506,7 @@ syms_of_neomacsterm (void)
   defsubr (&Sneomacs_set_cursor_wake);
   defsubr (&Sneomacs_set_scroll_momentum);
   defsubr (&Sneomacs_set_wrap_indicator);
+  defsubr (&Sneomacs_set_cursor_error_pulse);
   defsubr (&Sneomacs_set_region_glow);
   defsubr (&Sneomacs_set_window_glow);
   defsubr (&Sneomacs_set_scroll_progress);

@@ -771,6 +771,10 @@ struct RenderApp {
     cursor_wake_enabled: bool,
     cursor_wake_duration_ms: u32,
     cursor_wake_scale: f32,
+    /// Cursor error pulse (brief color flash on bell)
+    cursor_error_pulse_enabled: bool,
+    cursor_error_pulse_color: (f32, f32, f32),
+    cursor_error_pulse_duration_ms: u32,
     /// Line wrap indicator overlay
     wrap_indicator_enabled: bool,
     wrap_indicator_color: (f32, f32, f32),
@@ -1085,6 +1089,9 @@ impl RenderApp {
             cursor_wake_enabled: false,
             cursor_wake_duration_ms: 120,
             cursor_wake_scale: 1.3,
+            cursor_error_pulse_enabled: false,
+            cursor_error_pulse_color: (1.0, 0.2, 0.2),
+            cursor_error_pulse_duration_ms: 250,
             wrap_indicator_enabled: false,
             wrap_indicator_color: (0.5, 0.6, 0.8),
             wrap_indicator_opacity: 0.3,
@@ -1754,6 +1761,12 @@ impl RenderApp {
                 }
                 RenderCommand::VisualBell => {
                     self.visual_bell_start = Some(std::time::Instant::now());
+                    // Trigger cursor error pulse if enabled
+                    if self.cursor_error_pulse_enabled {
+                        if let Some(renderer) = self.renderer.as_mut() {
+                            renderer.trigger_cursor_error_pulse(std::time::Instant::now());
+                        }
+                    }
                     self.frame_dirty = true;
                 }
                 RenderCommand::RequestAttention { urgent } => {
@@ -2141,6 +2154,15 @@ impl RenderApp {
                     self.cursor_wake_scale = scale;
                     if let Some(renderer) = self.renderer.as_mut() {
                         renderer.set_cursor_wake(enabled, duration_ms, scale);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetCursorErrorPulse { enabled, r, g, b, duration_ms } => {
+                    self.cursor_error_pulse_enabled = enabled;
+                    self.cursor_error_pulse_color = (r, g, b);
+                    self.cursor_error_pulse_duration_ms = duration_ms;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_cursor_error_pulse(enabled, r, g, b, duration_ms);
                     }
                     self.frame_dirty = true;
                 }

@@ -1732,6 +1732,52 @@ animates down to 100%."
                 neomacs-cursor-wake-duration nil)
             val))))
 
+;; --- Cursor error pulse ---
+(declare-function neomacs-set-cursor-error-pulse "neomacsterm.c"
+  (&optional enabled color duration-ms))
+
+(defcustom neomacs-cursor-error-pulse nil
+  "Enable cursor error pulse animation.
+Non-nil makes the cursor briefly flash a color when Emacs rings
+the bell (e.g., on errors like end-of-buffer)."
+  :type 'boolean
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-cursor-error-pulse)
+           (neomacs-set-cursor-error-pulse val
+            (if (boundp 'neomacs-cursor-error-pulse-color)
+                neomacs-cursor-error-pulse-color nil)
+            (if (boundp 'neomacs-cursor-error-pulse-duration)
+                neomacs-cursor-error-pulse-duration nil)))))
+
+(defcustom neomacs-cursor-error-pulse-color "#FF3333"
+  "Color for the cursor error pulse (hex RGB string)."
+  :type '(string :tag "Color (#RRGGBB)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-error-pulse)
+                    (boundp 'neomacs-cursor-error-pulse)
+                    neomacs-cursor-error-pulse)
+           (neomacs-set-cursor-error-pulse t val
+            (if (boundp 'neomacs-cursor-error-pulse-duration)
+                neomacs-cursor-error-pulse-duration nil)))))
+
+(defcustom neomacs-cursor-error-pulse-duration 250
+  "Cursor error pulse duration in milliseconds."
+  :type '(integer :tag "Duration (ms)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-error-pulse)
+                    (boundp 'neomacs-cursor-error-pulse)
+                    neomacs-cursor-error-pulse)
+           (neomacs-set-cursor-error-pulse t
+            (if (boundp 'neomacs-cursor-error-pulse-color)
+                neomacs-cursor-error-pulse-color nil)
+            val))))
+
 ;; --- Line wrap indicator ---
 (declare-function neomacs-set-wrap-indicator "neomacsterm.c"
   (&optional enabled color opacity))

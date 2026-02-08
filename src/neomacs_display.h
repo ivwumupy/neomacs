@@ -1467,6 +1467,14 @@ void neomacs_display_set_cursor_wake(
     int duration_ms,
     int scale_pct);
 
+void neomacs_display_set_cursor_error_pulse(
+    struct NeomacsDisplay *handle,
+    int enabled,
+    int r,
+    int g,
+    int b,
+    int duration_ms);
+
 void neomacs_display_set_wrap_indicator(
     struct NeomacsDisplay *handle,
     int enabled,
