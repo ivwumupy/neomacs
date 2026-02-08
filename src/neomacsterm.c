@@ -8281,6 +8281,32 @@ MARGIN-OPACITY is 0-100 for margin overlay opacity (default 30).  */)
   return on ? Qt : Qnil;
 }
 
+DEFUN ("neomacs-set-vignette",
+       Fneomacs_set_vignette,
+       Sneomacs_set_vignette, 0, 3, 0,
+       doc: /* Configure vignette (edge darkening) effect.
+ENABLED non-nil activates vignette overlay on frame edges.
+INTENSITY is 0-100 for darkening strength (default 50).
+RADIUS is the inset in pixels from each edge (default 80).  */)
+  (Lisp_Object enabled, Lisp_Object intensity, Lisp_Object radius)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+
+  int on = !NILP (enabled);
+  int inten = 50;
+  int rad = 80;
+  if (FIXNUMP (intensity))
+    inten = XFIXNUM (intensity);
+  if (FIXNUMP (radius))
+    rad = XFIXNUM (radius);
+
+  neomacs_display_set_vignette (
+    dpyinfo->display_handle, on, inten, rad);
+  return on ? Qt : Qnil;
+}
+
 DEFUN ("neomacs-set-background-pattern",
        Fneomacs_set_background_pattern,
        Sneomacs_set_background_pattern, 0, 4, 0,
@@ -9653,6 +9679,7 @@ syms_of_neomacsterm (void)
   defsubr (&Sneomacs_set_search_pulse);
   defsubr (&Sneomacs_set_background_pattern);
   defsubr (&Sneomacs_set_zen_mode);
+  defsubr (&Sneomacs_set_vignette);
 
   /* Cursor blink */
   defsubr (&Sneomacs_set_cursor_blink);

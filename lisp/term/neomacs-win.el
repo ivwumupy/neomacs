@@ -1124,6 +1124,53 @@ text content for a focused writing experience."
                 neomacs-zen-content-width nil)
             val))))
 
+;; --- Vignette (edge darkening) ---
+(declare-function neomacs-set-vignette "neomacsterm.c"
+  (&optional enabled intensity radius))
+
+(defcustom neomacs-vignette nil
+  "Enable vignette effect (darken frame edges).
+Non-nil draws a gradient overlay that darkens the edges of the
+frame, creating a subtle depth/focus effect."
+  :type 'boolean
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-vignette)
+           (neomacs-set-vignette
+            val
+            (if (boundp 'neomacs-vignette-intensity)
+                neomacs-vignette-intensity nil)
+            (if (boundp 'neomacs-vignette-radius)
+                neomacs-vignette-radius nil)))))
+
+(defcustom neomacs-vignette-intensity 50
+  "Intensity of vignette darkening effect (0-100)."
+  :type '(integer :tag "Intensity")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-vignette)
+                    (boundp 'neomacs-vignette)
+                    neomacs-vignette)
+           (neomacs-set-vignette t val
+            (if (boundp 'neomacs-vignette-radius)
+                neomacs-vignette-radius nil)))))
+
+(defcustom neomacs-vignette-radius 80
+  "Radius in pixels of vignette gradient from each edge (10-200)."
+  :type '(integer :tag "Radius")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-vignette)
+                    (boundp 'neomacs-vignette)
+                    neomacs-vignette)
+           (neomacs-set-vignette t
+            (if (boundp 'neomacs-vignette-intensity)
+                neomacs-vignette-intensity nil)
+            val))))
+
 ;; Provide the feature
 (provide 'neomacs-win)
 (provide 'term/neomacs-win)

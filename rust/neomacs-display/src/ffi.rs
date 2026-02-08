@@ -2546,6 +2546,24 @@ pub unsafe extern "C" fn neomacs_display_set_background_pattern(
     }
 }
 
+/// Configure vignette effect (edge darkening)
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_vignette(
+    _handle: *mut NeomacsDisplay,
+    enabled: c_int,
+    intensity: c_int,
+    radius: c_int,
+) {
+    let cmd = RenderCommand::SetVignette {
+        enabled: enabled != 0,
+        intensity: intensity as f32 / 100.0,
+        radius: radius as f32,
+    };
+    if let Some(ref state) = THREADED_STATE {
+        let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+    }
+}
+
 /// Configure mode-line separator style (threaded mode)
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_set_mode_line_separator(

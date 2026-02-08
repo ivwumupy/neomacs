@@ -689,6 +689,10 @@ struct RenderApp {
     zen_mode_enabled: bool,
     zen_mode_content_width_pct: f32,
     zen_mode_margin_opacity: f32,
+    /// Vignette effect
+    vignette_enabled: bool,
+    vignette_intensity: f32,
+    vignette_radius: f32,
 }
 
 /// State for a tooltip displayed as GPU overlay
@@ -888,6 +892,9 @@ impl RenderApp {
             zen_mode_enabled: false,
             zen_mode_content_width_pct: 60.0,
             zen_mode_margin_opacity: 0.3,
+            vignette_enabled: false,
+            vignette_intensity: 0.3,
+            vignette_radius: 50.0,
         }
     }
 
@@ -1710,6 +1717,15 @@ impl RenderApp {
                     self.zen_mode_margin_opacity = margin_opacity;
                     if let Some(renderer) = self.renderer.as_mut() {
                         renderer.set_zen_mode(enabled, content_width_pct, margin_opacity);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetVignette { enabled, intensity, radius } => {
+                    self.vignette_enabled = enabled;
+                    self.vignette_intensity = intensity;
+                    self.vignette_radius = radius;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_vignette(enabled, intensity, radius);
                     }
                     self.frame_dirty = true;
                 }

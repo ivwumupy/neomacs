@@ -119,6 +119,10 @@ pub struct WgpuRenderer {
     search_pulse_face_id: u32,
     /// Pulse start time
     search_pulse_start: std::time::Instant,
+    /// Vignette effect
+    vignette_enabled: bool,
+    vignette_intensity: f32,
+    vignette_radius: f32,
     /// Zen mode (distraction-free centered content)
     zen_mode_enabled: bool,
     zen_mode_content_width_pct: f32,
@@ -634,6 +638,9 @@ impl WgpuRenderer {
             search_pulse_enabled: false,
             search_pulse_face_id: 0,
             search_pulse_start: std::time::Instant::now(),
+            vignette_enabled: false,
+            vignette_intensity: 0.3,
+            vignette_radius: 50.0,
             zen_mode_enabled: false,
             zen_mode_content_width_pct: 60.0,
             zen_mode_margin_opacity: 0.3,
@@ -682,6 +689,13 @@ impl WgpuRenderer {
     pub fn set_minimap(&mut self, enabled: bool, width: f32) {
         self.minimap_enabled = enabled;
         self.minimap_width = width;
+    }
+
+    /// Update vignette config
+    pub fn set_vignette(&mut self, enabled: bool, intensity: f32, radius: f32) {
+        self.vignette_enabled = enabled;
+        self.vignette_intensity = intensity;
+        self.vignette_radius = radius;
     }
 
     /// Update zen mode config
@@ -3452,6 +3466,65 @@ impl WgpuRenderer {
                         render_pass.set_vertex_buffer(0, minimap_buffer.slice(..));
                         render_pass.draw(0..minimap_vertices.len() as u32, 0..1);
                     }
+                }
+            }
+
+            // === Vignette effect: darken edges of the frame ===
+            if self.vignette_enabled {
+                let frame_w = frame_glyphs.width;
+                let frame_h = frame_glyphs.height;
+                let intensity = self.vignette_intensity.clamp(0.0, 1.0);
+                let radius_pct = self.vignette_radius.clamp(10.0, 100.0) / 100.0;
+
+                // Number of gradient steps from edge inward
+                let steps = 16;
+                let mut vignette_vertices: Vec<RectVertex> = Vec::new();
+
+                for i in 0..steps {
+                    let t = i as f32 / steps as f32;
+                    // Quadratic falloff for smooth gradient
+                    let alpha = intensity * t * t;
+                    let inset = (1.0 - t) * radius_pct * frame_w.min(frame_h) * 0.5;
+                    let strip_w = inset / steps as f32;
+
+                    if strip_w < 0.5 { continue; }
+
+                    let color = Color::new(0.0, 0.0, 0.0, alpha);
+
+                    // Top edge strip
+                    let y = inset - strip_w;
+                    if y >= 0.0 {
+                        self.add_rect(&mut vignette_vertices, 0.0, y, frame_w, strip_w, &color);
+                    }
+                    // Bottom edge strip
+                    let by = frame_h - inset;
+                    if by < frame_h {
+                        self.add_rect(&mut vignette_vertices, 0.0, by, frame_w, strip_w, &color);
+                    }
+                    // Left edge strip
+                    let lx = inset - strip_w;
+                    if lx >= 0.0 {
+                        self.add_rect(&mut vignette_vertices, lx, 0.0, strip_w, frame_h, &color);
+                    }
+                    // Right edge strip
+                    let rx = frame_w - inset;
+                    if rx < frame_w {
+                        self.add_rect(&mut vignette_vertices, rx, 0.0, strip_w, frame_h, &color);
+                    }
+                }
+
+                if !vignette_vertices.is_empty() {
+                    let vignette_buffer = self.device.create_buffer_init(
+                        &wgpu::util::BufferInitDescriptor {
+                            label: Some("Vignette Buffer"),
+                            contents: bytemuck::cast_slice(&vignette_vertices),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        },
+                    );
+                    render_pass.set_pipeline(&self.rect_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, vignette_buffer.slice(..));
+                    render_pass.draw(0..vignette_vertices.len() as u32, 0..1);
                 }
             }
         }

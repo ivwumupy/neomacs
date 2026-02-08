@@ -1271,6 +1271,14 @@ void neomacs_display_set_background_pattern(struct NeomacsDisplay *handle,
                                             int opacity);
 
 /**
+ * Configure vignette effect (edge darkening)
+ */
+void neomacs_display_set_vignette(struct NeomacsDisplay *handle,
+                                  int enabled,
+                                  int intensity,
+                                  int radius);
+
+/**
  * Configure mode-line separator style (threaded mode)
  */
 void neomacs_display_set_mode_line_separator(struct NeomacsDisplay *handle,

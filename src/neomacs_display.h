@@ -1353,6 +1353,12 @@ void neomacs_display_set_background_pattern(
     int r, int g, int b,
     int opacity);
 
+void neomacs_display_set_vignette(
+    struct NeomacsDisplay *handle,
+    int enabled,
+    int intensity,
+    int radius);
+
 void neomacs_display_set_mode_line_separator(
     struct NeomacsDisplay *handle,
     int style,

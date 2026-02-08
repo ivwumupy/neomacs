@@ -365,6 +365,14 @@ pub enum RenderCommand {
         /// Face ID of the isearch face (used to identify matching glyphs)
         face_id: u32,
     },
+    /// Configure vignette effect (edge darkening)
+    SetVignette {
+        enabled: bool,
+        /// Intensity of darkening (0.0-1.0)
+        intensity: f32,
+        /// Radius as percentage of frame diagonal (0-100)
+        radius: f32,
+    },
     /// Configure zen mode (distraction-free centered content)
     SetZenMode {
         enabled: bool,
