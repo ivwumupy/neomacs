@@ -2546,6 +2546,24 @@ pub unsafe extern "C" fn neomacs_display_set_background_pattern(
     }
 }
 
+/// Configure header/mode-line shadow depth effect
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_header_shadow(
+    _handle: *mut NeomacsDisplay,
+    enabled: c_int,
+    intensity: c_int,
+    size: c_int,
+) {
+    let cmd = RenderCommand::SetHeaderShadow {
+        enabled: enabled != 0,
+        intensity: intensity as f32 / 100.0,
+        size: size as f32,
+    };
+    if let Some(ref state) = THREADED_STATE {
+        let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+    }
+}
+
 /// Configure line insertion/deletion animation
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_set_line_animation(

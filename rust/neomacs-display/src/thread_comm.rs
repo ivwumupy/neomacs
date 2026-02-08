@@ -378,6 +378,14 @@ pub enum RenderCommand {
         /// Radius as percentage of frame diagonal (0-100)
         radius: f32,
     },
+    /// Configure header/mode-line shadow depth effect
+    SetHeaderShadow {
+        enabled: bool,
+        /// Shadow intensity (0.0-1.0)
+        intensity: f32,
+        /// Shadow size in pixels
+        size: f32,
+    },
     /// Configure zen mode (distraction-free centered content)
     SetZenMode {
         enabled: bool,

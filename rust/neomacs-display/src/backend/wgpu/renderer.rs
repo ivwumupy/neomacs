@@ -139,6 +139,10 @@ pub struct WgpuRenderer {
     line_animation_enabled: bool,
     line_animation_duration_ms: u32,
     active_line_anims: Vec<LineAnimEntry>,
+    /// Header/mode-line shadow depth effect
+    header_shadow_enabled: bool,
+    header_shadow_intensity: f32,
+    header_shadow_size: f32,
 }
 
 /// Entry for an active line insertion/deletion animation
@@ -669,6 +673,9 @@ impl WgpuRenderer {
             line_animation_enabled: false,
             line_animation_duration_ms: 150,
             active_line_anims: Vec::new(),
+            header_shadow_enabled: false,
+            header_shadow_intensity: 0.3,
+            header_shadow_size: 6.0,
         }
     }
 
@@ -777,6 +784,13 @@ impl WgpuRenderer {
             }
         }
         0.0
+    }
+
+    /// Update header/mode-line shadow config
+    pub fn set_header_shadow(&mut self, enabled: bool, intensity: f32, size: f32) {
+        self.header_shadow_enabled = enabled;
+        self.header_shadow_intensity = intensity;
+        self.header_shadow_size = size;
     }
 
     /// Update search pulse config
@@ -3543,6 +3557,90 @@ impl WgpuRenderer {
                         render_pass.set_vertex_buffer(0, minimap_buffer.slice(..));
                         render_pass.draw(0..minimap_vertices.len() as u32, 0..1);
                     }
+                }
+            }
+
+            // === Header/mode-line shadow depth effect ===
+            if self.header_shadow_enabled {
+                let shadow_size = self.header_shadow_size.max(1.0);
+                let intensity = self.header_shadow_intensity.clamp(0.0, 1.0);
+                let steps = 8;
+                let mut shadow_vertices: Vec<RectVertex> = Vec::new();
+
+                for info in &frame_glyphs.window_infos {
+                    if info.is_minibuffer { continue; }
+                    let b = &info.bounds;
+
+                    // Shadow below header-line (if present): at the top of content area
+                    // Header-line is at the very top of the window, same height as mode-line typically
+                    // We detect header-line by checking for overlay glyphs at the window top
+                    // For simplicity, we'll check if there are overlay glyphs near the window top
+                    let mut header_bottom: Option<f32> = None;
+                    for g in &frame_glyphs.glyphs {
+                        if let FrameGlyph::Char { x, y, height, is_overlay: true, .. }
+                            | FrameGlyph::Stretch { x, y, height, is_overlay: true, .. } = g
+                        {
+                            let gx = match g {
+                                FrameGlyph::Char { x, .. } => *x,
+                                FrameGlyph::Stretch { x, .. } => *x,
+                                _ => continue,
+                            };
+                            let gy = match g {
+                                FrameGlyph::Char { y, .. } => *y,
+                                FrameGlyph::Stretch { y, .. } => *y,
+                                _ => continue,
+                            };
+                            let gh = match g {
+                                FrameGlyph::Char { height, .. } => *height,
+                                FrameGlyph::Stretch { height, .. } => *height,
+                                _ => continue,
+                            };
+                            // Check if this overlay glyph is at the top of this window
+                            if gx >= b.x && gx < b.x + b.width
+                                && (gy - b.y).abs() < 2.0
+                            {
+                                let bottom = gy + gh;
+                                header_bottom = Some(header_bottom.map_or(bottom, |prev: f32| prev.max(bottom)));
+                            }
+                        }
+                    }
+
+                    // Draw downward shadow below header-line
+                    if let Some(hb) = header_bottom {
+                        for i in 0..steps {
+                            let t = i as f32 / steps as f32;
+                            let alpha = intensity * (1.0 - t) * (1.0 - t);
+                            let strip_h = shadow_size / steps as f32;
+                            let sy = hb + i as f32 * strip_h;
+                            let color = Color { r: 0.0, g: 0.0, b: 0.0, a: alpha };
+                            self.add_rect(&mut shadow_vertices, b.x, sy, b.width, strip_h, &color);
+                        }
+                    }
+
+                    // Draw upward shadow above mode-line
+                    if info.mode_line_height > 0.0 {
+                        let ml_top = b.y + b.height - info.mode_line_height;
+                        for i in 0..steps {
+                            let t = i as f32 / steps as f32;
+                            let alpha = intensity * (1.0 - t) * (1.0 - t);
+                            let strip_h = shadow_size / steps as f32;
+                            let sy = ml_top - (i as f32 + 1.0) * strip_h;
+                            let color = Color { r: 0.0, g: 0.0, b: 0.0, a: alpha };
+                            self.add_rect(&mut shadow_vertices, b.x, sy, b.width, strip_h, &color);
+                        }
+                    }
+                }
+
+                if !shadow_vertices.is_empty() {
+                    let shadow_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("Header Shadow Buffer"),
+                        contents: bytemuck::cast_slice(&shadow_vertices),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    });
+                    render_pass.set_pipeline(&self.rect_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, shadow_buffer.slice(..));
+                    render_pass.draw(0..shadow_vertices.len() as u32, 0..1);
                 }
             }
 

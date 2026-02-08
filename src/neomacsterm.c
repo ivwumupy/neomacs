@@ -8281,6 +8281,32 @@ MARGIN-OPACITY is 0-100 for margin overlay opacity (default 30).  */)
   return on ? Qt : Qnil;
 }
 
+DEFUN ("neomacs-set-header-shadow",
+       Fneomacs_set_header_shadow,
+       Sneomacs_set_header_shadow, 0, 3, 0,
+       doc: /* Configure header/mode-line shadow depth effect.
+ENABLED non-nil draws gradient shadows below header-line and above mode-line.
+INTENSITY is 0-100 for shadow darkness (default 30).
+SIZE is the shadow gradient size in pixels (default 6).  */)
+  (Lisp_Object enabled, Lisp_Object intensity, Lisp_Object size)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+
+  int on = !NILP (enabled);
+  int inten = 30;
+  int sz = 6;
+  if (FIXNUMP (intensity))
+    inten = XFIXNUM (intensity);
+  if (FIXNUMP (size))
+    sz = XFIXNUM (size);
+
+  neomacs_display_set_header_shadow (
+    dpyinfo->display_handle, on, inten, sz);
+  return on ? Qt : Qnil;
+}
+
 DEFUN ("neomacs-set-line-animation",
        Fneomacs_set_line_animation,
        Sneomacs_set_line_animation, 0, 2, 0,
@@ -9703,6 +9729,7 @@ syms_of_neomacsterm (void)
   defsubr (&Sneomacs_set_zen_mode);
   defsubr (&Sneomacs_set_vignette);
   defsubr (&Sneomacs_set_line_animation);
+  defsubr (&Sneomacs_set_header_shadow);
 
   /* Cursor blink */
   defsubr (&Sneomacs_set_cursor_blink);

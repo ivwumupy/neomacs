@@ -1124,6 +1124,53 @@ text content for a focused writing experience."
                 neomacs-zen-content-width nil)
             val))))
 
+;; --- Header/mode-line shadow ---
+(declare-function neomacs-set-header-shadow "neomacsterm.c"
+  (&optional enabled intensity size))
+
+(defcustom neomacs-header-shadow nil
+  "Enable shadow depth effect below header-line and above mode-line.
+Non-nil draws a gradient shadow that creates visual depth
+separation between content and status areas."
+  :type 'boolean
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-header-shadow)
+           (neomacs-set-header-shadow
+            val
+            (if (boundp 'neomacs-header-shadow-intensity)
+                neomacs-header-shadow-intensity nil)
+            (if (boundp 'neomacs-header-shadow-size)
+                neomacs-header-shadow-size nil)))))
+
+(defcustom neomacs-header-shadow-intensity 30
+  "Intensity of header/mode-line shadow (0-100)."
+  :type '(integer :tag "Intensity")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-header-shadow)
+                    (boundp 'neomacs-header-shadow)
+                    neomacs-header-shadow)
+           (neomacs-set-header-shadow t val
+            (if (boundp 'neomacs-header-shadow-size)
+                neomacs-header-shadow-size nil)))))
+
+(defcustom neomacs-header-shadow-size 6
+  "Size of header/mode-line shadow gradient in pixels (1-20)."
+  :type '(integer :tag "Size (px)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-header-shadow)
+                    (boundp 'neomacs-header-shadow)
+                    neomacs-header-shadow)
+           (neomacs-set-header-shadow t
+            (if (boundp 'neomacs-header-shadow-intensity)
+                neomacs-header-shadow-intensity nil)
+            val))))
+
 ;; --- Line insertion/deletion animation ---
 (declare-function neomacs-set-line-animation "neomacsterm.c"
   (&optional enabled duration-ms))

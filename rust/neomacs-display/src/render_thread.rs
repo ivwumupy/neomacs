@@ -696,6 +696,10 @@ struct RenderApp {
     /// Line insertion/deletion animation
     line_animation_enabled: bool,
     line_animation_duration_ms: u32,
+    /// Header/mode-line shadow depth effect
+    header_shadow_enabled: bool,
+    header_shadow_intensity: f32,
+    header_shadow_size: f32,
 }
 
 /// State for a tooltip displayed as GPU overlay
@@ -900,6 +904,9 @@ impl RenderApp {
             vignette_radius: 50.0,
             line_animation_enabled: false,
             line_animation_duration_ms: 150,
+            header_shadow_enabled: false,
+            header_shadow_intensity: 0.3,
+            header_shadow_size: 6.0,
         }
     }
 
@@ -1739,6 +1746,15 @@ impl RenderApp {
                     self.line_animation_duration_ms = duration_ms;
                     if let Some(renderer) = self.renderer.as_mut() {
                         renderer.set_line_animation(enabled, duration_ms);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetHeaderShadow { enabled, intensity, size } => {
+                    self.header_shadow_enabled = enabled;
+                    self.header_shadow_intensity = intensity;
+                    self.header_shadow_size = size;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_header_shadow(enabled, intensity, size);
                     }
                     self.frame_dirty = true;
                 }
