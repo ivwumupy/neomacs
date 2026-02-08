@@ -1423,6 +1423,11 @@ void neomacs_display_set_frosted_glass(
     int opacity,
     int blur);
 
+void neomacs_display_set_cursor_size_transition(
+    struct NeomacsDisplay *handle,
+    int enabled,
+    int duration_ms);
+
 void neomacs_display_set_window_switch_fade(
     struct NeomacsDisplay *handle,
     int enabled,

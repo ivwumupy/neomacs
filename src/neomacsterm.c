@@ -8624,6 +8624,29 @@ BLUR is the blur spread radius in pixels (default 4).  */)
   return on ? Qt : Qnil;
 }
 
+DEFUN ("neomacs-set-cursor-size-transition",
+       Fneomacs_set_cursor_size_transition,
+       Sneomacs_set_cursor_size_transition, 0, 2, 0,
+       doc: /* Configure smooth cursor size transition.
+ENABLED non-nil smoothly animates the cursor width and height when
+text-scale-adjust changes the font size, rather than snapping instantly.
+DURATION-MS is the transition duration in milliseconds (default 150).  */)
+  (Lisp_Object enabled, Lisp_Object duration_ms)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+
+  int on = !NILP (enabled);
+  int dur = 150;
+  if (FIXNUMP (duration_ms))
+    dur = XFIXNUM (duration_ms);
+
+  neomacs_display_set_cursor_size_transition (
+    dpyinfo->display_handle, on, dur);
+  return on ? Qt : Qnil;
+}
+
 DEFUN ("neomacs-set-window-switch-fade",
        Fneomacs_set_window_switch_fade,
        Sneomacs_set_window_switch_fade, 0, 3, 0,
@@ -10033,6 +10056,7 @@ syms_of_neomacsterm (void)
   defsubr (&Sneomacs_set_border_transition);
   defsubr (&Sneomacs_set_accent_strip);
   defsubr (&Sneomacs_set_frosted_glass);
+  defsubr (&Sneomacs_set_cursor_size_transition);
   defsubr (&Sneomacs_set_window_glow);
   defsubr (&Sneomacs_set_scroll_progress);
   defsubr (&Sneomacs_set_inactive_tint);

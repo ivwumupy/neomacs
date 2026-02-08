@@ -1411,6 +1411,34 @@ on mode-line areas to simulate a blurred glass appearance."
                 neomacs-frosted-glass-opacity nil)
             val))))
 
+;; --- Smooth cursor size transition ---
+(declare-function neomacs-set-cursor-size-transition "neomacsterm.c"
+  (&optional enabled duration-ms))
+
+(defcustom neomacs-cursor-size-transition nil
+  "Enable smooth cursor size transition on text-scale-adjust.
+Non-nil smoothly animates the cursor width and height when the font
+size changes, rather than snapping instantly to the new dimensions."
+  :type 'boolean
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-cursor-size-transition)
+           (neomacs-set-cursor-size-transition val
+            (if (boundp 'neomacs-cursor-size-transition-duration)
+                neomacs-cursor-size-transition-duration nil)))))
+
+(defcustom neomacs-cursor-size-transition-duration 150
+  "Duration of cursor size transition in milliseconds."
+  :type '(integer :tag "Duration (ms)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-size-transition)
+                    (boundp 'neomacs-cursor-size-transition)
+                    neomacs-cursor-size-transition)
+           (neomacs-set-cursor-size-transition t val))))
+
 ;; --- Typing speed indicator ---
 (declare-function neomacs-set-typing-speed "neomacsterm.c"
   (&optional enabled))

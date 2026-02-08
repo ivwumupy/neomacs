@@ -534,6 +534,16 @@ struct RenderApp {
     cursor_prev_target_cx: f32,
     cursor_prev_target_cy: f32,
 
+    // Cursor size transition (independent of position animation)
+    cursor_size_transition_enabled: bool,
+    cursor_size_transition_duration: f32, // seconds
+    cursor_size_animating: bool,
+    cursor_size_start_w: f32,
+    cursor_size_start_h: f32,
+    cursor_size_target_w: f32,
+    cursor_size_target_h: f32,
+    cursor_size_anim_start: std::time::Instant,
+
     // Per-window metadata from previous frame (for transition detection)
     prev_window_infos: HashMap<i64, crate::core::frame_glyphs::WindowInfo>,
 
@@ -854,6 +864,14 @@ impl RenderApp {
             cursor_trail_size: 0.7,
             cursor_prev_target_cx: 0.0,
             cursor_prev_target_cy: 0.0,
+            cursor_size_transition_enabled: false,
+            cursor_size_transition_duration: 0.15,
+            cursor_size_animating: false,
+            cursor_size_start_w: 0.0,
+            cursor_size_start_h: 0.0,
+            cursor_size_target_w: 0.0,
+            cursor_size_target_h: 0.0,
+            cursor_size_anim_start: std::time::Instant::now(),
             prev_window_infos: HashMap::new(),
             crossfade_enabled: true,
             crossfade_duration: std::time::Duration::from_millis(200),
@@ -1937,6 +1955,14 @@ impl RenderApp {
                     }
                     self.frame_dirty = true;
                 }
+                RenderCommand::SetCursorSizeTransition { enabled, duration_ms } => {
+                    self.cursor_size_transition_enabled = enabled;
+                    self.cursor_size_transition_duration = duration_ms as f32 / 1000.0;
+                    if !enabled {
+                        self.cursor_size_animating = false;
+                    }
+                    self.frame_dirty = true;
+                }
             }
         }
 
@@ -2078,6 +2104,20 @@ impl RenderApp {
                         winit::dpi::PhysicalPosition::new(x, y),
                         winit::dpi::PhysicalSize::new(w, h),
                     );
+                }
+
+                // Detect cursor size change for smooth size transition
+                if self.cursor_size_transition_enabled {
+                    let dw = (new_target.width - self.cursor_size_target_w).abs();
+                    let dh = (new_target.height - self.cursor_size_target_h).abs();
+                    if dw > 2.0 || dh > 2.0 {
+                        self.cursor_size_animating = true;
+                        self.cursor_size_start_w = self.cursor_current_w;
+                        self.cursor_size_start_h = self.cursor_current_h;
+                        self.cursor_size_anim_start = std::time::Instant::now();
+                    }
+                    self.cursor_size_target_w = new_target.width;
+                    self.cursor_size_target_h = new_target.height;
                 }
 
                 self.cursor_target = Some(new_target);
@@ -2241,6 +2281,27 @@ impl RenderApp {
         self.cursor_current_w = target.width;
         self.cursor_current_h = target.height;
         self.cursor_animating = false;
+    }
+
+    /// Tick cursor size transition, returns true if size changed (needs redraw).
+    /// Runs AFTER tick_cursor_animation() to override w/h with smooth size interpolation.
+    fn tick_cursor_size_animation(&mut self) -> bool {
+        if !self.cursor_size_transition_enabled || !self.cursor_size_animating {
+            return false;
+        }
+        let elapsed = self.cursor_size_anim_start.elapsed().as_secs_f32();
+        let raw_t = (elapsed / self.cursor_size_transition_duration).min(1.0);
+        let t = raw_t * (2.0 - raw_t); // ease-out-quad
+        self.cursor_current_w = self.cursor_size_start_w
+            + (self.cursor_size_target_w - self.cursor_size_start_w) * t;
+        self.cursor_current_h = self.cursor_size_start_h
+            + (self.cursor_size_target_h - self.cursor_size_start_h) * t;
+        if raw_t >= 1.0 {
+            self.cursor_current_w = self.cursor_size_target_w;
+            self.cursor_current_h = self.cursor_size_target_h;
+            self.cursor_size_animating = false;
+        }
+        true
     }
 
     /// Check if any transitions are currently active
@@ -4199,6 +4260,11 @@ impl ApplicationHandler for RenderApp {
             self.frame_dirty = true;
         }
 
+        // Tick cursor size transition (runs after position animation, overrides w/h)
+        if self.tick_cursor_size_animation() {
+            self.frame_dirty = true;
+        }
+
         // Keep dirty if cursor pulse is active (needs continuous redraw)
         if self.cursor_pulse_enabled && self.cursor_glow_enabled {
             self.frame_dirty = true;
@@ -4236,7 +4302,7 @@ impl ApplicationHandler for RenderApp {
         // Window events (key, mouse, resize) still wake immediately.
         let now = std::time::Instant::now();
         let next_wake = if self.frame_dirty || has_active_content
-            || self.cursor_animating || self.has_active_transitions()
+            || self.cursor_animating || self.cursor_size_animating || self.has_active_transitions()
         {
             // Active rendering: cap at ~240fps to avoid spinning
             now + std::time::Duration::from_millis(4)

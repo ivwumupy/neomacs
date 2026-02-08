@@ -450,6 +450,12 @@ pub enum RenderCommand {
         /// Blur radius (noise spread in pixels)
         blur: f32,
     },
+    /// Configure smooth cursor size transition on text-scale-adjust
+    SetCursorSizeTransition {
+        enabled: bool,
+        /// Transition duration in milliseconds
+        duration_ms: u32,
+    },
     /// Configure cursor color cycling (rainbow hue rotation)
     SetCursorColorCycle {
         enabled: bool,

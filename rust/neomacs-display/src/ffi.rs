@@ -2781,6 +2781,22 @@ pub unsafe extern "C" fn neomacs_display_set_title_fade(
     }
 }
 
+/// Configure smooth cursor size transition on text-scale-adjust
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_cursor_size_transition(
+    _handle: *mut NeomacsDisplay,
+    enabled: c_int,
+    duration_ms: c_int,
+) {
+    let cmd = RenderCommand::SetCursorSizeTransition {
+        enabled: enabled != 0,
+        duration_ms: duration_ms as u32,
+    };
+    if let Some(ref state) = THREADED_STATE {
+        let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+    }
+}
+
 /// Configure window switch highlight fade
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_set_window_switch_fade(

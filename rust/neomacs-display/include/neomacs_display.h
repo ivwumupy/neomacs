@@ -1343,6 +1343,46 @@ void neomacs_display_set_window_glow(struct NeomacsDisplay *handle,
 void neomacs_display_set_breadcrumb(struct NeomacsDisplay *handle, int enabled, int opacity);
 
 /**
+ * Configure smooth border color transition on focus
+ */
+void neomacs_display_set_border_transition(struct NeomacsDisplay *handle,
+                                           int enabled,
+                                           int r,
+                                           int g,
+                                           int b,
+                                           int durationMs);
+
+/**
+ * Configure buffer-local accent color strip
+ */
+void neomacs_display_set_accent_strip(struct NeomacsDisplay *handle, int enabled, int width);
+
+/**
+ * Configure frosted glass effect on mode-lines
+ */
+void neomacs_display_set_frosted_glass(struct NeomacsDisplay *handle,
+                                       int enabled,
+                                       int opacity,
+                                       int blur);
+
+/**
+ * Configure typing speed indicator overlay
+ */
+void neomacs_display_set_typing_speed(struct NeomacsDisplay *handle, int enabled);
+
+/**
+ * Configure breadcrumb title fade animation
+ */
+void neomacs_display_set_title_fade(struct NeomacsDisplay *handle, int enabled, int durationMs);
+
+/**
+ * Configure smooth cursor size transition on text-scale-adjust
+ */
+void neomacs_display_set_cursor_size_transition(struct NeomacsDisplay *handle,
+                                                int enabled,
+                                                int durationMs);
+
+/**
  * Configure window switch highlight fade
  */
 void neomacs_display_set_window_switch_fade(struct NeomacsDisplay *handle,
