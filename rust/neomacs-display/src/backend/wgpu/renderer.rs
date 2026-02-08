@@ -1888,16 +1888,17 @@ impl WgpuRenderer {
                                         self.add_rect(&mut decoration_vertices, *x, ul_y, *width, line_thickness, ul_color);
                                     }
                                     2 => {
-                                        // Wave: alternating up/down segments
-                                        let seg_w: f32 = 4.0;
+                                        // Wave: smooth sine wave underline
+                                        let amplitude: f32 = 2.0;
+                                        let wavelength: f32 = 8.0;
+                                        let seg_w: f32 = 1.0;
                                         let mut cx = *x;
-                                        let mut up = true;
                                         while cx < *x + *width {
                                             let sw = seg_w.min(*x + *width - cx);
-                                            let seg_y = if up { ul_y - 1.0 } else { ul_y + 1.0 };
-                                            self.add_rect(&mut decoration_vertices, cx, seg_y, sw, line_thickness, ul_color);
+                                            let phase = (cx - *x) * std::f32::consts::TAU / wavelength;
+                                            let offset = phase.sin() * amplitude;
+                                            self.add_rect(&mut decoration_vertices, cx, ul_y + offset, sw, line_thickness, ul_color);
                                             cx += seg_w;
-                                            up = !up;
                                         }
                                     }
                                     3 => {
