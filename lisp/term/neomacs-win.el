@@ -135,6 +135,10 @@ DISPLAY is the name of the display Emacs should connect to."
 (declare-function neomacs-clipboard-set "neomacsfns.c" (text))
 (declare-function neomacs-clipboard-get "neomacsfns.c" ())
 
+;; Primary selection integration
+(declare-function neomacs-primary-selection-set "neomacsfns.c" (text))
+(declare-function neomacs-primary-selection-get "neomacsfns.c" ())
+
 ;; Animation configuration
 (declare-function neomacs-set-cursor-animation "neomacsterm.c" (enabled &optional speed))
 (declare-function neomacs-set-animation-config "neomacsterm.c"
@@ -237,6 +241,48 @@ Used as `interprogram-paste-function'."
       (when (and text (not (string= text neomacs--last-clipboard-text)))
         (setq neomacs--last-clipboard-text text)
         text))))
+
+;; Selection protocol (CLIPBOARD + PRIMARY)
+(cl-defmethod gui-backend-set-selection (selection value
+                                         &context (window-system neomacs))
+  "Set SELECTION to VALUE on the Neomacs display.
+SELECTION is a symbol like `CLIPBOARD' or `PRIMARY'."
+  (when value
+    (let ((text (if (stringp value) value
+                  (substring-no-properties (symbol-name value)))))
+      (cond
+       ((eq selection 'CLIPBOARD)
+        (when (fboundp 'neomacs-clipboard-set)
+          (setq neomacs--last-clipboard-text text)
+          (neomacs-clipboard-set text)))
+       ((eq selection 'PRIMARY)
+        (when (fboundp 'neomacs-primary-selection-set)
+          (neomacs-primary-selection-set text)))))))
+
+(cl-defmethod gui-backend-get-selection (selection-symbol _target-type
+                                          &context (window-system neomacs)
+                                          &optional _time-stamp _terminal)
+  "Get the value of SELECTION-SYMBOL from the Neomacs display."
+  (cond
+   ((eq selection-symbol 'CLIPBOARD)
+    (when (fboundp 'neomacs-clipboard-get)
+      (neomacs-clipboard-get)))
+   ((eq selection-symbol 'PRIMARY)
+    (when (fboundp 'neomacs-primary-selection-get)
+      (neomacs-primary-selection-get)))))
+
+(cl-defmethod gui-backend-selection-exists-p (selection
+                                              &context (window-system neomacs))
+  "Return non-nil if SELECTION has content on the Neomacs display."
+  (cond
+   ((eq selection 'CLIPBOARD)
+    (when (fboundp 'neomacs-clipboard-get)
+      (let ((text (neomacs-clipboard-get)))
+        (and text (not (string-empty-p text))))))
+   ((eq selection 'PRIMARY)
+    (when (fboundp 'neomacs-primary-selection-get)
+      (let ((text (neomacs-primary-selection-get)))
+        (and text (not (string-empty-p text))))))))
 
 ;; Provide the feature
 (provide 'neomacs-win)

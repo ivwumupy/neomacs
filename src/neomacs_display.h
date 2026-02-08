@@ -1202,6 +1202,19 @@ char *neomacs_clipboard_get_text(void);
 void neomacs_clipboard_free_text(char *text);
 
 /**
+ * Set primary selection text (X11/Wayland).
+ * Returns 0 on success, -1 on error.
+ */
+int neomacs_primary_selection_set_text(const char *text);
+
+/**
+ * Get primary selection text (X11/Wayland).
+ * Returns a string that must be freed with neomacs_clipboard_free_text(),
+ * or NULL if the selection is empty or an error occurred.
+ */
+char *neomacs_primary_selection_get_text(void);
+
+/**
  * Trigger a visual bell flash effect on the render thread.
  */
 void neomacs_display_visual_bell(struct NeomacsDisplay *handle);

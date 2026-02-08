@@ -1657,6 +1657,19 @@ char *neomacs_clipboard_get_text(void);
 void neomacs_clipboard_free_text(char *text);
 
 /**
+ * Set primary selection text.  The text is a UTF-8 C string.
+ * Returns 0 on success, -1 on failure.
+ */
+int neomacs_primary_selection_set_text(const char *text);
+
+/**
+ * Get primary selection text.  Returns a newly allocated UTF-8 C string
+ * that the caller must free with neomacs_clipboard_free_text(),
+ * or NULL if the selection is empty or an error occurred.
+ */
+char *neomacs_primary_selection_get_text(void);
+
+/**
  * Get a byte from buffer text at the given byte position.
  * Handles the gap buffer transparently.
  * Returns -1 if pos is out of range.

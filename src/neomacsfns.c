@@ -2793,6 +2793,36 @@ Returns a string, or nil if the clipboard is empty or an error occurred.  */)
 }
 
 /* ============================================================================
+ * Primary Selection Functions
+ * ============================================================================ */
+
+DEFUN ("neomacs-primary-selection-set", Fneomacs_primary_selection_set,
+       Sneomacs_primary_selection_set, 1, 1, 0,
+       doc: /* Set the primary selection to TEXT.
+Returns t on success, nil on failure.  */)
+  (Lisp_Object text)
+{
+  CHECK_STRING (text);
+  const char *str = SSDATA (text);
+  int result = neomacs_primary_selection_set_text (str);
+  return result == 0 ? Qt : Qnil;
+}
+
+DEFUN ("neomacs-primary-selection-get", Fneomacs_primary_selection_get,
+       Sneomacs_primary_selection_get, 0, 0, 0,
+       doc: /* Get text from the primary selection.
+Returns a string, or nil if the selection is empty or an error occurred.  */)
+  (void)
+{
+  char *text = neomacs_primary_selection_get_text ();
+  if (!text)
+    return Qnil;
+  Lisp_Object result = build_string (text);
+  neomacs_clipboard_free_text (text);
+  return result;
+}
+
+/* ============================================================================
  * Initialization
  * ============================================================================ */
 
@@ -2844,6 +2874,10 @@ syms_of_neomacsfns (void)
   /* Clipboard functions */
   defsubr (&Sneomacs_clipboard_set);
   defsubr (&Sneomacs_clipboard_get);
+
+  /* Primary selection functions */
+  defsubr (&Sneomacs_primary_selection_set);
+  defsubr (&Sneomacs_primary_selection_get);
 
   /* Tooltip state GC roots */
   staticpro (&tip_timer);
