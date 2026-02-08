@@ -79,6 +79,12 @@ pub enum InputEvent {
     TerminalTitleChanged { id: u32, title: String },
     /// Popup menu selection made (index into menu items, -1 = cancelled)
     MenuSelection { index: i32 },
+    /// File(s) dropped onto the window
+    FileDrop {
+        paths: Vec<String>,
+        x: f32,
+        y: f32,
+    },
 }
 
 /// A single item in a popup menu

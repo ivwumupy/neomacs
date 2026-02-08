@@ -2598,6 +2598,17 @@ impl ApplicationHandler for RenderApp {
                 }
             }
 
+            WindowEvent::DroppedFile(path) => {
+                if let Some(path_str) = path.to_str() {
+                    log::info!("File dropped: {}", path_str);
+                    self.comms.send_input(InputEvent::FileDrop {
+                        paths: vec![path_str.to_string()],
+                        x: self.mouse_pos.0,
+                        y: self.mouse_pos.1,
+                    });
+                }
+            }
+
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 log::info!("Scale factor changed: {} -> {}", self.scale_factor, scale_factor);
                 self.scale_factor = scale_factor;

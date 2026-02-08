@@ -69,6 +69,7 @@ pub use events::{
     NEOMACS_EVENT_IMAGE_DIMENSIONS_READY,
     NEOMACS_EVENT_TERMINAL_EXITED,
     NEOMACS_EVENT_MENU_SELECTION,
+    NEOMACS_EVENT_FILE_DROP,
 };
 
 #[cfg(all(feature = "wpe-webkit", target_os = "linux"))]

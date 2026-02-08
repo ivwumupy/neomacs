@@ -8730,6 +8730,38 @@ neomacs_display_wakeup_handler (int fd, void *data)
           }
           break;
 
+        case NEOMACS_EVENT_FILE_DROP:
+          {
+            /* Retrieve dropped file paths from Rust */
+            char *paths[32];
+            int nfiles = neomacs_display_get_dropped_files (paths, 32);
+
+            if (nfiles > 0)
+              {
+                /* Build a Lisp list of file:// URLs */
+                Lisp_Object files = Qnil;
+                for (int j = nfiles - 1; j >= 0; j--)
+                  {
+                    /* Construct file:// URL */
+                    int len = strlen (paths[j]);
+                    char *url = alloca (len + 8);
+                    snprintf (url, len + 8, "file://%s", paths[j]);
+                    files = Fcons (build_string (url), files);
+                    neomacs_display_free_dropped_path (paths[j]);
+                  }
+
+                EVENT_INIT (inev.ie);
+                inev.ie.kind = DRAG_N_DROP_EVENT;
+                inev.ie.modifiers = 0;
+                inev.ie.arg = files;
+                XSETINT (inev.ie.x, ev->x);
+                XSETINT (inev.ie.y, ev->y);
+                XSETFRAME (inev.ie.frame_or_window, f);
+                neomacs_evq_enqueue (&inev);
+              }
+          }
+          break;
+
         default:
           break;
         }

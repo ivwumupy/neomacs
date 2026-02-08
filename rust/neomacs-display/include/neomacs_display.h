@@ -87,6 +87,8 @@
 
 
 
+
+
 /**
  * Maximum number of DMA-BUF planes supported.
  */
@@ -837,7 +839,7 @@ int neomacs_display_get_video_size(struct NeomacsDisplay *handle,
                                    int *height);
 
 /**
- * Load an image from a file path (stub)
+ * Load an image from a file path (delegates to load_image_file)
  */
 uint32_t neomacs_display_load_image(struct NeomacsDisplay *handle, const char *path);
 
@@ -1019,8 +1021,9 @@ void neomacs_display_reset_cursor_blink(struct NeomacsDisplay *handle);
 
 /**
  * Set mouse pointer cursor shape.
- * Types: 1=default/arrow, 2=text/ibeam, 3=hand/pointer,
- *        4=crosshair, 5=h-resize, 6=v-resize, 7=hourglass
+ * Types: 0=hidden, 1=default/arrow, 2=text/ibeam, 3=hand/pointer,
+ *        4=crosshair, 5=h-resize, 6=v-resize, 7=hourglass,
+ *        8=nwse-resize, 9=nesw-resize, 10=nesw-resize, 11=nwse-resize
  */
 void neomacs_display_set_mouse_cursor(struct NeomacsDisplay *handle, int cursorType);
 
@@ -1063,6 +1066,11 @@ void neomacs_display_show_tooltip(struct NeomacsDisplay *handle,
  * Hide the active tooltip.
  */
 void neomacs_display_hide_tooltip(struct NeomacsDisplay *handle);
+
+/**
+ * Trigger visual bell flash effect.
+ */
+void neomacs_display_visual_bell(struct NeomacsDisplay *handle);
 
 /**
  * Set the window title (threaded mode)
@@ -1566,6 +1574,19 @@ int neomacs_display_init_threaded(uint32_t width, uint32_t height, const char *t
  * Returns number of events written to buffer.
  */
 int neomacs_display_drain_input(struct NeomacsInputEvent *events, int maxEvents);
+
+/**
+ * Get the next batch of dropped file paths.
+ * Returns the number of paths written.  Each path is a null-terminated
+ * C string that must be freed with `neomacs_clipboard_free_text`.
+ * Call repeatedly until it returns 0 to drain all pending drops.
+ */
+int neomacs_display_get_dropped_files(char **outPaths, int maxPaths);
+
+/**
+ * Free a string returned by `neomacs_display_get_dropped_files`.
+ */
+void neomacs_display_free_dropped_path(char *path);
 
 /**
  * Send frame glyphs to render thread

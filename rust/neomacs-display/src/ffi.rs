@@ -27,6 +27,7 @@ use crate::backend::wgpu::{
     NEOMACS_EVENT_IMAGE_DIMENSIONS_READY,
     NEOMACS_EVENT_TERMINAL_EXITED,
     NEOMACS_EVENT_MENU_SELECTION,
+    NEOMACS_EVENT_FILE_DROP,
 };
 
 /// Resize callback function type for C FFI
@@ -40,6 +41,10 @@ static mut RESIZE_CALLBACK: Option<ResizeCallback> = None;
 /// User data pointer for resize callback
 #[cfg(feature = "winit-backend")]
 static mut RESIZE_CALLBACK_USER_DATA: *mut std::ffi::c_void = std::ptr::null_mut();
+/// Pending dropped file paths (populated by drain_input, consumed by C)
+#[cfg(feature = "winit-backend")]
+static DROPPED_FILES: std::sync::Mutex<Vec<Vec<String>>> = std::sync::Mutex::new(Vec::new());
+
 use crate::backend::tty::TtyBackend;
 use crate::core::types::{Color, Rect};
 use crate::core::scene::{Scene, WindowScene, CursorState, CursorStyle};
@@ -4023,6 +4028,15 @@ pub unsafe extern "C" fn neomacs_display_drain_input(
                         out.x = index;
                         // y field unused, set to 0
                     }
+                    InputEvent::FileDrop { paths, x, y } => {
+                        out.kind = NEOMACS_EVENT_FILE_DROP;
+                        out.x = x as i32;
+                        out.y = y as i32;
+                        // Store paths in global queue for C to retrieve
+                        if let Ok(mut queue) = DROPPED_FILES.lock() {
+                            queue.push(paths);
+                        }
+                    }
                 }
                 count += 1;
             }
@@ -4031,6 +4045,49 @@ pub unsafe extern "C" fn neomacs_display_drain_input(
     }
 
     count
+}
+
+/// Get the next batch of dropped file paths.
+/// Returns the number of paths written.  Each path is a null-terminated
+/// C string that must be freed with `neomacs_clipboard_free_text`.
+/// Call repeatedly until it returns 0 to drain all pending drops.
+#[cfg(feature = "winit-backend")]
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_get_dropped_files(
+    out_paths: *mut *mut c_char,
+    max_paths: c_int,
+) -> c_int {
+    let batch = {
+        let mut queue = match DROPPED_FILES.lock() {
+            Ok(q) => q,
+            Err(_) => return 0,
+        };
+        if queue.is_empty() {
+            return 0;
+        }
+        queue.remove(0)
+    };
+
+    let mut count = 0;
+    for path in batch {
+        if count >= max_paths {
+            break;
+        }
+        if let Ok(cstr) = std::ffi::CString::new(path) {
+            *out_paths.add(count as usize) = cstr.into_raw();
+            count += 1;
+        }
+    }
+    count
+}
+
+/// Free a string returned by `neomacs_display_get_dropped_files`.
+#[cfg(feature = "winit-backend")]
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_free_dropped_path(path: *mut c_char) {
+    if !path.is_null() {
+        drop(std::ffi::CString::from_raw(path));
+    }
 }
 
 /// Send frame glyphs to render thread
