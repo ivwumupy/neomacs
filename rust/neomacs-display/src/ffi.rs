@@ -2016,6 +2016,7 @@ pub struct CPopupMenuItem {
     pub enabled: c_int,
     pub separator: c_int,
     pub submenu: c_int,
+    pub depth: c_int,
 }
 
 /// Show a popup menu at position (x, y) with the given items.
@@ -2055,6 +2056,7 @@ pub unsafe extern "C" fn neomacs_display_show_popup_menu(
             enabled: item.enabled != 0,
             separator: item.separator != 0,
             submenu: item.submenu != 0,
+            depth: item.depth as u32,
         });
     }
 

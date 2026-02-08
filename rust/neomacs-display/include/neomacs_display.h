@@ -149,6 +149,7 @@ typedef struct CPopupMenuItem {
   int enabled;
   int separator;
   int submenu;
+  int depth;
 } CPopupMenuItem;
 
 /**

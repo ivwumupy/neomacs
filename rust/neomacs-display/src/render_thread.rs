@@ -177,43 +177,59 @@ struct CornerSpring {
 }
 
 /// State for an active popup menu
-pub(crate) struct PopupMenuState {
+/// A single menu panel (used for both main menu and submenus)
+pub(crate) struct MenuPanel {
     /// Position (logical pixels)
     pub(crate) x: f32,
     pub(crate) y: f32,
-    /// Menu items
-    pub(crate) items: Vec<PopupMenuItem>,
-    /// Optional title
-    pub(crate) title: Option<String>,
-    /// Currently hovered item index (-1 = none)
+    /// Indices into the parent PopupMenuState.all_items for items shown in this panel
+    pub(crate) item_indices: Vec<usize>,
+    /// Currently hovered index within item_indices (-1 = none)
     pub(crate) hover_index: i32,
     /// Computed layout: (x, y, width, height) in logical pixels
     pub(crate) bounds: (f32, f32, f32, f32),
-    /// Per-item Y offsets (top of each item row, relative to bounds.y)
+    /// Per-item Y offsets (relative to bounds.y)
     pub(crate) item_offsets: Vec<f32>,
     /// Item height
     pub(crate) item_height: f32,
+}
+
+pub(crate) struct PopupMenuState {
+    /// All items (flat, at all depths)
+    pub(crate) all_items: Vec<PopupMenuItem>,
+    /// Optional title
+    pub(crate) title: Option<String>,
+    /// The main (root) menu panel
+    pub(crate) root_panel: MenuPanel,
+    /// Open submenu panels (stack: each level is one deeper)
+    pub(crate) submenu_panels: Vec<MenuPanel>,
     /// Face foreground color (sRGB 0.0-1.0), None = default
     pub(crate) face_fg: Option<(f32, f32, f32)>,
     /// Face background color (sRGB 0.0-1.0), None = default
     pub(crate) face_bg: Option<(f32, f32, f32)>,
+    /// Font metrics
+    font_size: f32,
+    line_height: f32,
 }
 
 impl PopupMenuState {
-    fn new(x: f32, y: f32, items: Vec<PopupMenuItem>, title: Option<String>,
-           font_size: f32, line_height: f32) -> Self {
-        // Layout constants derived from font metrics
+    fn layout_panel(
+        x: f32, y: f32,
+        all_items: &[PopupMenuItem],
+        indices: &[usize],
+        title: Option<&str>,
+        font_size: f32, line_height: f32,
+    ) -> MenuPanel {
         let padding = 4.0_f32;
         let item_height = line_height + 3.0;
         let separator_height = 8.0_f32;
         let title_height = if title.is_some() { item_height + separator_height } else { 0.0 };
 
-        // Compute total height and per-item offsets
         let mut total_h = padding + title_height;
-        let mut offsets = Vec::with_capacity(items.len());
-        for item in &items {
+        let mut offsets = Vec::with_capacity(indices.len());
+        for &idx in indices {
             offsets.push(total_h);
-            if item.separator {
+            if all_items[idx].separator {
                 total_h += separator_height;
             } else {
                 total_h += item_height;
@@ -221,48 +237,87 @@ impl PopupMenuState {
         }
         total_h += padding;
 
-        // Compute width based on longest label + shortcut
         let char_width = font_size * 0.6;
         let min_width = 150.0_f32;
-        let max_label_len = items.iter()
+        let max_label_len = indices.iter()
+            .map(|&idx| &all_items[idx])
             .filter(|i| !i.separator)
-            .map(|i| i.label.len() + if i.shortcut.is_empty() { 0 } else { i.shortcut.len() + 4 })
+            .map(|i| {
+                let extra = if i.shortcut.is_empty() { 0 } else { i.shortcut.len() + 4 };
+                let arrow = if i.submenu { 3 } else { 0 };
+                i.label.len() + extra + arrow
+            })
             .max()
             .unwrap_or(10);
-        let title_len = title.as_ref().map(|t| t.len()).unwrap_or(0);
+        let title_len = title.map(|t| t.len()).unwrap_or(0);
         let content_width = (max_label_len.max(title_len) as f32) * char_width;
         let total_w = (content_width + padding * 4.0).max(min_width);
 
-        PopupMenuState {
+        MenuPanel {
             x,
             y,
-            items,
-            title,
+            item_indices: indices.to_vec(),
             hover_index: -1,
             bounds: (x, y, total_w, total_h),
             item_offsets: offsets,
             item_height,
-            face_fg: None,
-            face_bg: None,
         }
     }
 
-    /// Return the item index at the given mouse position, or -1.
-    /// Move hover to next/previous selectable item. Returns true if changed.
+    fn new(x: f32, y: f32, items: Vec<PopupMenuItem>, title: Option<String>,
+           font_size: f32, line_height: f32) -> Self {
+        // Collect top-level item indices (depth == 0)
+        let root_indices: Vec<usize> = items.iter().enumerate()
+            .filter(|(_, item)| item.depth == 0)
+            .map(|(i, _)| i)
+            .collect();
+
+        let root_panel = Self::layout_panel(
+            x, y, &items, &root_indices,
+            title.as_deref(), font_size, line_height,
+        );
+
+        PopupMenuState {
+            all_items: items,
+            title,
+            root_panel,
+            submenu_panels: Vec::new(),
+            face_fg: None,
+            face_bg: None,
+            font_size,
+            line_height,
+        }
+    }
+
+    /// Get the active panel (deepest open submenu, or root)
+    fn active_panel(&self) -> &MenuPanel {
+        self.submenu_panels.last().unwrap_or(&self.root_panel)
+    }
+
+    fn active_panel_mut(&mut self) -> &mut MenuPanel {
+        self.submenu_panels.last_mut().unwrap_or(&mut self.root_panel)
+    }
+
+    /// Move hover in the active panel. Returns true if changed.
     fn move_hover(&mut self, direction: i32) -> bool {
-        let len = self.items.len() as i32;
+        // Read panel state without mutable borrow
+        let panel = self.active_panel();
+        let len = panel.item_indices.len() as i32;
         if len == 0 {
             return false;
         }
-        let mut idx = self.hover_index + direction;
-        // Wrap around
+        let current_hover = panel.hover_index;
+        let indices: Vec<usize> = panel.item_indices.clone();
+
+        let mut idx = current_hover + direction;
         for _ in 0..len {
             if idx < 0 { idx = len - 1; }
             if idx >= len { idx = 0; }
-            let item = &self.items[idx as usize];
+            let item_idx = indices[idx as usize];
+            let item = &self.all_items[item_idx];
             if !item.separator && item.enabled {
-                if idx != self.hover_index {
-                    self.hover_index = idx;
+                if idx != current_hover {
+                    self.active_panel_mut().hover_index = idx;
                     return true;
                 }
                 return false;
@@ -272,23 +327,137 @@ impl PopupMenuState {
         false
     }
 
-    fn hit_test(&self, mx: f32, my: f32) -> i32 {
-        let (bx, by, bw, _bh) = self.bounds;
+    /// Open submenu for the currently hovered item (if it has one)
+    fn open_submenu(&mut self) -> bool {
+        let panel = self.active_panel();
+        if panel.hover_index < 0 {
+            return false;
+        }
+        let hover_idx = panel.hover_index as usize;
+        if hover_idx >= panel.item_indices.len() {
+            return false;
+        }
+        let parent_global_idx = panel.item_indices[hover_idx];
+        let parent = &self.all_items[parent_global_idx];
+        if !parent.submenu {
+            return false;
+        }
+        let parent_depth = parent.depth;
+        let child_depth = parent_depth + 1;
+
+        // Collect children: items immediately after parent with depth == child_depth
+        // until we see an item with depth <= parent_depth
+        let mut child_indices = Vec::new();
+        for i in (parent_global_idx + 1)..self.all_items.len() {
+            let item = &self.all_items[i];
+            if item.depth < child_depth {
+                break;
+            }
+            if item.depth == child_depth {
+                child_indices.push(i);
+            }
+        }
+
+        if child_indices.is_empty() {
+            return false;
+        }
+
+        // Position submenu to the right of the parent panel
+        let (px, py, pw, _ph) = panel.bounds;
+        let item_y = py + panel.item_offsets[hover_idx];
+        let sub_x = px + pw - 2.0; // Overlap by 2px
+        let sub_y = item_y;
+
+        let sub_panel = Self::layout_panel(
+            sub_x, sub_y, &self.all_items, &child_indices,
+            None, self.font_size, self.line_height,
+        );
+        self.submenu_panels.push(sub_panel);
+        true
+    }
+
+    /// Close the deepest open submenu. Returns true if one was closed.
+    fn close_submenu(&mut self) -> bool {
+        self.submenu_panels.pop().is_some()
+    }
+
+    /// Hit test across all panels (deepest first). Returns (panel_depth, item_global_index).
+    /// panel_depth: 0 = root, 1+ = submenu level. Returns (-1, -1) for miss.
+    fn hit_test_all(&self, mx: f32, my: f32) -> (i32, i32) {
+        // Check submenu panels deepest first
+        for (level, panel) in self.submenu_panels.iter().enumerate().rev() {
+            let result = Self::hit_test_panel(panel, &self.all_items, mx, my);
+            if result >= 0 {
+                return ((level + 1) as i32, result);
+            }
+            // Check if inside panel bounds (even if not on an item)
+            let (bx, by, bw, bh) = panel.bounds;
+            if mx >= bx && mx <= bx + bw && my >= by && my <= by + bh {
+                return ((level + 1) as i32, -1);
+            }
+        }
+        // Check root panel
+        let result = Self::hit_test_panel(&self.root_panel, &self.all_items, mx, my);
+        if result >= 0 {
+            return (0, result);
+        }
+        let (bx, by, bw, bh) = self.root_panel.bounds;
+        if mx >= bx && mx <= bx + bw && my >= by && my <= by + bh {
+            return (0, -1);
+        }
+        (-1, -1)
+    }
+
+    fn hit_test_panel(panel: &MenuPanel, all_items: &[PopupMenuItem], mx: f32, my: f32) -> i32 {
+        let (bx, by, bw, _bh) = panel.bounds;
         if mx < bx || mx > bx + bw || my < by {
             return -1;
         }
-        for (i, &offset_y) in self.item_offsets.iter().enumerate() {
-            let item = &self.items[i];
-            if item.separator || !item.enabled {
+        for (i, &offset_y) in panel.item_offsets.iter().enumerate() {
+            let item_idx = panel.item_indices[i];
+            let item = &all_items[item_idx];
+            if item.separator {
                 continue;
             }
             let iy = by + offset_y;
-            let ih = self.item_height;
+            let ih = panel.item_height;
             if my >= iy && my < iy + ih && mx >= bx && mx <= bx + bw {
                 return i as i32;
             }
         }
         -1
+    }
+
+    /// Convenience: hit_test on the active panel only (for selection)
+    fn hit_test(&self, mx: f32, my: f32) -> i32 {
+        // Check all panels, return global item index of hit
+        let (depth, local_idx) = self.hit_test_all(mx, my);
+        if local_idx < 0 || depth < 0 {
+            return -1;
+        }
+        let panel = if depth == 0 {
+            &self.root_panel
+        } else {
+            &self.submenu_panels[(depth - 1) as usize]
+        };
+        if local_idx >= 0 && (local_idx as usize) < panel.item_indices.len() {
+            let global_idx = panel.item_indices[local_idx as usize];
+            let item = &self.all_items[global_idx];
+            if item.enabled && !item.submenu {
+                return global_idx as i32;
+            }
+        }
+        -1
+    }
+
+    /// Get the items slice for rendering a panel.
+    /// Returns: (items_ref, panel_ref) for iteration.
+    pub(crate) fn panels(&self) -> Vec<&MenuPanel> {
+        let mut panels = vec![&self.root_panel];
+        for sub in &self.submenu_panels {
+            panels.push(sub);
+        }
+        panels
     }
 }
 
@@ -2681,16 +2850,45 @@ impl ApplicationHandler for RenderApp {
                             }
                         }
                         Key::Named(NamedKey::Enter) => {
-                            let idx = self.popup_menu.as_ref()
-                                .map(|m| m.hover_index)
-                                .unwrap_or(-1);
-                            self.comms.send_input(InputEvent::MenuSelection { index: idx });
-                            self.popup_menu = None;
-                            self.frame_dirty = true;
+                            if let Some(ref mut menu) = self.popup_menu {
+                                let panel = menu.active_panel();
+                                let hi = panel.hover_index;
+                                if hi >= 0 && (hi as usize) < panel.item_indices.len() {
+                                    let global_idx = panel.item_indices[hi as usize];
+                                    if menu.all_items[global_idx].submenu {
+                                        // Open submenu instead of selecting
+                                        if menu.open_submenu() {
+                                            self.frame_dirty = true;
+                                        }
+                                    } else {
+                                        self.comms.send_input(InputEvent::MenuSelection { index: global_idx as i32 });
+                                        self.popup_menu = None;
+                                        self.frame_dirty = true;
+                                    }
+                                } else {
+                                    self.comms.send_input(InputEvent::MenuSelection { index: -1 });
+                                    self.popup_menu = None;
+                                    self.frame_dirty = true;
+                                }
+                            }
+                        }
+                        Key::Named(NamedKey::ArrowRight) => {
+                            if let Some(ref mut menu) = self.popup_menu {
+                                if menu.open_submenu() {
+                                    self.frame_dirty = true;
+                                }
+                            }
+                        }
+                        Key::Named(NamedKey::ArrowLeft) => {
+                            if let Some(ref mut menu) = self.popup_menu {
+                                if menu.close_submenu() {
+                                    self.frame_dirty = true;
+                                }
+                            }
                         }
                         Key::Named(NamedKey::Home) => {
                             if let Some(ref mut menu) = self.popup_menu {
-                                menu.hover_index = -1;
+                                menu.active_panel_mut().hover_index = -1;
                                 if menu.move_hover(1) {
                                     self.frame_dirty = true;
                                 }
@@ -2698,7 +2896,8 @@ impl ApplicationHandler for RenderApp {
                         }
                         Key::Named(NamedKey::End) => {
                             if let Some(ref mut menu) = self.popup_menu {
-                                menu.hover_index = menu.items.len() as i32;
+                                let len = menu.active_panel().item_indices.len() as i32;
+                                menu.active_panel_mut().hover_index = len;
                                 if menu.move_hover(-1) {
                                     self.frame_dirty = true;
                                 }
@@ -2731,13 +2930,40 @@ impl ApplicationHandler for RenderApp {
 
             WindowEvent::MouseInput { state, button, .. } => {
                 // If popup menu is active, handle clicks for it
-                if let Some(ref menu) = self.popup_menu {
+                if let Some(ref mut menu) = self.popup_menu {
                     if state == ElementState::Pressed && button == MouseButton::Left {
                         let idx = menu.hit_test(self.mouse_pos.0, self.mouse_pos.1);
-                        // Send selection (idx >= 0 means item selected, -1 means cancelled)
-                        self.comms.send_input(InputEvent::MenuSelection { index: idx });
-                        self.popup_menu = None;
-                        self.frame_dirty = true;
+                        if idx >= 0 {
+                            // Regular item selected
+                            self.comms.send_input(InputEvent::MenuSelection { index: idx });
+                            self.popup_menu = None;
+                            self.frame_dirty = true;
+                        } else {
+                            // Check if click is on a submenu item (which hit_test returns -1 for)
+                            let (depth, local_idx) = menu.hit_test_all(self.mouse_pos.0, self.mouse_pos.1);
+                            if depth >= 0 && local_idx >= 0 {
+                                let panel = if depth == 0 {
+                                    &menu.root_panel
+                                } else {
+                                    &menu.submenu_panels[(depth - 1) as usize]
+                                };
+                                let global_idx = panel.item_indices[local_idx as usize];
+                                if menu.all_items[global_idx].submenu {
+                                    // Clicked a submenu item — keep menu open, submenu auto-opened on hover
+                                    self.frame_dirty = true;
+                                } else {
+                                    // Clicked outside or on a disabled item — cancel
+                                    self.comms.send_input(InputEvent::MenuSelection { index: -1 });
+                                    self.popup_menu = None;
+                                    self.frame_dirty = true;
+                                }
+                            } else {
+                                // Clicked outside all panels — cancel
+                                self.comms.send_input(InputEvent::MenuSelection { index: -1 });
+                                self.popup_menu = None;
+                                self.frame_dirty = true;
+                            }
+                        }
                     } else if state == ElementState::Pressed {
                         // Any other button cancels the menu
                         self.comms.send_input(InputEvent::MenuSelection { index: -1 });
@@ -2844,12 +3070,33 @@ impl ApplicationHandler for RenderApp {
                     }
                 }
 
-                // Update popup menu hover state
+                // Update popup menu hover state (multi-panel)
                 if let Some(ref mut menu) = self.popup_menu {
-                    let new_hover = menu.hit_test(lx, ly);
-                    if new_hover != menu.hover_index {
-                        menu.hover_index = new_hover;
-                        self.frame_dirty = true;
+                    let (hit_depth, hit_local) = menu.hit_test_all(lx, ly);
+                    if hit_depth >= 0 {
+                        // Close deeper submenus if hovering on a shallower panel
+                        let target_depth = hit_depth as usize;
+                        while menu.submenu_panels.len() > target_depth {
+                            menu.submenu_panels.pop();
+                            self.frame_dirty = true;
+                        }
+                        // Update hover in the target panel
+                        let panel = if target_depth == 0 {
+                            &mut menu.root_panel
+                        } else {
+                            &mut menu.submenu_panels[target_depth - 1]
+                        };
+                        if hit_local != panel.hover_index {
+                            panel.hover_index = hit_local;
+                            self.frame_dirty = true;
+                            // Auto-open submenu on hover
+                            if hit_local >= 0 && (hit_local as usize) < panel.item_indices.len() {
+                                let global_idx = panel.item_indices[hit_local as usize];
+                                if menu.all_items[global_idx].submenu {
+                                    menu.open_submenu();
+                                }
+                            }
+                        }
                     }
                 } else {
                     self.comms.send_input(InputEvent::MouseMove {

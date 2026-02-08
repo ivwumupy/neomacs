@@ -489,21 +489,22 @@ neomacs_menu_show (struct frame *f, int x, int y, int menuflags,
       return Qnil;
     }
 
-  /* Count items (excluding pane headers, submenus markers, etc.) */
+  /* Count items, tracking submenu depth to include all levels */
   int item_count = 0;
+  int depth = 0;
   i = 0;
   while (i < menu_items_used)
     {
       if (NILP (AREF (menu_items, i)))
-        { i++; continue; } /* submenu push */
+        { depth++; i++; continue; } /* submenu push */
       else if (EQ (AREF (menu_items, i), Qlambda))
-        { i++; continue; } /* submenu pop */
+        { if (depth > 0) depth--; i++; continue; } /* submenu pop */
       else if (EQ (AREF (menu_items, i), Qquote))
         { i += 1; continue; } /* nil item (dialog only) */
       else if (EQ (AREF (menu_items, i), Qt))
         {
-          /* Pane header — count as separator if not first pane */
-          if (item_count > 0)
+          /* Pane header — count as separator if not first pane at depth 0 */
+          if (depth == 0 && item_count > 0)
             item_count++; /* separator between panes */
           i += MENU_ITEMS_PANE_LENGTH;
         }
@@ -528,30 +529,33 @@ neomacs_menu_show (struct frame *f, int x, int y, int menuflags,
   int *item_indices = xmalloc (item_count * sizeof *item_indices);
   int ci = 0;
   bool first_pane = true;
+  depth = 0;
 
   i = 0;
   while (i < menu_items_used)
     {
       if (NILP (AREF (menu_items, i)))
-        { i++; continue; }
+        { depth++; i++; continue; } /* submenu push */
       else if (EQ (AREF (menu_items, i), Qlambda))
-        { i++; continue; }
+        { if (depth > 0) depth--; i++; continue; } /* submenu pop */
       else if (EQ (AREF (menu_items, i), Qquote))
         { i += 1; continue; }
       else if (EQ (AREF (menu_items, i), Qt))
         {
-          /* Pane header — insert separator between panes */
-          if (!first_pane && ci < item_count)
+          /* Pane header — insert separator between panes at top level */
+          if (depth == 0 && !first_pane && ci < item_count)
             {
               c_items[ci].label = "";
               c_items[ci].shortcut = "";
               c_items[ci].enabled = 0;
               c_items[ci].separator = 1;
               c_items[ci].submenu = 0;
+              c_items[ci].depth = 0;
               item_indices[ci] = -1;
               ci++;
             }
-          first_pane = false;
+          if (depth == 0)
+            first_pane = false;
           i += MENU_ITEMS_PANE_LENGTH;
         }
       else
@@ -562,6 +566,11 @@ neomacs_menu_show (struct frame *f, int x, int y, int menuflags,
           Lisp_Object descrip = AREF (menu_items, i + MENU_ITEMS_ITEM_EQUIV_KEY);
           Lisp_Object def = AREF (menu_items, i + MENU_ITEMS_ITEM_DEFINITION);
 
+          /* Detect if next element is a submenu push marker */
+          int next_i = i + MENU_ITEMS_ITEM_LENGTH;
+          int has_submenu = (next_i < menu_items_used
+                             && NILP (AREF (menu_items, next_i))) ? 1 : 0;
+
           if (ci < item_count)
             {
               c_items[ci].label = STRINGP (item_name) ? SSDATA (item_name) : "";
@@ -569,7 +578,8 @@ neomacs_menu_show (struct frame *f, int x, int y, int menuflags,
               c_items[ci].enabled = !NILP (enable) && !NILP (def) ? 1 : 0;
               c_items[ci].separator = (STRINGP (item_name)
                                        && !strcmp (SSDATA (item_name), "--")) ? 1 : 0;
-              c_items[ci].submenu = 0;
+              c_items[ci].submenu = has_submenu;
+              c_items[ci].depth = depth;
               item_indices[ci] = i;
               ci++;
             }

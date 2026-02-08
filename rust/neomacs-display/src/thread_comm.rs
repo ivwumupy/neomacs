@@ -102,6 +102,8 @@ pub struct PopupMenuItem {
     pub separator: bool,
     /// Whether this is a submenu header (has children)
     pub submenu: bool,
+    /// Nesting depth (0 = top-level, 1 = first submenu, etc.)
+    pub depth: u32,
 }
 
 /// Command from Emacs to render thread
