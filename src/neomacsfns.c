@@ -1831,6 +1831,115 @@ This is a simplified implementation for Neomacs.  */)
   return Qnil;
 }
 
+/* ============================================================================
+ * Frame Geometry Functions
+ * ============================================================================ */
+
+static Lisp_Object
+neomacs_frame_geometry (Lisp_Object frame, Lisp_Object attribute)
+{
+  struct frame *f = decode_live_frame (frame);
+  int border = f->border_width;
+  int native_width = FRAME_PIXEL_WIDTH (f);
+  int native_height = FRAME_PIXEL_HEIGHT (f);
+  int outer_width = native_width + 2 * border;
+  int outer_height = native_height + 2 * border;
+  int left_pos = f->left_pos;
+  int top_pos = f->top_pos;
+  int native_left = left_pos + border;
+  int native_top = top_pos + border;
+  int native_right = left_pos + outer_width - border;
+  int native_bottom = top_pos + outer_height - border;
+  int internal_border_width = FRAME_INTERNAL_BORDER_WIDTH (f);
+  int tab_bar_height = FRAME_TAB_BAR_HEIGHT (f);
+  int tab_bar_width = (tab_bar_height
+                       ? native_width - 2 * internal_border_width : 0);
+  int tool_bar_height = FRAME_TOOL_BAR_HEIGHT (f);
+  int tool_bar_width = (tool_bar_height
+                        ? outer_width - 2 * internal_border_width : 0);
+
+  if (EQ (attribute, Qouter_edges))
+    return list4 (make_fixnum (left_pos), make_fixnum (top_pos),
+                  make_fixnum (left_pos + outer_width),
+                  make_fixnum (top_pos + outer_height));
+  else if (EQ (attribute, Qnative_edges))
+    return list4 (make_fixnum (native_left), make_fixnum (native_top),
+                  make_fixnum (native_right), make_fixnum (native_bottom));
+  else if (EQ (attribute, Qinner_edges))
+    return list4 (make_fixnum (native_left + internal_border_width),
+                  make_fixnum (native_top
+                               + tab_bar_height
+                               + FRAME_TOOL_BAR_TOP_HEIGHT (f)
+                               + internal_border_width),
+                  make_fixnum (native_right - internal_border_width),
+                  make_fixnum (native_bottom - internal_border_width
+                               - FRAME_TOOL_BAR_BOTTOM_HEIGHT (f)));
+  else
+    return
+      list (Fcons (Qouter_position,
+                   Fcons (make_fixnum (left_pos),
+                          make_fixnum (top_pos))),
+            Fcons (Qouter_size,
+                   Fcons (make_fixnum (outer_width),
+                          make_fixnum (outer_height))),
+            Fcons (Qexternal_border_size,
+                   Fcons (make_fixnum (border), make_fixnum (border))),
+            Fcons (Qtitle_bar_size,
+                   Fcons (make_fixnum (0), make_fixnum (0))),
+            Fcons (Qmenu_bar_external, Qnil),
+            Fcons (Qmenu_bar_size,
+                   Fcons (make_fixnum (0), make_fixnum (0))),
+            Fcons (Qtab_bar_size,
+                   Fcons (make_fixnum (tab_bar_width),
+                          make_fixnum (tab_bar_height))),
+            Fcons (Qtool_bar_external,
+                   FRAME_EXTERNAL_TOOL_BAR (f) ? Qt : Qnil),
+            Fcons (Qtool_bar_position, FRAME_TOOL_BAR_POSITION (f)),
+            Fcons (Qtool_bar_size,
+                   Fcons (make_fixnum (tool_bar_width),
+                          make_fixnum (tool_bar_height))),
+            Fcons (Qinternal_border_width,
+                   make_fixnum (internal_border_width)));
+}
+
+DEFUN ("neomacs-frame-geometry", Fneomacs_frame_geometry,
+       Sneomacs_frame_geometry, 0, 1, 0,
+       doc: /* Return geometric attributes of FRAME.
+FRAME must be a live frame and defaults to the selected one.
+See `pgtk-frame-geometry' for the list of returned attributes.  */)
+  (Lisp_Object frame)
+{
+  return neomacs_frame_geometry (frame, Qnil);
+}
+
+DEFUN ("neomacs-frame-edges", Fneomacs_frame_edges,
+       Sneomacs_frame_edges, 0, 2, 0,
+       doc: /* Return edge coordinates of FRAME.
+FRAME must be a live frame and defaults to the selected one.
+TYPE can be `outer-edges', `native-edges', or `inner-edges'.  */)
+  (Lisp_Object frame, Lisp_Object type)
+{
+  return neomacs_frame_geometry (frame, ((EQ (type, Qouter_edges)
+                                          || EQ (type, Qinner_edges))
+                                         ? type : Qnative_edges));
+}
+
+DEFUN ("neomacs-mouse-absolute-pixel-position",
+       Fneomacs_mouse_absolute_pixel_position,
+       Sneomacs_mouse_absolute_pixel_position, 0, 0, 0,
+       doc: /* Return absolute position of mouse cursor in pixels.
+The position is returned as a cons cell (X . Y).  */)
+  (void)
+{
+  struct frame *f = SELECTED_FRAME ();
+  struct neomacs_display_info *dpyinfo = FRAME_NEOMACS_DISPLAY_INFO (f);
+  if (!dpyinfo)
+    return Fcons (make_fixnum (0), make_fixnum (0));
+
+  return Fcons (make_fixnum (dpyinfo->last_mouse_motion_x),
+                make_fixnum (dpyinfo->last_mouse_motion_y));
+}
+
 DEFUN ("x-open-connection", Fx_open_connection, Sx_open_connection, 1, 3, 0,
        doc: /* Open a connection to a Neomacs display.
 DISPLAY is the name of the display.  Optional second arg
@@ -2026,6 +2135,11 @@ syms_of_neomacsfns (void)
 
   /* Tooltip functions */
   defsubr (&Sx_show_tip);
+
+  /* Frame geometry functions */
+  defsubr (&Sneomacs_frame_geometry);
+  defsubr (&Sneomacs_frame_edges);
+  defsubr (&Sneomacs_mouse_absolute_pixel_position);
 
   /* Connection functions */
   defsubr (&Sx_open_connection);
