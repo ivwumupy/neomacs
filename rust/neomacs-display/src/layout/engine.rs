@@ -879,12 +879,17 @@ impl LayoutEngine {
 
                     let space_cols = display_prop.space_width.ceil() as i32;
                     let space_pixel_w = display_prop.space_width * char_w;
+                    let space_h = if display_prop.space_height > 0.0 {
+                        display_prop.space_height
+                    } else {
+                        char_h
+                    };
 
                     if col + space_cols <= cols && row < max_rows {
                         let gx = content_x + col as f32 * char_w;
                         let gy = row_y[row as usize];
                         frame_glyphs.add_stretch(
-                            gx, gy, space_pixel_w, char_h,
+                            gx, gy, space_pixel_w, space_h,
                             face_bg, self.face_data.face_id, false,
                         );
                         col += space_cols;

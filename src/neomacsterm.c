@@ -2295,6 +2295,7 @@ struct DisplayPropFFI {
   int type;           /* 0=none, 1=string, 2=space, 3=align-to, 4=image */
   int str_len;        /* bytes of replacement string (type=1) */
   float space_width;  /* width in columns (type=2) */
+  float space_height; /* height in pixels (type=2), 0 = use default char_h */
   int64_t covers_to;  /* charpos where display prop region ends */
   float align_to;     /* align-to column (type=3) */
   uint32_t image_gpu_id;  /* GPU image ID (type=4) */
@@ -2321,6 +2322,7 @@ neomacs_layout_check_display_prop (void *buffer_ptr, void *window_ptr,
   out->type = 0;
   out->str_len = 0;
   out->space_width = 0;
+  out->space_height = 0;
   out->covers_to = charpos + 1;
   out->align_to = 0;
   out->image_gpu_id = 0;
@@ -2446,6 +2448,36 @@ neomacs_layout_check_display_prop (void *buffer_ptr, void *window_ptr,
             }
           else
             out->space_width = 1.0;
+
+          /* Space height: (space :height N) or (space :height (N)) */
+          Lisp_Object height_val = Fplist_get (plist, QCheight, Qnil);
+          if (FIXNUMP (height_val))
+            {
+              struct window *sw = window_ptr
+                ? (struct window *) window_ptr : NULL;
+              float line_h = sw
+                ? (float) FRAME_LINE_HEIGHT (XFRAME (WINDOW_FRAME (sw)))
+                : 16.0f;
+              out->space_height = (float) XFIXNUM (height_val) * line_h;
+            }
+          else if (FLOATP (height_val))
+            {
+              struct window *sw = window_ptr
+                ? (struct window *) window_ptr : NULL;
+              float line_h = sw
+                ? (float) FRAME_LINE_HEIGHT (XFRAME (WINDOW_FRAME (sw)))
+                : 16.0f;
+              out->space_height = (float) XFLOAT_DATA (height_val) * line_h;
+            }
+          else if (CONSP (height_val))
+            {
+              Lisp_Object n = XCAR (height_val);
+              if (FIXNUMP (n))
+                out->space_height = (float) XFIXNUM (n);
+              else if (FLOATP (n))
+                out->space_height = (float) XFLOAT_DATA (n);
+            }
+          /* else space_height stays 0 = use default char_h */
 
           out->type = 2;
           set_buffer_internal_1 (old);

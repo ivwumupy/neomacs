@@ -345,6 +345,8 @@ pub struct DisplayPropFFI {
     pub str_len: c_int,
     /// Space width in columns (type=2)
     pub space_width: f32,
+    /// Space height in pixels (type=2), 0 = use default char_h
+    pub space_height: f32,
     /// Charpos where this display property region ends
     pub covers_to: i64,
     /// Align-to column (type=3)
