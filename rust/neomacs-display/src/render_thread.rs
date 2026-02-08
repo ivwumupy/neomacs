@@ -2160,7 +2160,11 @@ impl RenderApp {
 
     fn render(&mut self) {
         // Early return checks
-        if self.current_frame.is_none() || self.surface.is_none() || self.renderer.is_none() {
+        if self.current_frame.is_none()
+            || self.surface.is_none()
+            || self.renderer.is_none()
+            || self.glyph_atlas.is_none()
+        {
             return;
         }
 
@@ -2193,7 +2197,9 @@ impl RenderApp {
         }
 
         // Get surface texture
-        let surface = self.surface.as_ref().unwrap();
+        let Some(surface) = self.surface.as_ref() else {
+            return;
+        };
         let output = match surface.get_current_texture() {
             Ok(output) => output,
             Err(wgpu::SurfaceError::Lost) => {
@@ -2217,8 +2223,9 @@ impl RenderApp {
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         // Build animated cursor override if applicable
-        let animated_cursor = if self.cursor_anim_enabled && self.cursor_target.is_some() {
-            let target = self.cursor_target.as_ref().unwrap();
+        let animated_cursor = if let (true, Some(target)) =
+            (self.cursor_anim_enabled, self.cursor_target.as_ref())
+        {
             let corners = if self.cursor_anim_style == CursorAnimStyle::CriticallyDampedSpring
                 && self.cursor_animating
             {
@@ -2257,9 +2264,9 @@ impl RenderApp {
             if let Some((current_view, _)) = self.current_offscreen_view_and_bg()
                 .map(|(v, bg)| (v as *const wgpu::TextureView, bg))
             {
-                let frame = self.current_frame.as_ref().unwrap();
-                let renderer = self.renderer.as_ref().unwrap();
-                let glyph_atlas = self.glyph_atlas.as_mut().unwrap();
+                let frame = self.current_frame.as_ref().expect("checked in render");
+                let renderer = self.renderer.as_ref().expect("checked in render");
+                let glyph_atlas = self.glyph_atlas.as_mut().expect("checked in render");
 
                 // SAFETY: current_view is valid for the duration of this block
                 renderer.render_frame_glyphs(
@@ -2282,7 +2289,7 @@ impl RenderApp {
             if let Some((_, current_bg)) = self.current_offscreen_view_and_bg()
                 .map(|(v, bg)| (v, bg as *const wgpu::BindGroup))
             {
-                let renderer = self.renderer.as_ref().unwrap();
+                let renderer = self.renderer.as_ref().expect("checked in render");
                 renderer.blit_texture_to_view(
                     unsafe { &*current_bg },
                     &surface_view,
@@ -2295,9 +2302,9 @@ impl RenderApp {
             self.render_transitions(&surface_view);
         } else {
             // Simple path: render directly to surface
-            let frame = self.current_frame.as_ref().unwrap();
-            let renderer = self.renderer.as_ref().unwrap();
-            let glyph_atlas = self.glyph_atlas.as_mut().unwrap();
+            let frame = self.current_frame.as_ref().expect("checked in render");
+            let renderer = self.renderer.as_ref().expect("checked in render");
+            let glyph_atlas = self.glyph_atlas.as_mut().expect("checked in render");
 
             renderer.render_frame_glyphs(
                 &surface_view,
@@ -2626,10 +2633,10 @@ impl ApplicationHandler for RenderApp {
                     && self.resize_edge.is_some()
                 {
                     // Borderless: initiate window resize drag
-                    if let Some(ref window) = self.window {
-                        let _ = window.drag_resize_window(
-                            self.resize_edge.unwrap(),
-                        );
+                    if let (Some(dir), Some(ref window)) =
+                        (self.resize_edge, self.window.as_ref())
+                    {
+                        let _ = window.drag_resize_window(dir);
                     }
                 } else {
                     let btn = match button {
