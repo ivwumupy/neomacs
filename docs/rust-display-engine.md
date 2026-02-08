@@ -67,6 +67,193 @@ Additionally, **fontification runs DURING layout**. `jit-lock` calls `fontificat
 **Category E — Hooks that expect synchronous state:**
 `pre-redisplay-function` (runs INSIDE `redisplay_internal()`), `fontification-functions` (runs DURING iterator scanning), `window-scroll-functions`, `post-command-hook`
 
+## Display Engine API Contract
+
+The display engine sits between the Emacs C core and the rendering backend. Understanding exactly what flows in each direction is critical — the Rust replacement must satisfy this contract.
+
+```
+            EMACS C CORE PROVIDES                    DISPLAY ENGINE PROVIDES BACK
+            ═══════════════════                      ═══════════════════════════
+
+  Buffer text (gap buffer) ──────┐         ┌──── w->window_end_pos/vpos/valid
+  Text properties (face,         │         │     w->cursor (hpos, vpos, x, y)
+    display, invisible,          │         │     w->phys_cursor (+ width/height)
+    fontified, composition) ─────┤         │     w->mode_line_height
+  Overlays (face, before/after   │         │       /header_line_height
+    string, invisible,           │    ┌────┴──┐    /tab_line_height
+    priority, window) ───────────┼───►│DISPLAY│───►w->current_matrix (glyph rows)
+  Face cache (colors, fonts,     │    │ENGINE │   windows_or_buffers_changed
+    decorations) ────────────────┤    └────┬──┘   f->cursor_type_changed
+  Window state (start, hscroll,  │         │
+    pointm, dimensions) ─────────┤         ├──── pos-visible-in-window-p()
+  Buffer-local vars (truncate,   │         │     window-end()
+    word-wrap, tab-width,        │         │     vertical-motion()
+    bidi, line-spacing) ─────────┤         │     move-to-column()
+  Global vars (scroll-margin,    │         │     compute-motion()
+    scroll-step, display-        │         │     posn-at-point/x-y()
+    line-numbers) ───────────────┘         │     current-column()
+                                           │     line-pixel-height()
+  fontification-functions ◄────────────────┘     format-mode-line()
+  (callback DURING layout)                       (Lisp query functions)
+```
+
+### Inputs: What Emacs C Core Provides to the Display Engine
+
+#### Buffer Data
+
+| Input | How accessed | Purpose |
+|-------|-------------|---------|
+| Buffer text | `BYTE_POS_ADDR`, `FETCH_MULTIBYTE_CHAR` | Raw characters to display |
+| Narrowing bounds | `BEGV`, `ZV` | Visible region of buffer |
+| Point position | `PT` | Where cursor goes |
+| Multibyte flag | `BVAR(buf, enable_multibyte_characters)` | Character encoding mode |
+
+#### Text Properties (at each position)
+
+| Property | Purpose |
+|----------|---------|
+| `face` | Text styling (colors, bold, italic, underline, etc.) |
+| `display` | Override rendering (images, strings, spaces, margins, fringes) |
+| `invisible` | Hide text or show ellipsis |
+| `fontified` | Triggers lazy fontification via `fontification-functions` |
+| `composition` | Ligatures, combining characters, emoji sequences |
+| `mouse-face` | Hover highlighting |
+| `line-height` | Override line height |
+| `raise` | Vertical offset |
+
+#### Overlays (at each position)
+
+| Property | Purpose |
+|----------|---------|
+| `face` | Overlay face (merged with text property face, priority-ordered) |
+| `display` | Display overrides |
+| `before-string` / `after-string` | Inserted strings with their own properties |
+| `invisible` | Hide overlay region |
+| `priority` | Stacking order for face merging and string ordering |
+| `window` | Per-window overlay filtering |
+
+#### Face Data
+
+| Input | Purpose |
+|-------|---------|
+| `face_at_buffer_position()` | Merged face at position (text prop + all overlays) |
+| `FACE_FROM_ID(f, id)` | Resolve face ID to colors, font, decorations |
+| `face_for_char()` | Font fallback for specific character (fontset system) |
+| `merge_faces()` | Combine control-char face with base face |
+
+#### Window State
+
+| Field | Purpose |
+|-------|---------|
+| `w->start` | First visible buffer position (marker) |
+| `w->pointm` | Window's copy of point (for non-selected windows) |
+| `w->hscroll`, `w->min_hscroll` | Horizontal scroll offset |
+| `WINDOW_PIXEL_WIDTH/HEIGHT(w)` | Window dimensions in pixels |
+| `w->contents` | Which buffer is displayed |
+| Display table | `window_display_table(w)` — character display overrides |
+
+#### Buffer-Local Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `truncate-lines` | Truncate long lines vs wrap |
+| `word-wrap` | Word wrapping mode |
+| `tab-width` | Tab character width in columns |
+| `line-spacing` / `extra-line-spacing` | Extra vertical space between lines |
+| `selective-display` | Hide lines by indentation level |
+| `ctl-arrow` | Display control chars as `^X` vs `\NNN` |
+| `bidi-display-reordering` | Enable bidirectional text reordering |
+| `bidi-paragraph-direction` | Force paragraph direction (left-to-right / right-to-left) |
+
+#### Global Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `scroll-margin` | Lines to keep visible around point |
+| `scroll-conservatively` | How aggressively to scroll |
+| `scroll-step` | Lines to scroll at a time |
+| `hscroll-margin` / `hscroll-step` | Horizontal scroll parameters |
+| `truncate-partial-width-windows` | Truncate in narrow windows |
+| `display-line-numbers` | Line number display mode (absolute/relative/visual) |
+| `display-line-numbers-width` | Width of line number column |
+| `nobreak-char-display` | Display non-breaking spaces/hyphens |
+| `auto-composition-mode` | Enable automatic character composition |
+| `maximum-scroll-margin` | Cap on scroll margin |
+
+### Outputs: What the Display Engine Must Provide Back
+
+**This is the contract the Rust replacement must satisfy.**
+
+#### Window Fields (set during redisplay, read by Emacs)
+
+| Field | Type | Who reads it | Purpose |
+|-------|------|-------------|---------|
+| `w->window_end_pos` | `ptrdiff_t` | `window-end` (window.c) | Buffer position of last visible char (as `Z - end_charpos`) |
+| `w->window_end_vpos` | `int` | window.c | Matrix row number of last visible char |
+| `w->window_end_valid` | `bool` | `window-end`, `window-line-height` | Guard: are end fields valid? Many functions check this first. |
+| `w->cursor` | `{x, y, hpos, vpos}` | Cursor drawing, movement commands | Intended cursor position in matrix coordinates |
+| `w->phys_cursor` | `{x, y, hpos, vpos}` | neomacsterm.c, window.c | Actual cursor pixel position (window-relative) |
+| `w->phys_cursor_type` | `enum` | window.c | Current cursor style: box(0), bar(1), hbar(2), hollow(3) |
+| `w->phys_cursor_width` | `int` | neomacsterm.c, window.c | Cursor width in pixels |
+| `w->phys_cursor_height` | `int` | neomacsterm.c, window.c | Cursor height in pixels |
+| `w->phys_cursor_ascent` | `int` | window.c | Cursor ascent in pixels |
+| `w->phys_cursor_on_p` | `bool` | window.c, dispnew.c | Is cursor currently being displayed? |
+| `w->mode_line_height` | `int` | `window-mode-line-height`, layout | Mode-line pixel height (-1 if unknown) |
+| `w->header_line_height` | `int` | `window-header-line-height` | Header-line pixel height (-1 if unknown) |
+| `w->tab_line_height` | `int` | `window-tab-line-height` | Tab-line pixel height (-1 if unknown) |
+| `w->last_cursor_vpos` | `int` | xdisp.c | Previous frame's cursor vpos (detects cursor movement) |
+
+#### Frame Fields
+
+| Field | Purpose |
+|-------|---------|
+| `f->cursor_type_changed` | Signals cursor needs redraw (set true on change, cleared after draw) |
+| `f->garbaged` | Cleared after full redraw |
+| `f->updated_p` | Frame was updated this redisplay cycle |
+
+#### Global Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `windows_or_buffers_changed` | Dirty flag: 0 = all cached display data is fresh. Non-zero = needs redisplay. |
+| `update_mode_lines` | Mode-line dirty flag |
+| `redisplaying_p` | Re-entrancy guard: true while redisplay is running |
+
+#### Current Matrix (`w->current_matrix`)
+
+The glyph matrix is read by code OUTSIDE the display engine:
+
+| Consumer | What it reads | Why |
+|----------|--------------|-----|
+| `window-line-height` (window.c) | `MATRIX_ROW()`, row height/ascent | Return line dimensions to Lisp |
+| `window-cursor-info` (window.c) | Row at `phys_cursor.vpos` → glyph | Get glyph under cursor for width/height |
+| `pos-visible-in-window-p` (window.c) | Calls `pos_visible_p()` which runs iterator | Check if position is visible |
+| neomacsterm.c | Entire matrix: all rows, all glyphs, all areas | Extract for GPU rendering |
+
+#### Layout Query Functions (must be implemented by the display engine)
+
+| Lisp Function | What it computes | How it works |
+|---------------|-----------------|--------------|
+| `pos-visible-in-window-p` | Is buffer position visible? | Runs display iterator from `w->start` |
+| `window-end` | Last visible buffer position | Reads `window_end_pos` or recomputes via iterator |
+| `vertical-motion` | Move N visual lines | Runs iterator with wrapping/truncation |
+| `move-to-column` | Move to column N | Scans line handling tabs, display props, wide chars |
+| `compute-motion` | Position after hypothetical motion | Full layout computation (7 parameters) |
+| `posn-at-point` | Pixel position of point | Calls `pos-visible-in-window-p` internally |
+| `posn-at-x-y` | Buffer position at pixel coords | Queries glyph matrix rows and glyphs |
+| `current-column` | Column number at point | Scans from line start |
+| `line-pixel-height` | Pixel height of current line | Runs iterator for one line |
+| `format-mode-line` | Rendered mode-line text | Evaluates Lisp format specs, returns text with properties |
+
+#### Callbacks During Layout
+
+| Callback | When | Direction |
+|----------|------|-----------|
+| `fontification-functions` | Iterator reaches unfontified text | Display engine → Lisp (pauses layout, calls Lisp, resumes) |
+| `pre-redisplay-function` | Start of `redisplay_internal()` | Display engine → Lisp |
+| `window-scroll-functions` | After window scroll | Display engine → Lisp |
+| `redisplay_interface` hooks | After layout, during drawing | Display engine → rendering backend |
+
 ## What We Keep vs Replace
 
 ### Keep (Emacs C/Lisp)
