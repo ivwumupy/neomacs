@@ -265,22 +265,191 @@ require multiple function calls and buffer state inspection.
 
 ### 1. There Is No Boundary Between "Runtime" and "Editor"
 
-Most successful incremental rewrites (Firefox Stylo/WebRender, etc.) work because there
-is a clear API boundary — "give me a DOM, I'll give you pixels." Emacs has no such
-boundary.
+In most systems, the language runtime and the application are separate layers with a
+clean API between them:
 
-`Lisp_Object` — a 64-bit tagged pointer — is the universal currency of the entire
-codebase. Its internal bit layout (3-bit LSB tag, pointer in upper bits) is known to
-every file:
+```
+Python world:     CPython runtime  ←  C API  →  Django/Flask/your app
+Java world:       JVM              ←  JNI    →  IntelliJ/Spring/your app
+Browser world:    V8               ←  DOM API →  WebRender/layout engine
+```
+
+You can replace CPython with PyPy. You can replace one JVM with another. Firefox
+replaced its layout engine (Gecko→Stylo) while keeping SpiderMonkey. The API boundary
+makes this possible.
+
+**Emacs has no such boundary.** The "Lisp runtime" and the "editor" are the same code,
+sharing internal structures directly.
+
+#### Current GNU Emacs Architecture (C, monolithic)
+
+Everything is one flat layer. Every module reaches into every other module's internals.
+There is no "runtime" vs "editor" distinction — just a web of mutual dependencies:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     GNU Emacs C Core (monolithic)                          │
+│                                                                             │
+│  ┌─────────┐   ┌────────┐   ┌──────────┐   ┌────────────┐   ┌──────────┐  │
+│  │ eval.c  │←→│ data.c │←→│ buffer.c │←→│ keyboard.c │←→│ xdisp.c  │  │
+│  │ (eval)  │   │ (types)│   │ (buffers)│   │ (cmd loop) │   │ (display)│  │
+│  └────┬────┘   └───┬────┘   └────┬─────┘   └─────┬──────┘   └────┬─────┘  │
+│       │←──────────→│←───────────→│←──────────────→│←─────────────→│        │
+│       │            │             │                │               │        │
+│  ┌────┴────┐   ┌───┴────┐   ┌───┴─────┐   ┌─────┴──────┐   ┌───┴──────┐  │
+│  │ alloc.c │←→│ fns.c  │←→│ window.c│←→│  frame.c   │←→│ font.c   │  │
+│  │  (GC)   │   │ (core) │   │(windows)│   │  (frames)  │   │ (fonts)  │  │
+│  └────┬────┘   └───┬────┘   └───┬─────┘   └─────┬──────┘   └───┬──────┘  │
+│       │←──────────→│←───────────→│←──────────────→│←─────────────→│        │
+│       │            │             │                │               │        │
+│  ┌────┴────────┐  ┌┴──────────┐ ┌┴─────────┐ ┌───┴────────┐ ┌───┴──────┐  │
+│  │ bytecode.c  │  │ lread.c   │ │ fileio.c │ │ process.c  │ │ image.c  │  │
+│  │    (VM)     │  │ (reader)  │ │ (file IO)│ │(subprocess)│ │ (images) │  │
+│  └─────────────┘  └──────────-┘ └──────────┘ └────────────┘ └──────────┘  │
+│                                                                             │
+│  ALL modules share: Lisp_Object bit layout, specpdl, handlerlist,          │
+│  thread state, GC roots, DEFUN/DEFSYM macros                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Neomacs Target Architecture (Rust rewrite with clean module boundaries)
+
+The goal: rewrite the Emacs core from C to Rust, with proper module boundaries.
+Each module has a defined API surface. Modules communicate through interfaces, not
+shared internal state. The Elisp runtime is a service that editor modules call into.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        Neomacs (Rust)                                       │
+│                                                                             │
+│  ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐  │
+│    Elisp Runtime Core (Rust)                                               │
+│  │                                                                     │  │
+│    ┌──────────────┐  ┌──────────────┐  ┌──────────────┐                    │
+│  │ │  Evaluator   │  │  Bytecode VM │  │  GC / Alloc  │               │  │
+│    │  eval_sub()  │  │  exec_byte() │  │  generational│                    │
+│  │ │  funcall()   │  │  inline cache│  │  precise root│               │  │
+│    │  specpdl     │  │  JIT (opt.)  │  │  bump alloc  │                    │
+│  │ └──────┬───────┘  └──────┬───────┘  └──────┬───────┘               │  │
+│           │                 │                  │                            │
+│  │ ┌──────┴───────┐  ┌─────┴────────┐  ┌─────┴────────┐               │  │
+│    │ LispObject   │  │  Symbol Table │  │  Type System │                    │
+│  │ │ tagged ptr   │  │  obarray      │  │  28 PVEC_*   │               │  │
+│    │ accessor API │  │  DEFSYM       │  │  type descr. │                    │
+│  │ └──────────────┘  └──────────────┘  └──────────────┘               │  │
+│  └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘  │
+│           │                 │                  │                            │
+│           ▼                 ▼                  ▼                            │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │              Runtime API (trait-based, Rust)                         │  │
+│  │  register_type()  register_root()  define_function()  eval_form()   │  │
+│  │  run_hook()       specbind()       signal_error()     schedule_gc() │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│           │                 │                  │                            │
+│     ┌─────┴────┐     ┌─────┴────┐      ┌─────┴─────┐                      │
+│     ▼          ▼     ▼          ▼      ▼           ▼                      │
+│  ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐   │
+│    Editor Modules (Rust, each with defined API)                          │
+│  │                                                                    │   │
+│    ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐     │
+│  │ │  Buffer  │ │  Window  │ │  Frame   │ │ Keyboard │ │ Process  │ │   │
+│    │  Module  │ │  Module  │ │  Module  │ │  Module  │ │  Module  │     │
+│  │ │          │ │          │ │          │ │          │ │          │ │   │
+│    │ gap buf  │ │ tree     │ │ params   │ │ cmd loop │ │ async IO │     │
+│  │ │ markers  │ │ layout   │ │ creation │ │ keymaps  │ │ filters  │ │   │
+│    │ overlays │ │ scroll   │ │ deletion │ │ input    │ │ sentinels│     │
+│  │ │ undo     │ │ split    │ │ hooks    │ │ hooks    │ │ pipes    │ │   │
+│    │ text prop│ │ select   │ │          │ │          │ │ network  │     │
+│  │ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ │   │
+│                                                                          │
+│  │ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │   │
+│    │  Font    │ │  Image   │ │  File IO │ │  Reader  │ │   Data   │     │
+│  │ │  Module  │ │  Module  │ │  Module  │ │  Module  │ │  Module  │ │   │
+│    │          │ │          │ │          │ │          │ │          │     │
+│  │ │ open/    │ │ decode   │ │ read/    │ │ tokenize │ │ arith    │ │   │
+│    │ cache    │ │ cache    │ │ write    │ │ parse    │ │ type pred│     │
+│  │ │ metrics  │ │ display  │ │ coding   │ │ intern   │ │ accessor │ │   │
+│    │ match    │ │ transform│ │ locks    │ │ load     │ │ convert  │     │
+│  │ └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ │   │
+│  └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘   │
+│           │                                                                │
+│           ▼                                                                │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                   Rendering Engine (Rust)                            │  │
+│  │                                                                      │  │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌──────────────┐                 │  │
+│  │  │ Layout      │  │ wgpu        │  │ Animations   │                 │  │
+│  │  │ Engine      │  │ Renderer    │  │ transitions  │                 │  │
+│  │  │ (text, face)│  │ (GPU draw)  │  │ cursor blink │                 │  │
+│  │  └─────────────┘  └─────────────┘  └──────────────┘                 │  │
+│  │                                                                      │  │
+│  │  ┌─────────────┐  ┌─────────────┐                                   │  │
+│  │  │ winit       │  │ WebKit      │                                   │  │
+│  │  │ (windowing) │  │ (web views) │                                   │  │
+│  │  └─────────────┘  └─────────────┘                                   │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│  Communication:                                                             │
+│  ┌──────────┐    FrameGlyphBuffer     ┌──────────────┐                     │
+│  │ Emacs    │ ──────────────────────→ │   Render     │                     │
+│  │ Thread   │ ←────────────────────── │   Thread     │                     │
+│  └──────────┘    InputEvent           └──────────────┘                     │
+│                  (crossbeam channels)                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key design principles of the target architecture:**
+
+1. **Elisp Runtime Core** is a self-contained Rust crate. It owns `LispObject`,
+   the evaluator, bytecode VM, GC, specpdl, and symbol table. It does NOT know about
+   buffers, windows, frames, or any editor concept.
+
+2. **Runtime API** is a trait-based interface. Editor modules register their types
+   (`register_type` with a GC trace descriptor), roots (`register_root`), and
+   primitives (`define_function`). The GC traces registered types generically —
+   it never has hardcoded `mark_kboards()` or `mark_terminals()`.
+
+3. **Editor Modules** are separate Rust crates/modules. Each owns its data structures
+   and exposes them to Lisp through the Runtime API. Modules depend on the Runtime API
+   but NOT on each other's internals. `buffer` doesn't reach into `keyboard`'s specpdl;
+   `keyboard` doesn't walk `eval`'s handler chain.
+
+4. **Rendering Engine** communicates with the Emacs thread through channels
+   (`FrameGlyphBuffer`, `InputEvent`), the same architecture Neomacs already has.
+
+Everything reaches into everything else's internals. You cannot draw a line and say
+"this side is the runtime, that side is the application." Here are the concrete ways
+this manifests in the current C codebase:
+
+**The GC must know about editor objects.** `garbage_collect()` doesn't just trace
+generic Lisp values — it calls `mark_terminals()`, `mark_kboards()`,
+`mark_fringe_data()`, `mark_charset()`. The memory allocator has hardcoded knowledge of
+what a "buffer" is, what a "frame" is, what a "window" is. In a clean design, the GC
+would only know about generic Lisp types and the editor would register its roots through
+an API.
+
+**The evaluator calls into the editor.** `eval_sub()` calls `maybe_quit()`
+(keyboard.c) on every form evaluation — the evaluator literally knows about the
+keyboard system. `unwind_to_catch()` in eval.c calls `x_unwind_errors_to()` — the
+error handling system knows about X11. The specpdl stores buffer pointers for
+buffer-local `let` bindings — the binding stack knows about buffers.
+
+**The editor calls into the evaluator's internals.** When a kboard is deleted,
+keyboard.c walks every thread's specpdl stack directly. `set_internal()` in data.c
+calls `let_shadows_buffer_binding_p()` in eval.c to check the binding stack. These
+aren't API calls — they're direct access to each other's internal data structures.
+
+**`Lisp_Object` is not an abstraction.** Every file directly manipulates the bit
+representation: `XCAR(x)` dereferences the cons pointer after masking off tag bits,
+`XFIXNUM(x)` does an arithmetic right-shift by 2. If you changed the tag scheme (say,
+from 3-bit LSB to NaN-boxing), you'd need to update all 134 `.c` files. There's no
+`lisp_object_get_car(x)` function you could swap out.
+
+The numbers confirm the entanglement:
 
 - **134 `.c` files** reference `Lisp_Object` (100% of `src/`)
 - **57 `.h` files** reference it
 - **13,535 total occurrences** across the codebase
-
-Every DEFUN directly accesses cons cells, symbol fields, and vector internals through
-macros like `XCAR`, `XSYMBOL`, `AREF`. The representation IS the interface. You cannot
-put an abstraction layer in the middle without destroying performance in an already-slow
-runtime.
 
 ### 2. The Coupling Numbers
 
@@ -377,12 +546,25 @@ The project's own FAQ (by maintainer Nick Drozd) admitted: "I don't know of anyo
 has switched completely from using Emacs to using Remacs," including the developers
 themselves. It functioned primarily as an educational exercise.
 
-### 7. What Does Work
+### 7. The Neomacs Approach: Incremental Rust Rewrite with Clean Boundaries
 
-Approaches that succeed have a **clean boundary**:
+Unlike Remacs (which tried to port leaf functions first and got stuck at the core) or
+Rune (which rewrites from scratch), Neomacs takes a **boundary-first** approach:
 
-- **Neomacs**: Keeps the Elisp core in C, rewrites the rendering/display in Rust. The
-  boundary is a `FrameGlyphBuffer` sent over a channel — a clean data interface.
+1. **Already done**: Rendering engine in Rust (wgpu, winit, WebKit). Clean boundary
+   via `FrameGlyphBuffer` channel. The Rust layout engine reads buffer text via C FFI.
+2. **Already done**: Animation system, cursor blinking, window transitions — all in
+   Rust render thread.
+3. **Next**: Rewrite the Elisp core (eval, GC, bytecode VM) as a self-contained Rust
+   crate with a trait-based Runtime API (see target architecture diagram above).
+4. **Then**: Rewrite editor modules (buffer, window, frame, keyboard, process) one at
+   a time, each registering with the Runtime API instead of reaching into internals.
+
+The key insight: create the abstraction boundaries FIRST (Runtime API), then migrate
+modules behind those boundaries. Each module can be rewritten independently once the
+API exists — unlike Remacs, which tried to rewrite without first creating the seam.
+
+For reference, other approaches:
 - **native-comp**: Compiles Elisp to native code via libgccjit at package-install time.
   Doesn't change the runtime, just eliminates bytecode dispatch overhead.
 - **Rune**: Rewrites from scratch, bottom-up, starting with the hard parts (GC,
