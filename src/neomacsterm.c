@@ -7606,7 +7606,17 @@ get_keysym_name (int keysym)
 void
 frame_set_mouse_pixel_position (struct frame *f, int pix_x, int pix_y)
 {
-  /* TODO: Implement with GTK4 */
+  struct neomacs_display_info *dpyinfo = FRAME_NEOMACS_DISPLAY_INFO (f);
+  if (!dpyinfo)
+    return;
+
+  /* Update tracked position so mouse_position_hook returns correct values.  */
+  dpyinfo->last_mouse_motion_x = pix_x;
+  dpyinfo->last_mouse_motion_y = pix_y;
+  dpyinfo->last_mouse_motion_frame = f;
+
+  /* TODO: Send warp-pointer command to render thread when winit
+     supports programmatic cursor positioning.  */
 }
 
 
