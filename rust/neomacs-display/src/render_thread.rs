@@ -242,6 +242,30 @@ impl PopupMenuState {
     }
 
     /// Return the item index at the given mouse position, or -1.
+    /// Move hover to next/previous selectable item. Returns true if changed.
+    fn move_hover(&mut self, direction: i32) -> bool {
+        let len = self.items.len() as i32;
+        if len == 0 {
+            return false;
+        }
+        let mut idx = self.hover_index + direction;
+        // Wrap around
+        for _ in 0..len {
+            if idx < 0 { idx = len - 1; }
+            if idx >= len { idx = 0; }
+            let item = &self.items[idx as usize];
+            if !item.separator && item.enabled {
+                if idx != self.hover_index {
+                    self.hover_index = idx;
+                    return true;
+                }
+                return false;
+            }
+            idx += direction;
+        }
+        false
+    }
+
     fn hit_test(&self, mx: f32, my: f32) -> i32 {
         let (bx, by, bw, _bh) = self.bounds;
         if mx < bx || mx > bx + bw || my < by {
@@ -2437,14 +2461,54 @@ impl ApplicationHandler for RenderApp {
                     },
                 ..
             } => {
-                // If popup menu is active, Escape cancels it
+                // If popup menu is active, handle keyboard navigation
                 if self.popup_menu.is_some() && state == ElementState::Pressed {
-                    if matches!(logical_key.as_ref(), Key::Named(NamedKey::Escape)) {
-                        self.comms.send_input(InputEvent::MenuSelection { index: -1 });
-                        self.popup_menu = None;
-                        self.frame_dirty = true;
+                    match logical_key.as_ref() {
+                        Key::Named(NamedKey::Escape) => {
+                            self.comms.send_input(InputEvent::MenuSelection { index: -1 });
+                            self.popup_menu = None;
+                            self.frame_dirty = true;
+                        }
+                        Key::Named(NamedKey::ArrowDown) => {
+                            if let Some(ref mut menu) = self.popup_menu {
+                                if menu.move_hover(1) {
+                                    self.frame_dirty = true;
+                                }
+                            }
+                        }
+                        Key::Named(NamedKey::ArrowUp) => {
+                            if let Some(ref mut menu) = self.popup_menu {
+                                if menu.move_hover(-1) {
+                                    self.frame_dirty = true;
+                                }
+                            }
+                        }
+                        Key::Named(NamedKey::Enter) => {
+                            let idx = self.popup_menu.as_ref()
+                                .map(|m| m.hover_index)
+                                .unwrap_or(-1);
+                            self.comms.send_input(InputEvent::MenuSelection { index: idx });
+                            self.popup_menu = None;
+                            self.frame_dirty = true;
+                        }
+                        Key::Named(NamedKey::Home) => {
+                            if let Some(ref mut menu) = self.popup_menu {
+                                menu.hover_index = -1;
+                                if menu.move_hover(1) {
+                                    self.frame_dirty = true;
+                                }
+                            }
+                        }
+                        Key::Named(NamedKey::End) => {
+                            if let Some(ref mut menu) = self.popup_menu {
+                                menu.hover_index = menu.items.len() as i32;
+                                if menu.move_hover(-1) {
+                                    self.frame_dirty = true;
+                                }
+                            }
+                        }
+                        _ => {} // Swallow other keys
                     }
-                    // Swallow all keys while popup is active
                 } else if self.ime_preedit_active {
                     // When IME preedit is active, suppress character
                     // keys to avoid double input.  The committed text
