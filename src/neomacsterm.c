@@ -3273,6 +3273,80 @@ neomacs_layout_check_line_spacing (void *buffer_ptr, void *window_ptr,
   return 0;
 }
 
+/* Check line-prefix and wrap-prefix text properties at a position.
+   Returns the prefix as a space width in columns.
+   prefix_type: 0=line-prefix, 1=wrap-prefix
+   Returns 0 on success, sets *width_out to the prefix width.
+   If no prefix text property, *width_out = -1.0 (use window default). */
+int
+neomacs_layout_check_line_prefix (void *buffer_ptr, void *window_ptr,
+                                  int64_t charpos, int prefix_type,
+                                  float *width_out)
+{
+  struct buffer *buf = (struct buffer *) buffer_ptr;
+  struct window *w = (struct window *) window_ptr;
+  if (!buf || !w || !width_out)
+    return -1;
+
+  *width_out = -1.0f; /* no override */
+
+  struct buffer *old_buf = current_buffer;
+  set_buffer_internal_1 (buf);
+
+  ptrdiff_t zv = BUF_ZV (buf);
+  if (charpos < BUF_BEGV (buf) || charpos >= zv)
+    {
+      set_buffer_internal_1 (old_buf);
+      return 0;
+    }
+
+  Lisp_Object pos = make_fixnum (charpos);
+  Lisp_Object prop_sym = prefix_type == 0 ? Qline_prefix : Qwrap_prefix;
+  Lisp_Object prefix = Fget_char_property (pos, prop_sym, Qnil);
+
+  if (NILP (prefix))
+    {
+      set_buffer_internal_1 (old_buf);
+      return 0;
+    }
+
+  /* Evaluate the prefix spec to get a width in columns. */
+  if (STRINGP (prefix))
+    {
+      /* String prefix: width = string length */
+      *width_out = (float) SCHARS (prefix);
+    }
+  else if (CONSP (prefix) && EQ (XCAR (prefix), Qspace))
+    {
+      /* (space :width N) or (space :width (N)) */
+      Lisp_Object plist = XCDR (prefix);
+      Lisp_Object width_val = Fplist_get (plist, QCwidth, Qnil);
+      if (FIXNUMP (width_val))
+        *width_out = (float) XFIXNUM (width_val);
+      else if (FLOATP (width_val))
+        *width_out = (float) XFLOAT_DATA (width_val);
+      else if (CONSP (width_val))
+        {
+          /* (N) — pixel width, convert to columns */
+          Lisp_Object n = XCAR (width_val);
+          float pixel_w = 0;
+          if (FIXNUMP (n))
+            pixel_w = (float) XFIXNUM (n);
+          else if (FLOATP (n))
+            pixel_w = (float) XFLOAT_DATA (n);
+          float col_w = (float) FRAME_COLUMN_WIDTH (
+              XFRAME (WINDOW_FRAME (w)));
+          if (col_w > 0)
+            *width_out = pixel_w / col_w;
+        }
+      else
+        *width_out = 0;
+    }
+
+  set_buffer_internal_1 (old_buf);
+  return 0;
+}
+
 /* Walk current_matrix for ALL windows in the frame and extract complete
    glyph data.  Called from neomacs_update_end after Emacs has finished
    all window updates.  This replaces the incremental glyph accumulation

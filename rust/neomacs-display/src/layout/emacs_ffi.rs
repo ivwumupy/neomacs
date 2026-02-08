@@ -313,6 +313,18 @@ extern "C" {
         base_height: f32,
         extra_height_out: *mut f32,
     ) -> c_int;
+
+    /// Check line-prefix or wrap-prefix text property at a position.
+    /// prefix_type: 0=line-prefix, 1=wrap-prefix
+    /// Returns prefix width in columns via width_out.
+    /// width_out = -1.0 means no override (use window default).
+    pub fn neomacs_layout_check_line_prefix(
+        buffer: EmacsBuffer,
+        window: EmacsWindow,
+        charpos: i64,
+        prefix_type: c_int,
+        width_out: *mut f32,
+    ) -> c_int;
 }
 
 /// FFI-safe line number configuration struct.

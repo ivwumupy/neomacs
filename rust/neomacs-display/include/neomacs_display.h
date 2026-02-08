@@ -371,6 +371,11 @@ typedef struct WindowParamsFFI {
    */
   uint8_t linePrefix[128];
   int linePrefixLen;
+  /**
+   * Margin widths in pixels
+   */
+  float leftMarginWidth;
+  float rightMarginWidth;
 } WindowParamsFFI;
 
 /**
@@ -441,6 +446,18 @@ typedef struct FaceDataFFI {
    * Box line width
    */
   int boxLineWidth;
+  /**
+   * Extend: face bg extends to end of visual line (0=no, 1=yes)
+   */
+  int extend;
+  /**
+   * Per-face font character width (0.0 = use window default)
+   */
+  float fontCharWidth;
+  /**
+   * Per-face font ascent (0.0 = use window default)
+   */
+  float fontAscent;
 } FaceDataFFI;
 
 /**
@@ -496,6 +513,10 @@ typedef struct DisplayPropFFI {
    */
   float spaceWidth;
   /**
+   * Space height in pixels (type=2), 0 = use default char_h
+   */
+  float spaceHeight;
+  /**
    * Charpos where this display property region ends
    */
   int64_t coversTo;
@@ -516,9 +537,41 @@ typedef struct DisplayPropFFI {
    */
   int imageHeight;
   /**
+   * Image horizontal margin in pixels (type=4)
+   */
+  int imageHmargin;
+  /**
+   * Image vertical margin in pixels (type=4)
+   */
+  int imageVmargin;
+  /**
+   * Image ascent: 0-100 = percent, -1 = centered (type=4)
+   */
+  int imageAscent;
+  /**
    * Raise factor (type=5), fraction of line height
    */
   float raiseFactor;
+  /**
+   * Display string face fg (type=1), 0=use position face
+   */
+  uint32_t displayFg;
+  /**
+   * Display string face bg (type=1), 0=use position face
+   */
+  uint32_t displayBg;
+  /**
+   * Fringe bitmap ID (type=6 left-fringe, type=7 right-fringe)
+   */
+  int fringeBitmapId;
+  /**
+   * Fringe face foreground color (type=6,7)
+   */
+  uint32_t fringeFg;
+  /**
+   * Fringe face background color (type=6,7)
+   */
+  uint32_t fringeBg;
 } DisplayPropFFI;
 
 #define VA_STATUS_SUCCESS 0
@@ -1619,7 +1672,9 @@ extern int neomacs_layout_overlay_strings_at(EmacsBuffer buffer,
                                              int *beforeLenOut,
                                              uint8_t *afterBuf,
                                              int afterBufLen,
-                                             int *afterLenOut);
+                                             int *afterLenOut,
+                                             struct FaceDataFFI *beforeFaceOut,
+                                             struct FaceDataFFI *afterFaceOut);
 
 /**
  * Check if a character should display as a glyphless glyph.
@@ -1634,5 +1689,30 @@ extern int neomacs_layout_check_glyphless(EmacsFrame frame,
                                           uint8_t *strBuf,
                                           int strBufLen,
                                           int *strLenOut);
+
+/**
+ * Collect margin overlay strings at a buffer position.
+ * Checks overlay before/after-strings for (margin left-margin) and
+ * (margin right-margin) display properties.
+ */
+extern int neomacs_layout_margin_strings_at(EmacsBuffer buffer,
+                                            EmacsWindow window,
+                                            int64_t charpos,
+                                            uint8_t *leftBuf,
+                                            int leftBufLen,
+                                            int *leftLenOut,
+                                            uint8_t *rightBuf,
+                                            int rightBufLen,
+                                            int *rightLenOut);
+
+/**
+ * Check line-height and line-spacing text properties at a position.
+ * Returns extra height (pixels) beyond base_height for the row.
+ */
+extern int neomacs_layout_check_line_spacing(EmacsBuffer buffer,
+                                             EmacsWindow window,
+                                             int64_t charpos,
+                                             float baseHeight,
+                                             float *extraHeightOut);
 
 #endif  /* NEOMACS_DISPLAY_H */

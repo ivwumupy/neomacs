@@ -567,29 +567,52 @@ impl LayoutEngine {
 
             // Render line-prefix or wrap-prefix at start of visual lines
             if need_prefix > 0 && row < max_rows {
-                let prefix_bytes = if need_prefix == 2 {
-                    &params.wrap_prefix[..]
-                } else {
-                    &params.line_prefix[..]
-                };
+                let prefix_type = if need_prefix == 2 { 1 } else { 0 };
+                let mut tp_width: f32 = -1.0;
 
-                if !prefix_bytes.is_empty() {
-                    let mut pi = 0usize;
-                    while pi < prefix_bytes.len() {
-                        let (pch, plen) = decode_utf8(&prefix_bytes[pi..]);
-                        pi += plen;
-                        if pch == '\n' || pch == '\r' { continue; }
+                // Check text property prefix first (overrides window default)
+                neomacs_layout_check_line_prefix(
+                    buffer, window, charpos, prefix_type, &mut tp_width,
+                );
 
-                        let pchar_cols = if is_wide_char(pch) { 2 } else { 1 };
-                        if col + pchar_cols > cols { break; }
-
+                if tp_width >= 0.0 {
+                    // Text property prefix: render as space
+                    let prefix_cols = tp_width.ceil() as i32;
+                    if prefix_cols > 0 && col + prefix_cols <= cols {
                         let gx = content_x + col as f32 * char_w;
                         let gy = row_y[row as usize];
-                        frame_glyphs.add_char(
-                            pch, gx, gy, pchar_cols as f32 * char_w,
-                            char_h, ascent, false,
+                        let px_w = tp_width * char_w;
+                        frame_glyphs.add_stretch(
+                            gx, gy, px_w, char_h, default_bg, 0, false,
                         );
-                        col += pchar_cols;
+                        col += prefix_cols;
+                    }
+                } else {
+                    // Fall back to window-level prefix string
+                    let prefix_bytes = if need_prefix == 2 {
+                        &params.wrap_prefix[..]
+                    } else {
+                        &params.line_prefix[..]
+                    };
+
+                    if !prefix_bytes.is_empty() {
+                        let mut pi = 0usize;
+                        while pi < prefix_bytes.len() {
+                            let (pch, plen) = decode_utf8(&prefix_bytes[pi..]);
+                            pi += plen;
+                            if pch == '\n' || pch == '\r' { continue; }
+
+                            let pchar_cols = if is_wide_char(pch) { 2 } else { 1 };
+                            if col + pchar_cols > cols { break; }
+
+                            let gx = content_x + col as f32 * char_w;
+                            let gy = row_y[row as usize];
+                            frame_glyphs.add_char(
+                                pch, gx, gy, pchar_cols as f32 * char_w,
+                                char_h, ascent, false,
+                            );
+                            col += pchar_cols;
+                        }
                     }
                 }
                 need_prefix = 0;
