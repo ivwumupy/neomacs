@@ -196,6 +196,8 @@ pub struct WindowInfo {
     pub selected: bool,
     /// Whether this is the minibuffer window
     pub is_minibuffer: bool,
+    /// Character cell height for this window (tracks text-scale-adjust)
+    pub char_height: f32,
 }
 
 /// Buffer collecting glyphs for current frame.
@@ -481,7 +483,7 @@ impl FrameGlyphBuffer {
                            window_start: i64, window_end: i64, buffer_size: i64,
                            x: f32, y: f32, width: f32, height: f32,
                            mode_line_height: f32, selected: bool,
-                           is_minibuffer: bool) {
+                           is_minibuffer: bool, char_height: f32) {
         self.window_infos.push(WindowInfo {
             window_id,
             buffer_id,
@@ -492,6 +494,7 @@ impl FrameGlyphBuffer {
             mode_line_height,
             selected,
             is_minibuffer,
+            char_height,
         });
     }
 

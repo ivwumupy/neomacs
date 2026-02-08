@@ -1030,6 +1030,18 @@ neomacs_extract_window_glyphs (struct window *w, void *user_data)
         buf_size = BUF_Z (buf);
       }
     int is_mini = MINI_WINDOW_P (w) ? 1 : 0;
+    /* Get window-specific char height (respects text-scale-adjust) */
+    float w_char_height = (float) FRAME_LINE_HEIGHT (f);
+    {
+      int def_face_id = lookup_basic_face (w, f, DEFAULT_FACE_ID);
+      struct face *wface = FACE_FROM_ID_OR_NULL (f, def_face_id);
+      if (wface && wface->font)
+        {
+          int asc, desc;
+          get_font_ascent_descent (wface->font, &asc, &desc);
+          w_char_height = (float) (asc + desc);
+        }
+    }
     neomacs_display_add_window_info (
         handle,
         (int64_t)(intptr_t) w,
@@ -1040,7 +1052,7 @@ neomacs_extract_window_glyphs (struct window *w, void *user_data)
         (float) win_x, (float) win_y,
         (float) win_w, (float) win_h,
         (float) WINDOW_MODE_LINE_HEIGHT (w),
-        selected, is_mini);
+        selected, is_mini, w_char_height);
   }
 
   /* Check mouse-face highlight for this window */

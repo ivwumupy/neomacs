@@ -731,7 +731,8 @@ void neomacs_display_add_window_info(struct NeomacsDisplay *handle,
                                       float x, float y, float width, float height,
                                       float mode_line_height,
                                       int selected,
-                                      int is_minibuffer);
+                                      int is_minibuffer,
+                                      float char_height);
 
 /**
  * Check if animations are active

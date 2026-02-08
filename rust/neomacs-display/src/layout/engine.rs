@@ -148,6 +148,7 @@ impl LayoutEngine {
                 params.mode_line_height,
                 params.selected,
                 params.is_minibuffer,
+                params.char_height,
             );
 
             // Layout this window's content

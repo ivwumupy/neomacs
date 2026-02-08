@@ -2258,6 +2258,27 @@ impl RenderApp {
                                 });
                             }
                         }
+                    } else if (prev.char_height - info.char_height).abs() > 1.0 {
+                        // Font size changed (text-scale-adjust) → crossfade
+                        if self.crossfade_enabled {
+                            self.crossfades.remove(&info.window_id);
+                            self.scroll_slides.remove(&info.window_id);
+
+                            if let Some((tex, view, bg)) = self.snapshot_prev_texture() {
+                                log::debug!("Starting font-size crossfade for window {} (char_height {} → {})",
+                                    info.window_id, prev.char_height, info.char_height);
+                                self.crossfades.insert(info.window_id, CrossfadeTransition {
+                                    started: now,
+                                    duration: std::time::Duration::from_millis(200),
+                                    bounds: info.bounds,
+                                    effect: self.crossfade_effect,
+                                    easing: self.crossfade_easing,
+                                    old_texture: tex,
+                                    old_view: view,
+                                    old_bind_group: bg,
+                                });
+                            }
+                        }
                     }
                 }
             }

@@ -668,7 +668,8 @@ void neomacs_display_add_window_info(struct NeomacsDisplay *handle,
                                      float height,
                                      float modeLineHeight,
                                      int selected,
-                                     int isMinibuffer);
+                                     int isMinibuffer,
+                                     float charHeight);
 
 /**
  * Set cursor for a specific window
