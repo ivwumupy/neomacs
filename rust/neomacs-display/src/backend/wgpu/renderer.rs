@@ -69,6 +69,12 @@ pub struct WgpuRenderer {
     inactive_dim_enabled: bool,
     /// Inactive window dimming opacity
     inactive_dim_opacity: f32,
+    /// Per-window dim opacity for smooth fade transitions
+    per_window_dim: std::collections::HashMap<i64, f32>,
+    /// Last dim update time for smooth interpolation
+    last_dim_tick: std::time::Instant,
+    /// Flag: renderer needs continuous redraws (e.g. dim fade in progress)
+    pub needs_continuous_redraw: bool,
     /// Mode-line separator style (0=none, 1=line, 2=shadow, 3=gradient)
     mode_line_separator_style: u32,
     /// Mode-line separator color (linear RGB)
@@ -569,6 +575,9 @@ impl WgpuRenderer {
             show_whitespace_color: (0.4, 0.4, 0.4, 0.3),
             inactive_dim_enabled: false,
             inactive_dim_opacity: 0.15,
+            per_window_dim: std::collections::HashMap::new(),
+            last_dim_tick: std::time::Instant::now(),
+            needs_continuous_redraw: false,
             mode_line_separator_style: 0,
             mode_line_separator_color: (0.0, 0.0, 0.0),
             mode_line_separator_height: 3.0,
@@ -1340,7 +1349,7 @@ impl WgpuRenderer {
     /// `surface_width` and `surface_height` should be the actual surface dimensions
     /// for correct coordinate transformation.
     pub fn render_frame_glyphs(
-        &self,
+        &mut self,
         view: &wgpu::TextureView,
         frame_glyphs: &FrameGlyphBuffer,
         glyph_atlas: &mut WgpuGlyphAtlas,
@@ -1361,6 +1370,9 @@ impl WgpuRenderer {
             frame_glyphs.glyphs.len(),
             faces.len(),
         );
+
+        // Reset continuous redraw flag (will be set by dim fade or other animations)
+        self.needs_continuous_redraw = false;
 
         // Advance glyph atlas generation for LRU tracking
         glyph_atlas.advance_generation();
@@ -2823,16 +2835,38 @@ impl WgpuRenderer {
                 }
             }
 
-            // === Draw inactive window dimming overlays ===
+            // === Draw inactive window dimming overlays (with smooth fade) ===
             if self.inactive_dim_enabled && frame_glyphs.window_infos.len() > 1 {
-                let dim_color = Color::new(0.0, 0.0, 0.0, self.inactive_dim_opacity);
+                let now = std::time::Instant::now();
+                let dt = now.duration_since(self.last_dim_tick).as_secs_f32().min(0.1);
+                self.last_dim_tick = now;
+                // Exponential interpolation speed (higher = faster fade)
+                let fade_speed = 8.0;
+
                 let mut dim_vertices: Vec<RectVertex> = Vec::new();
+                let mut any_transitioning = false;
                 for info in &frame_glyphs.window_infos {
-                    if !info.selected {
+                    let target = if info.selected { 0.0 } else { self.inactive_dim_opacity };
+                    let current = self.per_window_dim.get(&info.window_id).copied().unwrap_or(target);
+                    // Exponential interpolation toward target
+                    let new_opacity = current + (target - current) * (1.0 - (-fade_speed * dt).exp());
+                    // Snap to target when close enough
+                    let new_opacity = if (new_opacity - target).abs() < 0.001 { target } else { new_opacity };
+                    self.per_window_dim.insert(info.window_id, new_opacity);
+                    if (new_opacity - target).abs() > 0.0005 {
+                        any_transitioning = true;
+                    }
+                    if new_opacity > 0.001 {
+                        let dim_color = Color::new(0.0, 0.0, 0.0, new_opacity);
                         let b = &info.bounds;
                         self.add_rect(&mut dim_vertices, b.x, b.y, b.width, b.height, &dim_color);
                     }
                 }
+                // Clean up windows that no longer exist
+                let valid_ids: std::collections::HashSet<i64> = frame_glyphs.window_infos.iter()
+                    .map(|i| i.window_id).collect();
+                self.per_window_dim.retain(|k, _| valid_ids.contains(k));
+
                 if !dim_vertices.is_empty() {
                     let dim_buffer = self.device.create_buffer_init(
                         &wgpu::util::BufferInitDescriptor {
@@ -2845,6 +2879,10 @@ impl WgpuRenderer {
                     render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
                     render_pass.set_vertex_buffer(0, dim_buffer.slice(..));
                     render_pass.draw(0..dim_vertices.len() as u32, 0..1);
+                }
+                // Signal that we need continuous redraws during transition
+                if any_transitioning {
+                    self.needs_continuous_redraw = true;
                 }
             }
         }

@@ -2913,7 +2913,7 @@ impl RenderApp {
                 .map(|(v, bg)| (v as *const wgpu::TextureView, bg))
             {
                 let frame = self.current_frame.as_ref().expect("checked in render");
-                let renderer = self.renderer.as_ref().expect("checked in render");
+                let renderer = self.renderer.as_mut().expect("checked in render");
                 let glyph_atlas = self.glyph_atlas.as_mut().expect("checked in render");
 
                 // SAFETY: current_view is valid for the duration of this block
@@ -2952,7 +2952,7 @@ impl RenderApp {
         } else {
             // Simple path: render directly to surface
             let frame = self.current_frame.as_ref().expect("checked in render");
-            let renderer = self.renderer.as_ref().expect("checked in render");
+            let renderer = self.renderer.as_mut().expect("checked in render");
             let glyph_atlas = self.glyph_atlas.as_mut().expect("checked in render");
 
             renderer.render_frame_glyphs(
@@ -3779,6 +3779,13 @@ impl ApplicationHandler for RenderApp {
         // Keep dirty if cursor pulse is active (needs continuous redraw)
         if self.cursor_pulse_enabled && self.cursor_glow_enabled {
             self.frame_dirty = true;
+        }
+
+        // Keep dirty if renderer signals need for continuous redraws (dim fade)
+        if let Some(ref renderer) = self.renderer {
+            if renderer.needs_continuous_redraw {
+                self.frame_dirty = true;
+            }
         }
 
         // Keep dirty if transitions are active
