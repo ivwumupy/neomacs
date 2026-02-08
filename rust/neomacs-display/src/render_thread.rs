@@ -605,6 +605,8 @@ struct RenderApp {
     titlebar_hover: u32,
     /// Last title bar click time (for double-click detection)
     last_titlebar_click: std::time::Instant,
+    /// Whether the window is currently in fullscreen mode
+    is_fullscreen: bool,
 }
 
 /// State for a tooltip displayed as GPU overlay
@@ -751,6 +753,7 @@ impl RenderApp {
             custom_titlebar_height: 30.0,
             titlebar_hover: 0,
             last_titlebar_click: std::time::Instant::now(),
+            is_fullscreen: false,
         }
     }
 
@@ -1172,17 +1175,21 @@ impl RenderApp {
                             3 => {
                                 // FULLSCREEN_BOTH: borderless fullscreen
                                 window.set_fullscreen(Some(Fullscreen::Borderless(None)));
+                                self.is_fullscreen = true;
                             }
                             4 => {
                                 // FULLSCREEN_MAXIMIZED
                                 window.set_maximized(true);
+                                self.is_fullscreen = false;
                             }
                             _ => {
                                 // FULLSCREEN_NONE or partial: exit fullscreen
                                 window.set_fullscreen(None);
                                 window.set_maximized(false);
+                                self.is_fullscreen = false;
                             }
                         }
+                        self.frame_dirty = true;
                     }
                 }
                 RenderCommand::SetWindowMinimized { minimized } => {
@@ -2550,8 +2557,8 @@ impl RenderApp {
             }
         }
 
-        // Render custom title bar when decorations are disabled
-        if !self.decorations_enabled && self.custom_titlebar_height > 0.0 {
+        // Render custom title bar when decorations are disabled (not in fullscreen)
+        if !self.decorations_enabled && !self.is_fullscreen && self.custom_titlebar_height > 0.0 {
             if let (Some(ref renderer), Some(ref mut glyph_atlas)) =
                 (&self.renderer, &mut self.glyph_atlas)
             {
@@ -2735,7 +2742,7 @@ impl RenderApp {
     /// Check if a point is in the custom title bar area.
     /// Returns: 0 = not in title bar, 1 = drag area, 2 = close, 3 = maximize, 4 = minimize
     fn titlebar_hit_test(&self, x: f32, y: f32) -> u32 {
-        if self.decorations_enabled || self.custom_titlebar_height <= 0.0 {
+        if self.decorations_enabled || self.is_fullscreen || self.custom_titlebar_height <= 0.0 {
             return 0;
         }
         let w = self.width as f32 / self.scale_factor as f32;
