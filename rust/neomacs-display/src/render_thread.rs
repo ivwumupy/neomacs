@@ -607,6 +607,12 @@ struct RenderApp {
     last_titlebar_click: std::time::Instant,
     /// Whether the window is currently in fullscreen mode
     is_fullscreen: bool,
+    /// Whether to show the FPS counter overlay
+    show_fps: bool,
+    /// Frame time tracking for FPS counter
+    fps_last_instant: std::time::Instant,
+    fps_frame_count: u32,
+    fps_display_value: f32,
 }
 
 /// State for a tooltip displayed as GPU overlay
@@ -754,6 +760,10 @@ impl RenderApp {
             titlebar_hover: 0,
             last_titlebar_click: std::time::Instant::now(),
             is_fullscreen: false,
+            show_fps: false,
+            fps_last_instant: std::time::Instant::now(),
+            fps_frame_count: 0,
+            fps_display_value: 0.0,
         }
     }
 
@@ -1398,6 +1408,10 @@ impl RenderApp {
                 }
                 RenderCommand::SetTitlebarHeight { height } => {
                     self.custom_titlebar_height = height;
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetShowFps { enabled } => {
+                    self.show_fps = enabled;
                     self.frame_dirty = true;
                 }
             }
@@ -2394,6 +2408,18 @@ impl RenderApp {
             return;
         }
 
+        // FPS tracking
+        if self.show_fps {
+            self.fps_frame_count += 1;
+            let elapsed = self.fps_last_instant.elapsed();
+            if elapsed.as_secs_f32() >= 1.0 {
+                self.fps_display_value =
+                    self.fps_frame_count as f32 / elapsed.as_secs_f32();
+                self.fps_frame_count = 0;
+                self.fps_last_instant = std::time::Instant::now();
+            }
+        }
+
         // Update terminals (expand terminal glyphs into renderable cells)
         #[cfg(feature = "neo-term")]
         self.update_terminals();
@@ -2637,6 +2663,22 @@ impl RenderApp {
                 self.frame_dirty = true; // Keep redrawing during animation
             } else {
                 self.visual_bell_start = None;
+            }
+        }
+
+        // Render FPS counter overlay (topmost)
+        if self.show_fps {
+            if let (Some(ref renderer), Some(ref mut glyph_atlas)) =
+                (&self.renderer, &mut self.glyph_atlas)
+            {
+                let fps_text = format!("{:.0} FPS", self.fps_display_value);
+                renderer.render_fps_overlay(
+                    &surface_view,
+                    &fps_text,
+                    glyph_atlas,
+                    self.width,
+                    self.height,
+                );
             }
         }
 

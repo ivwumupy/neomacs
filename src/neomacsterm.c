@@ -7847,6 +7847,21 @@ The title bar is only visible when window decorations are disabled.  */)
   return make_fixnum (h);
 }
 
+DEFUN ("neomacs-show-fps", Fneomacs_show_fps,
+       Sneomacs_show_fps, 1, 1, 0,
+       doc: /* Toggle the FPS counter overlay.
+ENABLED non-nil shows the counter, nil hides it.  */)
+  (Lisp_Object enabled)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+
+  neomacs_display_set_show_fps (dpyinfo->display_handle,
+                                 !NILP (enabled) ? 1 : 0);
+  return !NILP (enabled) ? Qt : Qnil;
+}
+
 DEFUN ("neomacs-set-cursor-blink", Fneomacs_set_cursor_blink, Sneomacs_set_cursor_blink, 1, 2, 0,
        doc: /* Configure cursor blinking in the render thread.
 ENABLED non-nil enables blinking, nil disables it.
@@ -9015,6 +9030,9 @@ syms_of_neomacsterm (void)
 
   /* Title bar */
   defsubr (&Sneomacs_set_titlebar_height);
+
+  /* FPS counter */
+  defsubr (&Sneomacs_show_fps);
 
   /* Cursor blink */
   defsubr (&Sneomacs_set_cursor_blink);

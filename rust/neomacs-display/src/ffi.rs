@@ -2206,6 +2206,18 @@ pub unsafe extern "C" fn neomacs_display_set_titlebar_height(
     }
 }
 
+/// Toggle FPS counter overlay
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_show_fps(
+    _handle: *mut NeomacsDisplay,
+    enabled: c_int,
+) {
+    let cmd = RenderCommand::SetShowFps { enabled: enabled != 0 };
+    if let Some(ref state) = THREADED_STATE {
+        let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+    }
+}
+
 /// Set the window title (threaded mode)
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_set_title(

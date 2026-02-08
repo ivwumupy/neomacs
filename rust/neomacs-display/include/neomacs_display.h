@@ -1098,6 +1098,11 @@ void neomacs_display_set_scroll_indicators(struct NeomacsDisplay *handle, int en
 void neomacs_display_set_titlebar_height(struct NeomacsDisplay *handle, int height);
 
 /**
+ * Toggle FPS counter overlay
+ */
+void neomacs_display_set_show_fps(struct NeomacsDisplay *handle, int enabled);
+
+/**
  * Set the window title (threaded mode)
  */
 void neomacs_display_set_title(struct NeomacsDisplay *handle, const char *title);

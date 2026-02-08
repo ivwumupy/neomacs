@@ -253,6 +253,8 @@ pub enum RenderCommand {
     SetScrollIndicators { enabled: bool },
     /// Set custom title bar height (0 = hidden, >0 = show with given height)
     SetTitlebarHeight { height: f32 },
+    /// Toggle FPS counter overlay
+    SetShowFps { enabled: bool },
 }
 
 /// Wakeup pipe for signaling Emacs from render thread

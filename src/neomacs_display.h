@@ -1242,6 +1242,12 @@ void neomacs_display_set_titlebar_height(struct NeomacsDisplay *handle,
                                           int height);
 
 /**
+ * Toggle FPS counter overlay.
+ */
+void neomacs_display_set_show_fps(struct NeomacsDisplay *handle,
+                                   int enabled);
+
+/**
  * Get dropped file paths (call after NEOMACS_EVENT_FILE_DROP).
  * Returns number of paths written to out_paths.
  * Each path must be freed with neomacs_display_free_dropped_path().
