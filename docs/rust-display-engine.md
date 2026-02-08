@@ -2,6 +2,392 @@
 
 Replace Emacs's C display engine (`xdisp.c`, `dispnew.c`, ~40k LOC) with a Rust layout engine that reads buffer data directly and produces GPU-ready glyph batches.
 
+## How the Official Emacs Display Engine Works
+
+Understanding what we're replacing. The Emacs display engine is a **two-phase system**:
+
+```
+Phase 1: BUILD desired_matrix    (xdisp.c — "what should be on screen")
+Phase 2: UPDATE current_matrix   (dispnew.c — "make the screen match")
+```
+
+Each window has TWO glyph matrices:
+- **`desired_matrix`** — what redisplay WANTS to show (rebuilt each cycle)
+- **`current_matrix`** — what's ACTUALLY on screen (updated incrementally)
+
+The update phase diffs them and only redraws what changed — like a virtual DOM diff.
+
+### Entry Point: `redisplay_internal()` (xdisp.c:17360)
+
+Called after every command, timer, process output, or explicit `(redisplay)`:
+
+```
+redisplay_internal()
+  ├─ Check if redisplay is needed (windows_or_buffers_changed?)
+  ├─ Run pre-redisplay-function (Lisp hook)
+  ├─ prepare_menu_bars()
+  ├─ For each visible frame:
+  │    └─ For each window in frame's window tree:
+  │         └─ redisplay_window(w)
+  ├─ Run post-redisplay hooks
+  └─ Set windows_or_buffers_changed = 0
+```
+
+### Per-Window: `redisplay_window()` (~2000 lines)
+
+Decides what to display. Tries optimizations first, falls back to full layout:
+
+```
+redisplay_window(w)
+  ├─ Check if window-start is still valid
+  ├─ Try optimization: try_window_reusing_current_matrix()
+  │    └─ If buffer unchanged, try to reuse existing rows (scroll optimization)
+  ├─ Try optimization: try_window_id()
+  │    └─ Find minimal diff between current and desired (incremental update)
+  ├─ Fallback: try_window()
+  │    └─ Full layout from window-start to bottom of window
+  ├─ If point not visible → adjust window-start → retry (2-5 passes)
+  ├─ Display mode-line, header-line, tab-line
+  └─ Set w->window_end_pos, w->window_end_vpos, w->cursor
+```
+
+### The Core: `display_line()` (~500 lines)
+
+Generates ONE visual row (glyph row) from buffer content:
+
+```
+display_line(it)
+  ├─ prepare_desired_row()  — clear row
+  ├─ LOOP:
+  │    ├─ get_next_display_element(it)  — fetch next thing to display
+  │    ├─ PRODUCE_GLYPHS(it)           — compute metrics, append glyph
+  │    ├─ Check: line full? (wrapping/truncation decision)
+  │    ├─ Check: reached end of window?
+  │    └─ set_iterator_to_next(it)     — advance position
+  ├─ Handle end-of-line: padding, continuation/truncation glyphs
+  └─ Compute row metrics: ascent, descent, height
+```
+
+### The Display Iterator (`struct it`)
+
+The central abstraction. A state machine with ~550 fields that walks through display content:
+
+```c
+struct it {
+    // Where we are
+    struct display_pos current;     // Buffer/string position
+    ptrdiff_t stop_charpos;         // Next position to check for property changes
+
+    // What we're iterating over
+    enum it_method method;          // GET_FROM_BUFFER, GET_FROM_STRING,
+                                    // GET_FROM_IMAGE, GET_FROM_STRETCH, etc.
+
+    // What we found
+    enum display_element_type what; // IT_CHARACTER, IT_IMAGE, IT_COMPOSITION,
+                                    // IT_STRETCH, IT_GLYPHLESS, etc.
+    int c;                          // Character code (if IT_CHARACTER)
+    int face_id;                    // Resolved face for current element
+
+    // Metrics of current element
+    int pixel_width;
+    int ascent, descent;
+    int current_x, current_y;
+
+    // Nested context stack (for display properties in overlay strings, etc.)
+    struct iterator_stack_entry stack[5];  // IT_STACK_SIZE = 5
+    int sp;                               // Stack pointer
+
+    // Bidi state
+    struct bidi_it bidi_it;
+
+    // Display state
+    int hscroll;
+    enum line_wrap_method line_wrap;  // TRUNCATE, WORD_WRAP, WINDOW_WRAP
+
+    // ... ~500 more fields
+};
+```
+
+#### Iterator Methods (9 types)
+
+The iterator is polymorphic — `method` determines how to get the next element:
+
+| Method | Source | Used for |
+|--------|--------|----------|
+| `GET_FROM_BUFFER` | Buffer text | Normal text editing |
+| `GET_FROM_STRING` | Lisp string | Overlay strings, display strings |
+| `GET_FROM_C_STRING` | C string | Mode-line format results |
+| `GET_FROM_IMAGE` | Image spec | `(image ...)` display property |
+| `GET_FROM_STRETCH` | Space spec | `(space ...)` display property |
+| `GET_FROM_XWIDGET` | Xwidget | Embedded widgets |
+| `GET_FROM_DISPLAY_VECTOR` | Display table | Character display overrides |
+| `GET_FROM_VIDEO` | Video spec | `(video ...)` (neomacs extension) |
+| `GET_FROM_WEBKIT` | WebKit spec | `(webkit ...)` (neomacs extension) |
+
+#### The Property Check Pipeline
+
+At each `stop_charpos`, the iterator runs property handlers in sequence:
+
+```
+handle_stop(it)
+  ├─ handle_fontified_prop()     — trigger jit-lock if text not fontified
+  │    └─ Call fontification-functions (Lisp callback!)
+  ├─ handle_face_prop()          — resolve face at position
+  │    └─ face_at_buffer_position()
+  │         ├─ Get text property 'face
+  │         ├─ Get ALL overlay 'face properties (sorted by priority)
+  │         └─ Merge into single realized face ID
+  ├─ handle_display_prop()       — check for display overrides
+  │    └─ handle_single_display_spec()  (634 lines, 14 spec types)
+  │         ├─ String → push_it(), switch to GET_FROM_STRING
+  │         ├─ Image → switch to GET_FROM_IMAGE
+  │         ├─ Space → switch to GET_FROM_STRETCH
+  │         ├─ Fringe bitmap → record for fringe drawing
+  │         ├─ Margin spec → redirect to margin area
+  │         └─ ... 14 types total, composable in lists/vectors
+  ├─ handle_invisible_prop()     — skip invisible text
+  │    └─ advance past invisible region, handle ellipsis
+  └─ handle_overlay_change()     — load overlay strings
+       └─ load_overlay_strings()
+            ├─ Scan overlays at position (itree)
+            ├─ Collect before-strings and after-strings
+            ├─ Sort by priority
+            └─ push_it(), switch to GET_FROM_STRING
+```
+
+#### The Iterator Stack (5 levels)
+
+When a display property replaces text with a string, the iterator **pushes** its current state and switches to iterating the string. When the string is exhausted, it **pops** back:
+
+```
+Buffer text: "Hello [OVERLAY] world"
+                     ↓
+            overlay has before-string: ">>>"
+            ">>>" has display property: (image :file "arrow.png")
+
+Iterator state stack:
+  Level 0: GET_FROM_BUFFER  (buffer text)
+  Level 1: GET_FROM_STRING  (overlay before-string ">>>")
+  Level 2: GET_FROM_IMAGE   (image in display property)
+
+  Pop level 2 → back to ">>>" string
+  Pop level 1 → back to buffer text at "world"
+```
+
+Maximum nesting: 5 levels (`IT_STACK_SIZE`).
+
+### Glyph Production
+
+`PRODUCE_GLYPHS(it)` → `gui_produce_glyphs(it)` computes metrics and appends a glyph:
+
+```
+gui_produce_glyphs(it)
+  ├─ IT_CHARACTER:
+  │    ├─ Get font metrics (ascent, descent, width) from face->font
+  │    ├─ Handle special cases: tab, newline, control chars
+  │    └─ append_glyph() → add CHAR_GLYPH to row
+  ├─ IT_COMPOSITION:
+  │    ├─ Get composed glyph metrics from composition table
+  │    └─ append_composite_glyph() → add COMPOSITE_GLYPH
+  ├─ IT_IMAGE:
+  │    ├─ Compute image dimensions (scaling, slicing)
+  │    └─ append_glyph() → add IMAGE_GLYPH
+  ├─ IT_STRETCH:
+  │    ├─ Compute space width (calc_pixel_width_or_height)
+  │    └─ append_stretch_glyph() → add STRETCH_GLYPH
+  └─ IT_GLYPHLESS:
+       ├─ Missing glyph → show as hex code or empty box
+       └─ append_glyphless_glyph()
+```
+
+#### Glyph Structure
+
+Each glyph in the matrix:
+
+```c
+struct glyph {
+    // What to display
+    unsigned type : 3;          // CHAR_GLYPH, IMAGE_GLYPH, STRETCH_GLYPH, etc.
+    union {
+        unsigned ch;            // Character code (CHAR_GLYPH)
+        struct { int id; } cmp; // Composition ID
+        int img_id;             // Image ID
+    } u;
+
+    // How to display it
+    unsigned face_id : 20;      // Index into face cache
+
+    // Layout metrics
+    short pixel_width;
+    short ascent, descent;
+    short voffset;              // Vertical offset (for 'raise' property)
+
+    // Buffer position (for cursor, mouse, etc.)
+    ptrdiff_t charpos;
+    Lisp_Object object;         // Source: buffer, string, or nil
+
+    // Bidi
+    unsigned resolved_level : 7;
+    unsigned bidi_type : 3;
+
+    // Flags
+    bool padding_p;
+    bool left_box_line_p, right_box_line_p;
+    bool overlaps_vertically_p;
+};
+```
+
+#### Glyph Row
+
+One visual line:
+
+```c
+struct glyph_row {
+    struct glyph *glyphs[3];    // LEFT_MARGIN_AREA, TEXT_AREA, RIGHT_MARGIN_AREA
+    short used[3];              // Glyph count per area
+
+    int x, y;                   // Position in window
+    int pixel_width;
+    int ascent, descent, height;
+
+    // Buffer range this row displays
+    struct text_pos start, end;
+    struct text_pos minpos, maxpos;  // Bidi-aware min/max
+
+    // Flags
+    bool enabled_p;
+    bool displays_text_p;
+    bool mode_line_p, header_line_p, tab_line_p;
+    bool truncated_on_left_p, truncated_on_right_p;
+    bool reversed_p;            // RTL paragraph
+
+    // Fringe
+    int left_fringe_bitmap, right_fringe_bitmap;
+};
+```
+
+### Phase 2: Updating the Screen (dispnew.c)
+
+After Phase 1 fills `desired_matrix`, Phase 2 makes the screen match:
+
+```
+update_window(w)
+  ├─ gui_update_window_begin()      — save cursor, setup
+  ├─ Optimization: scrolling_window()
+  │    └─ Try to reuse rows by scrolling (copy rows up/down)
+  ├─ For each row in desired_matrix:
+  │    ├─ Compare with current_matrix row
+  │    ├─ If different: update_window_line()
+  │    │    ├─ update_text_area()   — draw changed glyphs
+  │    │    │    └─ Calls rif->write_glyphs() → backend draws
+  │    │    └─ Update marginal areas
+  │    └─ If same: skip (no redraw needed)
+  ├─ Copy desired_matrix → current_matrix
+  ├─ set_window_cursor_after_update()
+  ├─ gui_update_window_end()
+  │    ├─ Draw cursor via rif->draw_window_cursor()
+  │    └─ Draw borders via rif->draw_vertical_window_border()
+  └─ rif->flush_display()          — commit to screen
+```
+
+### The Backend Interface (`struct redisplay_interface`)
+
+The display engine talks to backends (X11, GTK, neomacs, etc.) through function pointers:
+
+```c
+struct redisplay_interface {
+    void (*produce_glyphs)(struct it *);
+    void (*write_glyphs)(struct window *, struct glyph_row *, ...);
+    void (*update_window_begin_hook)(struct window *);
+    void (*update_window_end_hook)(struct window *, ...);
+    void (*draw_glyph_string)(struct glyph_string *);
+    void (*draw_window_cursor)(struct window *, struct glyph_row *, ...);
+    void (*draw_vertical_window_border)(struct window *, int, int, int);
+    void (*draw_fringe_bitmap)(struct window *, struct glyph_row *, ...);
+    void (*clear_frame_area)(struct frame *, int, int, int, int);
+    void (*scroll_run_hook)(struct window *, struct run *);
+    void (*flush_display)(struct frame *);
+};
+```
+
+In neomacs, this is `neomacs_redisplay_interface` (neomacsterm.c:160). Neomacs **ignores most of these hooks** and instead walks `current_matrix` directly in `neomacs_extract_full_frame()`.
+
+### Face Resolution Pipeline
+
+```
+Text at position P with overlays O1 (priority=10), O2 (priority=20):
+
+1. Start with DEFAULT_FACE_ID
+2. Merge text property 'face at P       → attrs[]
+3. Merge O1's 'face (lower priority)    → attrs[]
+4. Merge O2's 'face (higher priority)   → attrs[]
+5. Lookup/create realized face from attrs[] → face_id
+
+face_at_buffer_position(w, P, ...)
+  → Returns single face_id with all attributes merged
+```
+
+Face attributes (from `struct face`):
+- `foreground`, `background` (pixel colors)
+- `font` (`struct font` — metrics, shaping)
+- `underline` (style: single/wave/double/dots/dashes, color)
+- `overline`, `strike_through` (bool + color)
+- `box` (type: none/line/3D, width, corner_radius, color)
+- `bold`, `italic` (via font selection)
+
+### Window-Start Computation
+
+The hardest part of redisplay — deciding which part of the buffer to show:
+
+```
+redisplay_window(w)
+  ├─ Is current w->start still good?
+  │    └─ try_window(w->start)
+  │         ├─ Layout from w->start to bottom
+  │         ├─ Is point visible? → YES: done
+  │         └─ Is point in scroll margin? → return -1 (need adjustment)
+  │
+  ├─ Point not visible → compute new window-start:
+  │    ├─ scroll_conservatively > 0?
+  │    │    └─ Try small adjustments to show point
+  │    ├─ scroll_step > 0?
+  │    │    └─ Scroll by scroll_step lines
+  │    └─ Fallback: center point in window
+  │         └─ move_it_vertically_backward() to find start
+  │
+  └─ Set w->start = new_start, retry layout
+```
+
+This can take **2-5 layout passes** per frame.
+
+### Mode-Line Rendering
+
+```
+display_mode_line(w)
+  ├─ format_mode_line(mode_line_format)  — evaluate Lisp format
+  │    └─ Recursive: handles %b (buffer name), %l (line), %c (column),
+  │       conditionals, Lisp expressions, etc.
+  │    └─ Returns: Lisp string with text properties (faces)
+  ├─ init_iterator() for mode-line row
+  ├─ display_string() — layout the formatted string
+  └─ Set w->mode_line_height from row height
+```
+
+### Key Design Principles of the Official Engine
+
+1. **Incremental update**: Only redraw what changed (desired vs current matrix diff).
+2. **Lazy computation**: Don't compute until needed. `jit-lock` fontifies on demand. `window-end` only computed when queried.
+3. **Property-change-driven scanning**: The iterator jumps between `stop_charpos` positions where properties change, skipping unchanged regions.
+4. **Stack-based nesting**: Display properties, overlay strings, and display strings nest via a 5-level stack, avoiding recursion.
+5. **Backend abstraction**: Drawing is separated from layout via `redisplay_interface` function pointers.
+6. **Persistent pixel buffers**: Official backends (X11, GTK) draw once and persist. Only changed regions are redrawn. (Neomacs differs — it clears and rebuilds every frame.)
+
+### Why It's Complex (~40k LOC)
+
+- **xdisp.c alone is 39,660 lines** because it handles every edge case: bidi, 14 display spec types, 5-level nesting, overlay string interleaving, incremental matrix optimization, scroll heuristics, 3-tier window-start computation, mode-line format evaluation, fringe bitmaps, margin areas, tab/header lines, minibuffer resize, mouse highlighting, and glyphless character rendering.
+- Much of this complexity is **optimization** (reusing matrices, scrolling rows, diffing) that neomacs doesn't need since GPU clears and rebuilds every frame.
+- Another chunk is **backend-specific code** (X11/GTK drawing) that a Rust engine replaces entirely.
+
 ## Current Architecture
 
 ```
