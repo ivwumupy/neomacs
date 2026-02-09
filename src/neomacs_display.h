@@ -1542,6 +1542,34 @@ void neomacs_display_set_stained_glass(
     int opacity,
     int saturation);
 
+void neomacs_display_set_scanlines(
+    struct NeomacsDisplay *handle,
+    int enabled,
+    int spacing,
+    int opacity,
+    int r,
+    int g,
+    int b);
+
+void neomacs_display_set_cursor_comet(
+    struct NeomacsDisplay *handle,
+    int enabled,
+    int trail_length,
+    int fade_ms,
+    int r,
+    int g,
+    int b,
+    int opacity);
+
+void neomacs_display_set_cursor_spotlight(
+    struct NeomacsDisplay *handle,
+    int enabled,
+    int radius,
+    int intensity,
+    int r,
+    int g,
+    int b);
+
 void neomacs_display_set_cursor_particles(
     struct NeomacsDisplay *handle,
     int enabled,

@@ -3073,6 +3073,80 @@ pub unsafe extern "C" fn neomacs_display_set_stained_glass(
     }
 }
 
+/// Configure window scanline (CRT) effect
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_scanlines(
+    _handle: *mut NeomacsDisplay,
+    enabled: c_int,
+    spacing: c_int,
+    opacity: c_int,
+    r: c_int,
+    g: c_int,
+    b: c_int,
+) {
+    let cmd = RenderCommand::SetScanlines {
+        enabled: enabled != 0,
+        spacing: spacing as u32,
+        opacity: opacity as f32 / 100.0,
+        r: r as f32 / 255.0,
+        g: g as f32 / 255.0,
+        b: b as f32 / 255.0,
+    };
+    if let Some(ref state) = THREADED_STATE {
+        let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+    }
+}
+
+/// Configure cursor comet tail effect
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_cursor_comet(
+    _handle: *mut NeomacsDisplay,
+    enabled: c_int,
+    trail_length: c_int,
+    fade_ms: c_int,
+    r: c_int,
+    g: c_int,
+    b: c_int,
+    opacity: c_int,
+) {
+    let cmd = RenderCommand::SetCursorComet {
+        enabled: enabled != 0,
+        trail_length: trail_length as u32,
+        fade_ms: fade_ms as u32,
+        r: r as f32 / 255.0,
+        g: g as f32 / 255.0,
+        b: b as f32 / 255.0,
+        opacity: opacity as f32 / 100.0,
+    };
+    if let Some(ref state) = THREADED_STATE {
+        let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+    }
+}
+
+/// Configure cursor spotlight/radial gradient effect
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_cursor_spotlight(
+    _handle: *mut NeomacsDisplay,
+    enabled: c_int,
+    radius: c_int,
+    intensity: c_int,
+    r: c_int,
+    g: c_int,
+    b: c_int,
+) {
+    let cmd = RenderCommand::SetCursorSpotlight {
+        enabled: enabled != 0,
+        radius: radius as f32,
+        intensity: intensity as f32 / 100.0,
+        r: r as f32 / 255.0,
+        g: g as f32 / 255.0,
+        b: b as f32 / 255.0,
+    };
+    if let Some(ref state) = THREADED_STATE {
+        let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+    }
+}
+
 /// Configure cursor particle trail effect
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_set_cursor_particles(

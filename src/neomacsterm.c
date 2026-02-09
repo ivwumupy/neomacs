@@ -9169,6 +9169,121 @@ SATURATION is a percentage 0-100 controlling color intensity (default 60).  */)
   return on ? Qt : Qnil;
 }
 
+DEFUN ("neomacs-set-scanlines",
+       Fneomacs_set_scanlines,
+       Sneomacs_set_scanlines, 0, 4, 0,
+       doc: /* Configure window scanline (CRT) effect.
+ENABLED non-nil overlays subtle horizontal scanlines across the screen,
+creating a retro CRT monitor appearance.
+SPACING is pixel distance between lines (default 2).
+OPACITY is a percentage 0-100 (default 8).
+COLOR is an RGB hex string for scanline color (default "#000000").  */)
+  (Lisp_Object enabled, Lisp_Object spacing, Lisp_Object opacity, Lisp_Object color)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+
+  int on = !NILP (enabled);
+  int sp = 2, op = 8;
+  int r = 0, g = 0, b = 0;
+  if (FIXNUMP (spacing)) sp = XFIXNUM (spacing);
+  if (FIXNUMP (opacity)) op = XFIXNUM (opacity);
+  if (STRINGP (color))
+    {
+      const char *s = SSDATA (color);
+      if (s[0] == '#' && strlen (s) == 7)
+        {
+          unsigned hex = 0;
+          sscanf (s + 1, "%06x", &hex);
+          r = (hex >> 16) & 0xFF;
+          g = (hex >> 8) & 0xFF;
+          b = hex & 0xFF;
+        }
+    }
+
+  neomacs_display_set_scanlines (dpyinfo->display_handle, on, sp, op, r, g, b);
+  return on ? Qt : Qnil;
+}
+
+DEFUN ("neomacs-set-cursor-comet",
+       Fneomacs_set_cursor_comet,
+       Sneomacs_set_cursor_comet, 0, 5, 0,
+       doc: /* Configure cursor comet tail effect.
+ENABLED non-nil leaves a fading trail of ghost cursor shapes along
+the cursor path as it moves.
+TRAIL-LENGTH is the number of ghost copies (default 5).
+FADE-MS is the fade-out duration in milliseconds (default 300).
+COLOR is an RGB hex string (default "#80B3FF").
+OPACITY is a percentage 0-100 (default 60).  */)
+  (Lisp_Object enabled, Lisp_Object trail_length, Lisp_Object fade_ms,
+   Lisp_Object color, Lisp_Object opacity)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+
+  int on = !NILP (enabled);
+  int tl = 5, fm = 300, op = 60;
+  int r = 0x80, g = 0xB3, b = 0xFF;
+  if (FIXNUMP (trail_length)) tl = XFIXNUM (trail_length);
+  if (FIXNUMP (fade_ms)) fm = XFIXNUM (fade_ms);
+  if (FIXNUMP (opacity)) op = XFIXNUM (opacity);
+  if (STRINGP (color))
+    {
+      const char *s = SSDATA (color);
+      if (s[0] == '#' && strlen (s) == 7)
+        {
+          unsigned hex = 0;
+          sscanf (s + 1, "%06x", &hex);
+          r = (hex >> 16) & 0xFF;
+          g = (hex >> 8) & 0xFF;
+          b = hex & 0xFF;
+        }
+    }
+
+  neomacs_display_set_cursor_comet (dpyinfo->display_handle, on, tl, fm, r, g, b, op);
+  return on ? Qt : Qnil;
+}
+
+DEFUN ("neomacs-set-cursor-spotlight",
+       Fneomacs_set_cursor_spotlight,
+       Sneomacs_set_cursor_spotlight, 0, 4, 0,
+       doc: /* Configure cursor spotlight/radial gradient effect.
+ENABLED non-nil renders a radial gradient overlay centered on the
+cursor position, creating a subtle spotlight effect.
+RADIUS is the spotlight radius in pixels (default 200).
+INTENSITY is a percentage 0-100 (default 15).
+COLOR is an RGB hex string (default "#FFFFE6").  */)
+  (Lisp_Object enabled, Lisp_Object radius, Lisp_Object intensity,
+   Lisp_Object color)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+
+  int on = !NILP (enabled);
+  int rad = 200, inten = 15;
+  int r = 0xFF, g = 0xFF, b = 0xE6;
+  if (FIXNUMP (radius)) rad = XFIXNUM (radius);
+  if (FIXNUMP (intensity)) inten = XFIXNUM (intensity);
+  if (STRINGP (color))
+    {
+      const char *s = SSDATA (color);
+      if (s[0] == '#' && strlen (s) == 7)
+        {
+          unsigned hex = 0;
+          sscanf (s + 1, "%06x", &hex);
+          r = (hex >> 16) & 0xFF;
+          g = (hex >> 8) & 0xFF;
+          b = hex & 0xFF;
+        }
+    }
+
+  neomacs_display_set_cursor_spotlight (dpyinfo->display_handle, on, rad, inten, r, g, b);
+  return on ? Qt : Qnil;
+}
+
 DEFUN ("neomacs-set-cursor-particles",
        Fneomacs_set_cursor_particles,
        Sneomacs_set_cursor_particles, 0, 5, 0,
@@ -10945,6 +11060,9 @@ syms_of_neomacsterm (void)
   defsubr (&Sneomacs_set_window_border_radius);
   defsubr (&Sneomacs_set_cursor_particles);
   defsubr (&Sneomacs_set_stained_glass);
+  defsubr (&Sneomacs_set_scanlines);
+  defsubr (&Sneomacs_set_cursor_comet);
+  defsubr (&Sneomacs_set_cursor_spotlight);
   defsubr (&Sneomacs_set_region_glow);
   defsubr (&Sneomacs_set_window_glow);
   defsubr (&Sneomacs_set_scroll_progress);

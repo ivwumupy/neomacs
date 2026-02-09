@@ -283,6 +283,23 @@ pub struct WgpuRenderer {
     stained_glass_enabled: bool,
     stained_glass_opacity: f32,
     stained_glass_saturation: f32,
+    /// Window scanline (CRT) effect
+    scanlines_enabled: bool,
+    scanlines_spacing: u32,
+    scanlines_opacity: f32,
+    scanlines_color: (f32, f32, f32),
+    /// Cursor comet tail effect
+    cursor_comet_enabled: bool,
+    cursor_comet_trail_length: u32,
+    cursor_comet_fade_ms: u32,
+    cursor_comet_color: (f32, f32, f32),
+    cursor_comet_opacity: f32,
+    cursor_comet_positions: Vec<(f32, f32, f32, f32, std::time::Instant)>, // x, y, w, h, time
+    /// Cursor spotlight/radial gradient effect
+    cursor_spotlight_enabled: bool,
+    cursor_spotlight_radius: f32,
+    cursor_spotlight_intensity: f32,
+    cursor_spotlight_color: (f32, f32, f32),
     /// Cursor particle trail effect
     cursor_particles_enabled: bool,
     cursor_particles_color: (f32, f32, f32),
@@ -1078,6 +1095,20 @@ impl WgpuRenderer {
             stained_glass_enabled: false,
             stained_glass_opacity: 0.08,
             stained_glass_saturation: 0.6,
+            scanlines_enabled: false,
+            scanlines_spacing: 2,
+            scanlines_opacity: 0.08,
+            scanlines_color: (0.0, 0.0, 0.0),
+            cursor_comet_enabled: false,
+            cursor_comet_trail_length: 5,
+            cursor_comet_fade_ms: 300,
+            cursor_comet_color: (0.5, 0.7, 1.0),
+            cursor_comet_opacity: 0.6,
+            cursor_comet_positions: Vec::new(),
+            cursor_spotlight_enabled: false,
+            cursor_spotlight_radius: 200.0,
+            cursor_spotlight_intensity: 0.15,
+            cursor_spotlight_color: (1.0, 1.0, 0.9),
             cursor_particles_enabled: false,
             cursor_particles_color: (1.0, 0.6, 0.2),
             cursor_particles_count: 6,
@@ -1404,6 +1435,34 @@ impl WgpuRenderer {
         self.stained_glass_enabled = enabled;
         self.stained_glass_opacity = opacity;
         self.stained_glass_saturation = saturation;
+    }
+
+    /// Update scanline config
+    pub fn set_scanlines(&mut self, enabled: bool, spacing: u32, opacity: f32, color: (f32, f32, f32)) {
+        self.scanlines_enabled = enabled;
+        self.scanlines_spacing = spacing;
+        self.scanlines_opacity = opacity;
+        self.scanlines_color = color;
+    }
+
+    /// Update cursor comet tail config
+    pub fn set_cursor_comet(&mut self, enabled: bool, trail_length: u32, fade_ms: u32, color: (f32, f32, f32), opacity: f32) {
+        self.cursor_comet_enabled = enabled;
+        self.cursor_comet_trail_length = trail_length;
+        self.cursor_comet_fade_ms = fade_ms;
+        self.cursor_comet_color = color;
+        self.cursor_comet_opacity = opacity;
+        if !enabled {
+            self.cursor_comet_positions.clear();
+        }
+    }
+
+    /// Update cursor spotlight config
+    pub fn set_cursor_spotlight(&mut self, enabled: bool, radius: f32, intensity: f32, color: (f32, f32, f32)) {
+        self.cursor_spotlight_enabled = enabled;
+        self.cursor_spotlight_radius = radius;
+        self.cursor_spotlight_intensity = intensity;
+        self.cursor_spotlight_color = color;
     }
 
     /// Update cursor particle trail config
@@ -3753,7 +3812,133 @@ impl WgpuRenderer {
                 }
             }
 
-            // === Step 1i: Cursor particle trail effect ===
+            // === Step 1i: Window scanline (CRT) effect ===
+            if self.scanlines_enabled {
+                let spacing = self.scanlines_spacing.max(1) as f32;
+                let (sr, sg, sb) = self.scanlines_color;
+                let sa = self.scanlines_opacity;
+                let mut sl_verts: Vec<RectVertex> = Vec::new();
+                let c = Color::new(sr, sg, sb, sa);
+                let mut y = 0.0_f32;
+                let h = self.height() as f32;
+                let w = self.width() as f32;
+                while y < h {
+                    self.add_rect(&mut sl_verts, 0.0, y, w, 1.0, &c);
+                    y += spacing;
+                }
+                if !sl_verts.is_empty() {
+                    let sl_buf = self.device.create_buffer_init(
+                        &wgpu::util::BufferInitDescriptor {
+                            label: Some("Scanlines Buffer"),
+                            contents: bytemuck::cast_slice(&sl_verts),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        },
+                    );
+                    render_pass.set_pipeline(&self.rect_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, sl_buf.slice(..));
+                    render_pass.draw(0..sl_verts.len() as u32, 0..1);
+                }
+            }
+
+            // === Step 1j: Cursor spotlight/radial gradient effect ===
+            if self.cursor_spotlight_enabled {
+                if let Some(ref anim) = animated_cursor {
+                    let cx = anim.x + anim.width / 2.0;
+                    let cy = anim.y + anim.height / 2.0;
+                    let radius = self.cursor_spotlight_radius;
+                    let intensity = self.cursor_spotlight_intensity;
+                    let (spr, spg, spb) = self.cursor_spotlight_color;
+                    // Approximate radial gradient with concentric rings
+                    let rings = 20u32;
+                    let mut spot_verts: Vec<RectVertex> = Vec::new();
+                    for i in (0..rings).rev() {
+                        let t = (i as f32 + 1.0) / rings as f32;
+                        let r = radius * t;
+                        let alpha = intensity * (1.0 - t) * (1.0 - t); // quadratic falloff
+                        if alpha > 0.001 {
+                            let c = Color::new(spr, spg, spb, alpha);
+                            self.add_rect(&mut spot_verts, cx - r, cy - r, r * 2.0, r * 2.0, &c);
+                        }
+                    }
+                    if !spot_verts.is_empty() {
+                        let spot_buf = self.device.create_buffer_init(
+                            &wgpu::util::BufferInitDescriptor {
+                                label: Some("Cursor Spotlight Buffer"),
+                                contents: bytemuck::cast_slice(&spot_verts),
+                                usage: wgpu::BufferUsages::VERTEX,
+                            },
+                        );
+                        render_pass.set_pipeline(&self.rect_pipeline);
+                        render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                        render_pass.set_vertex_buffer(0, spot_buf.slice(..));
+                        render_pass.draw(0..spot_verts.len() as u32, 0..1);
+                    }
+                }
+            }
+
+            // === Step 1k: Cursor comet tail effect ===
+            if self.cursor_comet_enabled {
+                let now = std::time::Instant::now();
+                let fade_dur = std::time::Duration::from_millis(self.cursor_comet_fade_ms as u64);
+
+                // Record cursor position
+                if let Some(ref anim) = animated_cursor {
+                    // Only record if position changed
+                    let should_add = self.cursor_comet_positions.last()
+                        .map(|(px, py, _, _, _)| {
+                            (anim.x - px).abs() > 0.5 || (anim.y - py).abs() > 0.5
+                        })
+                        .unwrap_or(true);
+                    if should_add {
+                        self.cursor_comet_positions.push((anim.x, anim.y, anim.width, anim.height, now));
+                    }
+                }
+
+                // Prune old positions
+                self.cursor_comet_positions.retain(|&(_, _, _, _, t)| now.duration_since(t) < fade_dur);
+
+                // Keep only trail_length most recent
+                let max = self.cursor_comet_trail_length as usize;
+                if self.cursor_comet_positions.len() > max {
+                    let drain_count = self.cursor_comet_positions.len() - max;
+                    self.cursor_comet_positions.drain(0..drain_count);
+                }
+
+                // Render ghost cursors
+                if !self.cursor_comet_positions.is_empty() {
+                    let (cr, cg, cb) = self.cursor_comet_color;
+                    let max_alpha = self.cursor_comet_opacity;
+                    let count = self.cursor_comet_positions.len();
+                    let mut comet_verts: Vec<RectVertex> = Vec::new();
+                    for (i, &(px, py, pw, ph, t)) in self.cursor_comet_positions.iter().enumerate() {
+                        let age = now.duration_since(t).as_secs_f32();
+                        let time_fade = 1.0 - (age / fade_dur.as_secs_f32()).min(1.0);
+                        let pos_fade = (i as f32 + 1.0) / count as f32;
+                        let alpha = max_alpha * time_fade * pos_fade * 0.5;
+                        if alpha > 0.001 {
+                            let c = Color::new(cr, cg, cb, alpha);
+                            self.add_rect(&mut comet_verts, px, py, pw, ph, &c);
+                        }
+                    }
+                    if !comet_verts.is_empty() {
+                        let comet_buf = self.device.create_buffer_init(
+                            &wgpu::util::BufferInitDescriptor {
+                                label: Some("Cursor Comet Buffer"),
+                                contents: bytemuck::cast_slice(&comet_verts),
+                                usage: wgpu::BufferUsages::VERTEX,
+                            },
+                        );
+                        render_pass.set_pipeline(&self.rect_pipeline);
+                        render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                        render_pass.set_vertex_buffer(0, comet_buf.slice(..));
+                        render_pass.draw(0..comet_verts.len() as u32, 0..1);
+                    }
+                    self.needs_continuous_redraw = true;
+                }
+            }
+
+            // === Step 1l: Cursor particle trail effect ===
             if self.cursor_particles_enabled {
                 let now = std::time::Instant::now();
                 let lifetime = std::time::Duration::from_millis(self.cursor_particles_lifetime_ms as u64);

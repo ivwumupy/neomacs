@@ -1511,6 +1511,40 @@ void neomacs_display_set_stained_glass(struct NeomacsDisplay *handle,
                                        int saturation);
 
 /**
+ * Configure window scanline (CRT) effect
+ */
+void neomacs_display_set_scanlines(struct NeomacsDisplay *handle,
+                                   int enabled,
+                                   int spacing,
+                                   int opacity,
+                                   int r,
+                                   int g,
+                                   int b);
+
+/**
+ * Configure cursor comet tail effect
+ */
+void neomacs_display_set_cursor_comet(struct NeomacsDisplay *handle,
+                                      int enabled,
+                                      int trailLength,
+                                      int fadeMs,
+                                      int r,
+                                      int g,
+                                      int b,
+                                      int opacity);
+
+/**
+ * Configure cursor spotlight/radial gradient effect
+ */
+void neomacs_display_set_cursor_spotlight(struct NeomacsDisplay *handle,
+                                          int enabled,
+                                          int radius,
+                                          int intensity,
+                                          int r,
+                                          int g,
+                                          int b);
+
+/**
  * Configure cursor particle trail effect
  */
 void neomacs_display_set_cursor_particles(struct NeomacsDisplay *handle,

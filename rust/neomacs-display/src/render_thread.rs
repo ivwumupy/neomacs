@@ -792,6 +792,22 @@ struct RenderApp {
     stained_glass_enabled: bool,
     stained_glass_opacity: f32,
     stained_glass_saturation: f32,
+    /// Window scanline (CRT) effect
+    scanlines_enabled: bool,
+    scanlines_spacing: u32,
+    scanlines_opacity: f32,
+    scanlines_color: (f32, f32, f32),
+    /// Cursor comet tail effect
+    cursor_comet_enabled: bool,
+    cursor_comet_trail_length: u32,
+    cursor_comet_fade_ms: u32,
+    cursor_comet_color: (f32, f32, f32),
+    cursor_comet_opacity: f32,
+    /// Cursor spotlight effect
+    cursor_spotlight_enabled: bool,
+    cursor_spotlight_radius: f32,
+    cursor_spotlight_intensity: f32,
+    cursor_spotlight_color: (f32, f32, f32),
     /// Cursor particle trail effect
     cursor_particles_enabled: bool,
     cursor_particles_color: (f32, f32, f32),
@@ -1164,6 +1180,19 @@ impl RenderApp {
             stained_glass_enabled: false,
             stained_glass_opacity: 0.08,
             stained_glass_saturation: 0.6,
+            scanlines_enabled: false,
+            scanlines_spacing: 2,
+            scanlines_opacity: 0.08,
+            scanlines_color: (0.0, 0.0, 0.0),
+            cursor_comet_enabled: false,
+            cursor_comet_trail_length: 5,
+            cursor_comet_fade_ms: 300,
+            cursor_comet_color: (0.5, 0.7, 1.0),
+            cursor_comet_opacity: 0.6,
+            cursor_spotlight_enabled: false,
+            cursor_spotlight_radius: 200.0,
+            cursor_spotlight_intensity: 0.15,
+            cursor_spotlight_color: (1.0, 1.0, 0.9),
             cursor_particles_enabled: false,
             cursor_particles_color: (1.0, 0.6, 0.2),
             cursor_particles_count: 6,
@@ -2336,6 +2365,37 @@ impl RenderApp {
                     self.stained_glass_saturation = saturation;
                     if let Some(renderer) = self.renderer.as_mut() {
                         renderer.set_stained_glass(enabled, opacity, saturation);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetScanlines { enabled, spacing, opacity, r, g, b } => {
+                    self.scanlines_enabled = enabled;
+                    self.scanlines_spacing = spacing;
+                    self.scanlines_opacity = opacity;
+                    self.scanlines_color = (r, g, b);
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_scanlines(enabled, spacing, opacity, (r, g, b));
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetCursorComet { enabled, trail_length, fade_ms, r, g, b, opacity } => {
+                    self.cursor_comet_enabled = enabled;
+                    self.cursor_comet_trail_length = trail_length;
+                    self.cursor_comet_fade_ms = fade_ms;
+                    self.cursor_comet_color = (r, g, b);
+                    self.cursor_comet_opacity = opacity;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_cursor_comet(enabled, trail_length, fade_ms, (r, g, b), opacity);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetCursorSpotlight { enabled, radius, intensity, r, g, b } => {
+                    self.cursor_spotlight_enabled = enabled;
+                    self.cursor_spotlight_radius = radius;
+                    self.cursor_spotlight_intensity = intensity;
+                    self.cursor_spotlight_color = (r, g, b);
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_cursor_spotlight(enabled, radius, intensity, (r, g, b));
                     }
                     self.frame_dirty = true;
                 }

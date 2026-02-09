@@ -2286,6 +2286,233 @@ buffer's identity, creating a stained-glass appearance."
                 neomacs-stained-glass-opacity nil)
             val))))
 
+;; --- Window scanline (CRT) effect ---
+(declare-function neomacs-set-scanlines "neomacsterm.c"
+  (&optional enabled spacing opacity color))
+
+(defcustom neomacs-scanlines nil
+  "Enable window scanline (CRT) effect.
+Non-nil overlays subtle horizontal scanlines across the screen."
+  :type 'boolean
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-scanlines)
+           (neomacs-set-scanlines val
+            (if (boundp 'neomacs-scanlines-spacing)
+                neomacs-scanlines-spacing nil)
+            (if (boundp 'neomacs-scanlines-opacity)
+                neomacs-scanlines-opacity nil)
+            (if (boundp 'neomacs-scanlines-color)
+                neomacs-scanlines-color nil)))))
+
+(defcustom neomacs-scanlines-spacing 2
+  "Scanline spacing in pixels."
+  :type '(integer :tag "Spacing (px)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-scanlines)
+                    (boundp 'neomacs-scanlines)
+                    neomacs-scanlines)
+           (neomacs-set-scanlines t val
+            (if (boundp 'neomacs-scanlines-opacity)
+                neomacs-scanlines-opacity nil)
+            (if (boundp 'neomacs-scanlines-color)
+                neomacs-scanlines-color nil)))))
+
+(defcustom neomacs-scanlines-opacity 8
+  "Scanline opacity (0-100)."
+  :type '(integer :tag "Opacity (%)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-scanlines)
+                    (boundp 'neomacs-scanlines)
+                    neomacs-scanlines)
+           (neomacs-set-scanlines t
+            (if (boundp 'neomacs-scanlines-spacing)
+                neomacs-scanlines-spacing nil)
+            val
+            (if (boundp 'neomacs-scanlines-color)
+                neomacs-scanlines-color nil)))))
+
+(defcustom neomacs-scanlines-color "#000000"
+  "Scanline color as hex RGB string."
+  :type '(string :tag "Color (#RRGGBB)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-scanlines)
+                    (boundp 'neomacs-scanlines)
+                    neomacs-scanlines)
+           (neomacs-set-scanlines t
+            (if (boundp 'neomacs-scanlines-spacing)
+                neomacs-scanlines-spacing nil)
+            (if (boundp 'neomacs-scanlines-opacity)
+                neomacs-scanlines-opacity nil)
+            val))))
+
+;; --- Cursor comet tail effect ---
+(declare-function neomacs-set-cursor-comet "neomacsterm.c"
+  (&optional enabled trail-length fade-ms color opacity))
+
+(defcustom neomacs-cursor-comet nil
+  "Enable cursor comet tail effect.
+Non-nil leaves a fading trail of ghost cursor shapes along the path."
+  :type 'boolean
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-cursor-comet)
+           (neomacs-set-cursor-comet val
+            (if (boundp 'neomacs-cursor-comet-trail-length)
+                neomacs-cursor-comet-trail-length nil)
+            (if (boundp 'neomacs-cursor-comet-fade-ms)
+                neomacs-cursor-comet-fade-ms nil)
+            (if (boundp 'neomacs-cursor-comet-color)
+                neomacs-cursor-comet-color nil)
+            (if (boundp 'neomacs-cursor-comet-opacity)
+                neomacs-cursor-comet-opacity nil)))))
+
+(defcustom neomacs-cursor-comet-trail-length 5
+  "Number of ghost cursor copies in the comet trail."
+  :type '(integer :tag "Trail length")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-comet)
+                    (boundp 'neomacs-cursor-comet)
+                    neomacs-cursor-comet)
+           (neomacs-set-cursor-comet t val
+            (if (boundp 'neomacs-cursor-comet-fade-ms)
+                neomacs-cursor-comet-fade-ms nil)
+            (if (boundp 'neomacs-cursor-comet-color)
+                neomacs-cursor-comet-color nil)
+            (if (boundp 'neomacs-cursor-comet-opacity)
+                neomacs-cursor-comet-opacity nil)))))
+
+(defcustom neomacs-cursor-comet-fade-ms 300
+  "Comet trail fade-out duration in milliseconds."
+  :type '(integer :tag "Fade (ms)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-comet)
+                    (boundp 'neomacs-cursor-comet)
+                    neomacs-cursor-comet)
+           (neomacs-set-cursor-comet t
+            (if (boundp 'neomacs-cursor-comet-trail-length)
+                neomacs-cursor-comet-trail-length nil)
+            val
+            (if (boundp 'neomacs-cursor-comet-color)
+                neomacs-cursor-comet-color nil)
+            (if (boundp 'neomacs-cursor-comet-opacity)
+                neomacs-cursor-comet-opacity nil)))))
+
+(defcustom neomacs-cursor-comet-color "#80B3FF"
+  "Comet trail color as hex RGB string."
+  :type '(string :tag "Color (#RRGGBB)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-comet)
+                    (boundp 'neomacs-cursor-comet)
+                    neomacs-cursor-comet)
+           (neomacs-set-cursor-comet t
+            (if (boundp 'neomacs-cursor-comet-trail-length)
+                neomacs-cursor-comet-trail-length nil)
+            (if (boundp 'neomacs-cursor-comet-fade-ms)
+                neomacs-cursor-comet-fade-ms nil)
+            val
+            (if (boundp 'neomacs-cursor-comet-opacity)
+                neomacs-cursor-comet-opacity nil)))))
+
+(defcustom neomacs-cursor-comet-opacity 60
+  "Comet trail max opacity (0-100)."
+  :type '(integer :tag "Opacity (%)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-comet)
+                    (boundp 'neomacs-cursor-comet)
+                    neomacs-cursor-comet)
+           (neomacs-set-cursor-comet t
+            (if (boundp 'neomacs-cursor-comet-trail-length)
+                neomacs-cursor-comet-trail-length nil)
+            (if (boundp 'neomacs-cursor-comet-fade-ms)
+                neomacs-cursor-comet-fade-ms nil)
+            (if (boundp 'neomacs-cursor-comet-color)
+                neomacs-cursor-comet-color nil)
+            val))))
+
+;; --- Cursor spotlight effect ---
+(declare-function neomacs-set-cursor-spotlight "neomacsterm.c"
+  (&optional enabled radius intensity color))
+
+(defcustom neomacs-cursor-spotlight nil
+  "Enable cursor spotlight/radial gradient effect.
+Non-nil renders a radial gradient centered on the cursor."
+  :type 'boolean
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-cursor-spotlight)
+           (neomacs-set-cursor-spotlight val
+            (if (boundp 'neomacs-cursor-spotlight-radius)
+                neomacs-cursor-spotlight-radius nil)
+            (if (boundp 'neomacs-cursor-spotlight-intensity)
+                neomacs-cursor-spotlight-intensity nil)
+            (if (boundp 'neomacs-cursor-spotlight-color)
+                neomacs-cursor-spotlight-color nil)))))
+
+(defcustom neomacs-cursor-spotlight-radius 200
+  "Spotlight radius in pixels."
+  :type '(integer :tag "Radius (px)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-spotlight)
+                    (boundp 'neomacs-cursor-spotlight)
+                    neomacs-cursor-spotlight)
+           (neomacs-set-cursor-spotlight t val
+            (if (boundp 'neomacs-cursor-spotlight-intensity)
+                neomacs-cursor-spotlight-intensity nil)
+            (if (boundp 'neomacs-cursor-spotlight-color)
+                neomacs-cursor-spotlight-color nil)))))
+
+(defcustom neomacs-cursor-spotlight-intensity 15
+  "Spotlight intensity (0-100)."
+  :type '(integer :tag "Intensity (%)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-spotlight)
+                    (boundp 'neomacs-cursor-spotlight)
+                    neomacs-cursor-spotlight)
+           (neomacs-set-cursor-spotlight t
+            (if (boundp 'neomacs-cursor-spotlight-radius)
+                neomacs-cursor-spotlight-radius nil)
+            val
+            (if (boundp 'neomacs-cursor-spotlight-color)
+                neomacs-cursor-spotlight-color nil)))))
+
+(defcustom neomacs-cursor-spotlight-color "#FFFFE6"
+  "Spotlight color as hex RGB string."
+  :type '(string :tag "Color (#RRGGBB)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-spotlight)
+                    (boundp 'neomacs-cursor-spotlight)
+                    neomacs-cursor-spotlight)
+           (neomacs-set-cursor-spotlight t
+            (if (boundp 'neomacs-cursor-spotlight-radius)
+                neomacs-cursor-spotlight-radius nil)
+            (if (boundp 'neomacs-cursor-spotlight-intensity)
+                neomacs-cursor-spotlight-intensity nil)
+            val))))
+
 ;; --- Cursor particle trail effect ---
 (declare-function neomacs-set-cursor-particles "neomacsterm.c"
   (&optional enabled color count lifetime-ms gravity))

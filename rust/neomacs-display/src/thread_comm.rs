@@ -640,6 +640,44 @@ pub enum RenderCommand {
         /// Saturation of the generated color (0.0-1.0)
         saturation: f32,
     },
+    /// Configure window scanline (CRT) effect
+    SetScanlines {
+        enabled: bool,
+        /// Spacing between scanlines in pixels
+        spacing: u32,
+        /// Scanline opacity (0.0-1.0)
+        opacity: f32,
+        /// Scanline color (sRGB floats)
+        r: f32,
+        g: f32,
+        b: f32,
+    },
+    /// Configure cursor comet tail effect
+    SetCursorComet {
+        enabled: bool,
+        /// Trail length (number of ghost copies)
+        trail_length: u32,
+        /// Fade speed in milliseconds
+        fade_ms: u32,
+        /// Comet color (sRGB floats)
+        r: f32,
+        g: f32,
+        b: f32,
+        /// Max opacity (0.0-1.0)
+        opacity: f32,
+    },
+    /// Configure cursor spotlight/radial gradient effect
+    SetCursorSpotlight {
+        enabled: bool,
+        /// Spotlight radius in pixels
+        radius: f32,
+        /// Intensity (0.0-1.0)
+        intensity: f32,
+        /// Spotlight color (sRGB floats)
+        r: f32,
+        g: f32,
+        b: f32,
+    },
     /// Configure cursor particle trail effect
     SetCursorParticles {
         enabled: bool,
