@@ -20486,6 +20486,24 @@ redisplay_window (Lisp_Object window, bool just_this_one_p)
 {
 #ifdef HAVE_NEOMACS
   nlog_trace ("redisplay_window: window=%p", (void *) XWINDOW (window));
+  /* When the Rust display engine is active, skip the entire C display
+     computation.  The Rust engine reads buffer data directly via FFI and
+     handles all rendering (text, mode-lines, scroll bars, tool bar) in
+     neomacs_update_end → neomacs_rust_layout_frame.  The C display engine's
+     work (font encoding via Cairo, bidi resolution, mode-line Lisp eval,
+     tool bar image parsing) is expensive and entirely wasted — a single
+     redisplay_window call can take 10+ seconds due to per-character font
+     encoding, GC during mode-line eval, etc.
+     Skipping here is safe because:
+     - w->must_be_updated_p remains false, so update_window does nothing
+     - update_end is called unconditionally in update_window_frame
+     - mark_window_display_accurate clears dirty flags after update  */
+  {
+    extern bool use_rust_display_engine;
+    struct frame *nf = XFRAME (XWINDOW (window)->frame);
+    if (use_rust_display_engine && FRAME_NEOMACS_P (nf))
+      return;
+  }
 #endif
   struct window *w = XWINDOW (window);
   struct frame *f = XFRAME (w->frame);

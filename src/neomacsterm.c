@@ -47,6 +47,7 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "composite.h"  /* For composition_gstring_from_id, LGSTRING_GLYPH, etc. */
 #include "intervals.h"  /* For TEXT_PROP_MEANS_INVISIBLE */
 #include "process.h"  /* For add_read_fd, delete_read_fd */
+#include "termopts.h"  /* For interrupt_input */
 #include "menu.h"  /* For MENU_KEYMAPS, MENU_FOR_CLICK, menu_items macros */
 
 /* List of Neomacs display info structures */
@@ -169,8 +170,14 @@ neomacs_evq_enqueue (union buffered_input_event *ev)
         dpyinfo->last_user_time = ev->ie.timestamp;
     }
 
-  /* Signal Emacs that input is available */
-  raise (SIGIO);
+  /* With interrupt_input = false (polling mode), we do NOT raise(SIGIO).
+     The wakeup pipe write from the render thread is sufficient to wake
+     pselect() in xg_select.  raise(SIGIO) would set pending_signals,
+     causing an infinite busy loop: pending_signals → process_pending_signals
+     → handle_async_input → gobble_input → read_socket → wakeup_handler
+     → neomacs_evq_enqueue → raise(SIGIO) → pending_signals ...
+     Events are flushed to kbd_buffer by gobble_input() after
+     wait_reading_process_output returns, or by the fd callback.  */
 }
 
 /* Flush events from queue to Emacs keyboard buffer */
@@ -194,6 +201,8 @@ neomacs_evq_flush (struct input_event *hold_quit)
       n++;
     }
 
+  if (n > 0)
+    nlog_debug ("neomacs_evq_flush: flushed %d events to kbd_buffer", n);
   return n;
 }
 
@@ -736,6 +745,13 @@ neomacs_create_terminal (struct neomacs_display_info *dpyinfo)
     }
   else
     nlog_warn ("No valid connection fd to register");
+
+  /* Neomacs uses a wakeup pipe + fd callback for event delivery,
+     not SIGIO on the display connection.  Set interrupt_input = false
+     so that gobble_input() is called after wait_reading_process_output
+     returns, ensuring read_socket_hook (neomacs_read_socket) runs and
+     flushes events from neomacs_evq to kbd_buffer.  */
+  interrupt_input = false;
 
   return terminal;
 }
@@ -1433,7 +1449,7 @@ neomacs_extract_window_glyphs (struct window *w, void *user_data)
  */
 
 /* Global flag: whether to use the Rust display engine */
-static bool use_rust_display_engine = true;
+bool use_rust_display_engine = true;
 
 /* Get a character at a character position in a buffer.
    Returns the Unicode codepoint, or -1 if out of range. */
@@ -14029,6 +14045,7 @@ neomacs_display_wakeup_handler (int fd, void *data)
           if (ev->modifiers & NEOMACS_META_MASK) inev.ie.modifiers |= meta_modifier;
           if (ev->modifiers & NEOMACS_SUPER_MASK) inev.ie.modifiers |= super_modifier;
           XSETFRAME (inev.ie.frame_or_window, f);
+          nlog_debug ("KEY_PRESS: keysym=0x%x mods=0x%x", ev->keysym, ev->modifiers);
           neomacs_evq_enqueue (&inev);
           break;
 
@@ -14491,6 +14508,13 @@ neomacs_display_wakeup_handler (int fd, void *data)
           break;
         }
     }
+
+  /* Flush events to kbd_buffer.  When wakeup_handler fires as an fd
+     callback (during wait_reading_process_output), events need to be
+     in kbd_buffer for detect_input_pending to find them.  When called
+     from neomacs_read_socket (via gobble_input), the read_socket path
+     also calls neomacs_evq_flush, making this a harmless no-op.  */
+  neomacs_evq_flush (NULL);
 }
 
 /* Initialize display in threaded mode */
