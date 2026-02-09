@@ -729,6 +729,31 @@ pub struct WgpuRenderer {
     cursor_crystal_facet_count: u32,
     cursor_crystal_radius: f32,
     cursor_crystal_opacity: f32,
+    /// Brick wall overlay
+    brick_wall_enabled: bool,
+    brick_wall_color: (f32, f32, f32),
+    brick_wall_width: f32,
+    brick_wall_height: f32,
+    brick_wall_opacity: f32,
+    /// Cursor compass needle effect
+    cursor_compass_needle_enabled: bool,
+    cursor_compass_needle_color: (f32, f32, f32),
+    cursor_compass_needle_length: f32,
+    cursor_compass_needle_spin_speed: f32,
+    cursor_compass_needle_opacity: f32,
+    /// Sine wave overlay
+    sine_wave_enabled: bool,
+    sine_wave_color: (f32, f32, f32),
+    sine_wave_amplitude: f32,
+    sine_wave_wavelength: f32,
+    sine_wave_speed: f32,
+    sine_wave_opacity: f32,
+    /// Cursor galaxy effect
+    cursor_galaxy_enabled: bool,
+    cursor_galaxy_color: (f32, f32, f32),
+    cursor_galaxy_star_count: u32,
+    cursor_galaxy_radius: f32,
+    cursor_galaxy_opacity: f32,
     /// Rotating gear overlay
     rotating_gear_enabled: bool,
     rotating_gear_color: (f32, f32, f32),
@@ -1960,6 +1985,27 @@ impl WgpuRenderer {
             cursor_crystal_facet_count: 6,
             cursor_crystal_radius: 25.0,
             cursor_crystal_opacity: 0.3,
+            brick_wall_enabled: false,
+            brick_wall_color: (0.6, 0.4, 0.3),
+            brick_wall_width: 40.0,
+            brick_wall_height: 20.0,
+            brick_wall_opacity: 0.06,
+            cursor_compass_needle_enabled: false,
+            cursor_compass_needle_color: (1.0, 0.3, 0.3),
+            cursor_compass_needle_length: 20.0,
+            cursor_compass_needle_spin_speed: 2.0,
+            cursor_compass_needle_opacity: 0.2,
+            sine_wave_enabled: false,
+            sine_wave_color: (0.3, 0.7, 1.0),
+            sine_wave_amplitude: 20.0,
+            sine_wave_wavelength: 80.0,
+            sine_wave_speed: 1.0,
+            sine_wave_opacity: 0.06,
+            cursor_galaxy_enabled: false,
+            cursor_galaxy_color: (0.8, 0.8, 1.0),
+            cursor_galaxy_star_count: 30,
+            cursor_galaxy_radius: 30.0,
+            cursor_galaxy_opacity: 0.2,
             rotating_gear_enabled: false,
             rotating_gear_color: (0.6, 0.7, 0.8),
             rotating_gear_size: 40.0,
@@ -3031,6 +3077,43 @@ impl WgpuRenderer {
         self.cursor_crystal_facet_count = facet_count;
         self.cursor_crystal_radius = radius;
         self.cursor_crystal_opacity = opacity;
+    }
+
+    /// Update brick wall config
+    pub fn set_brick_wall(&mut self, enabled: bool, color: (f32, f32, f32), brick_width: f32, brick_height: f32, opacity: f32) {
+        self.brick_wall_enabled = enabled;
+        self.brick_wall_color = color;
+        self.brick_wall_width = brick_width;
+        self.brick_wall_height = brick_height;
+        self.brick_wall_opacity = opacity;
+    }
+
+    /// Update cursor compass needle config
+    pub fn set_cursor_compass_needle(&mut self, enabled: bool, color: (f32, f32, f32), needle_length: f32, spin_speed: f32, opacity: f32) {
+        self.cursor_compass_needle_enabled = enabled;
+        self.cursor_compass_needle_color = color;
+        self.cursor_compass_needle_length = needle_length;
+        self.cursor_compass_needle_spin_speed = spin_speed;
+        self.cursor_compass_needle_opacity = opacity;
+    }
+
+    /// Update sine wave config
+    pub fn set_sine_wave(&mut self, enabled: bool, color: (f32, f32, f32), amplitude: f32, wavelength: f32, speed: f32, opacity: f32) {
+        self.sine_wave_enabled = enabled;
+        self.sine_wave_color = color;
+        self.sine_wave_amplitude = amplitude;
+        self.sine_wave_wavelength = wavelength;
+        self.sine_wave_speed = speed;
+        self.sine_wave_opacity = opacity;
+    }
+
+    /// Update cursor galaxy config
+    pub fn set_cursor_galaxy(&mut self, enabled: bool, color: (f32, f32, f32), star_count: u32, radius: f32, opacity: f32) {
+        self.cursor_galaxy_enabled = enabled;
+        self.cursor_galaxy_color = color;
+        self.cursor_galaxy_star_count = star_count;
+        self.cursor_galaxy_radius = radius;
+        self.cursor_galaxy_opacity = opacity;
     }
 
     /// Update rotating gear config
@@ -8111,6 +8194,170 @@ impl WgpuRenderer {
                         render_pass.draw(0..ct_verts.len() as u32, 0..1);
                     }
                     self.needs_continuous_redraw = true;
+                }
+            }
+
+            // === Brick wall overlay effect ===
+            if self.brick_wall_enabled {
+                let width = self.width() as f32;
+                let height = self.height() as f32;
+                let (br, bg, bb) = self.brick_wall_color;
+                let bw = self.brick_wall_width;
+                let bh = self.brick_wall_height;
+                let opacity = self.brick_wall_opacity;
+                let mut overlay_verts = Vec::new();
+                let rows = (height / bh) as i32 + 1;
+                let cols = (width / bw) as i32 + 2;
+                let mortar = 2.0;
+                for row in 0..rows {
+                    let offset = if row % 2 == 1 { bw / 2.0 } else { 0.0 };
+                    let y = row as f32 * bh;
+                    // Horizontal mortar line
+                    let mc = Color::new(br, bg, bb, opacity);
+                    self.add_rect(&mut overlay_verts, 0.0, y, width, mortar, &mc);
+                    for col in (-1)..cols {
+                        let x = col as f32 * bw + offset;
+                        // Vertical mortar line
+                        self.add_rect(&mut overlay_verts, x, y, mortar, bh, &mc);
+                    }
+                }
+                if !overlay_verts.is_empty() {
+                    let buf = self.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("brick_wall_verts"),
+                        contents: bytemuck::cast_slice(&overlay_verts),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    });
+                    render_pass.set_pipeline(&self.rect_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, buf.slice(..));
+                    render_pass.draw(0..overlay_verts.len() as u32, 0..1);
+                }
+            }
+
+            // === Cursor compass needle effect ===
+            if self.cursor_compass_needle_enabled && cursor_visible {
+                if let Some(ref anim) = animated_cursor {
+                    let now = std::time::Instant::now().duration_since(self.aurora_start).as_secs_f32();
+                    let cx = anim.x + anim.width / 2.0;
+                    let cy = anim.y + anim.height / 2.0;
+                    let (nr, ng, nb) = self.cursor_compass_needle_color;
+                    let length = self.cursor_compass_needle_length;
+                    let spin = self.cursor_compass_needle_spin_speed;
+                    let opacity = self.cursor_compass_needle_opacity;
+                    let angle = now * spin;
+                    let mut overlay_verts = Vec::new();
+                    // Needle segments (north half - colored)
+                    for s in 0..10 {
+                        let t = s as f32 / 10.0;
+                        let x = cx + angle.cos() * length * t;
+                        let y = cy + angle.sin() * length * t;
+                        let w = 3.0 * (1.0 - t);
+                        let c = Color::new(nr, ng, nb, opacity * (1.0 - t * 0.5));
+                        self.add_rect(&mut overlay_verts, x - w / 2.0, y - w / 2.0, w, w, &c);
+                    }
+                    // South half - dimmer
+                    for s in 0..10 {
+                        let t = s as f32 / 10.0;
+                        let x = cx - angle.cos() * length * t;
+                        let y = cy - angle.sin() * length * t;
+                        let w = 3.0 * (1.0 - t);
+                        let c = Color::new(nr * 0.3, ng * 0.3, nb * 0.3, opacity * 0.5 * (1.0 - t));
+                        self.add_rect(&mut overlay_verts, x - w / 2.0, y - w / 2.0, w, w, &c);
+                    }
+                    // Center pivot
+                    let pc = Color::new(nr, ng, nb, opacity);
+                    self.add_rect(&mut overlay_verts, cx - 2.0, cy - 2.0, 4.0, 4.0, &pc);
+                    if !overlay_verts.is_empty() {
+                        let buf = self.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("cursor_compass_needle_verts"),
+                            contents: bytemuck::cast_slice(&overlay_verts),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+                        render_pass.set_pipeline(&self.rect_pipeline);
+                        render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                        render_pass.set_vertex_buffer(0, buf.slice(..));
+                        render_pass.draw(0..overlay_verts.len() as u32, 0..1);
+                        self.needs_continuous_redraw = true;
+                    }
+                }
+            }
+
+            // === Sine wave overlay effect ===
+            if self.sine_wave_enabled {
+                let width = self.width() as f32;
+                let height = self.height() as f32;
+                let now = std::time::Instant::now().duration_since(self.aurora_start).as_secs_f32();
+                let (sr, sg, sb) = self.sine_wave_color;
+                let amplitude = self.sine_wave_amplitude;
+                let wavelength = self.sine_wave_wavelength;
+                let speed = self.sine_wave_speed;
+                let opacity = self.sine_wave_opacity;
+                let mut overlay_verts = Vec::new();
+                let wave_count = (height / 40.0) as i32 + 1;
+                for w in 0..wave_count {
+                    let base_y = w as f32 * 40.0 + 20.0;
+                    let phase = now * speed + w as f32 * 0.5;
+                    let steps = (width / 3.0) as i32;
+                    for s in 0..steps {
+                        let x = s as f32 * 3.0;
+                        let y = base_y + (x / wavelength * std::f32::consts::TAU + phase).sin() * amplitude;
+                        if y >= 0.0 && y <= height {
+                            let c = Color::new(sr, sg, sb, opacity);
+                            self.add_rect(&mut overlay_verts, x, y, 2.0, 2.0, &c);
+                        }
+                    }
+                }
+                if !overlay_verts.is_empty() {
+                    let buf = self.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("sine_wave_verts"),
+                        contents: bytemuck::cast_slice(&overlay_verts),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    });
+                    render_pass.set_pipeline(&self.rect_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, buf.slice(..));
+                    render_pass.draw(0..overlay_verts.len() as u32, 0..1);
+                    self.needs_continuous_redraw = true;
+                }
+            }
+
+            // === Cursor galaxy effect ===
+            if self.cursor_galaxy_enabled && cursor_visible {
+                if let Some(ref anim) = animated_cursor {
+                    let now = std::time::Instant::now().duration_since(self.aurora_start).as_secs_f32();
+                    let cx = anim.x + anim.width / 2.0;
+                    let cy = anim.y + anim.height / 2.0;
+                    let (gr, gg, gb) = self.cursor_galaxy_color;
+                    let star_count = self.cursor_galaxy_star_count;
+                    let radius = self.cursor_galaxy_radius;
+                    let opacity = self.cursor_galaxy_opacity;
+                    let mut overlay_verts = Vec::new();
+                    for i in 0..star_count {
+                        let phase = i as f32 * std::f32::consts::TAU / star_count as f32;
+                        // Spiral arm pattern
+                        let arm_angle = now * 0.8 + phase;
+                        let dist = (i as f32 / star_count as f32) * radius;
+                        let spiral = arm_angle + dist * 0.1;
+                        let x = cx + spiral.cos() * dist;
+                        let y = cy + spiral.sin() * dist;
+                        let brightness = 1.0 - (dist / radius) * 0.5;
+                        let twinkle = ((now * 3.0 + phase * 7.0).sin() * 0.5 + 0.5) * 0.4 + 0.6;
+                        let size = 1.0 + (1.0 - dist / radius) * 2.0;
+                        let c = Color::new(gr * brightness, gg * brightness, gb, opacity * twinkle);
+                        self.add_rect(&mut overlay_verts, x - size / 2.0, y - size / 2.0, size, size, &c);
+                    }
+                    if !overlay_verts.is_empty() {
+                        let buf = self.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("cursor_galaxy_verts"),
+                            contents: bytemuck::cast_slice(&overlay_verts),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+                        render_pass.set_pipeline(&self.rect_pipeline);
+                        render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                        render_pass.set_vertex_buffer(0, buf.slice(..));
+                        render_pass.draw(0..overlay_verts.len() as u32, 0..1);
+                        self.needs_continuous_redraw = true;
+                    }
                 }
             }
 

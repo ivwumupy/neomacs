@@ -5982,6 +5982,318 @@ Non-nil renders animated flowing color bands at the top of the frame."
                 neomacs-cursor-gravity-well-line-count nil)
             val))))
 
+;; Brick wall overlay effect
+(declare-function neomacs-set-brick-wall "neomacsterm.c")
+
+(defcustom neomacs-brick-wall nil
+  "Enable brick wall overlay effect."
+  :type 'boolean
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-brick-wall)
+           (if val
+               (neomacs-set-brick-wall t)
+             (neomacs-set-brick-wall nil)))))
+
+(defcustom neomacs-brick-wall-color "#996644"
+  "Brick wall color."
+  :type 'color
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-brick-wall)
+                    (boundp 'neomacs-brick-wall)
+                    neomacs-brick-wall)
+           (neomacs-set-brick-wall t val))))
+
+(defcustom neomacs-brick-wall-width 40
+  "Brick width in pixels."
+  :type '(integer :tag "Brick width (px)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-brick-wall)
+                    (boundp 'neomacs-brick-wall)
+                    neomacs-brick-wall)
+           (neomacs-set-brick-wall t
+            (if (boundp 'neomacs-brick-wall-color)
+                neomacs-brick-wall-color nil)
+            val))))
+
+(defcustom neomacs-brick-wall-height 20
+  "Brick height in pixels."
+  :type '(integer :tag "Brick height (px)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-brick-wall)
+                    (boundp 'neomacs-brick-wall)
+                    neomacs-brick-wall)
+           (neomacs-set-brick-wall t
+            (if (boundp 'neomacs-brick-wall-color)
+                neomacs-brick-wall-color nil)
+            (if (boundp 'neomacs-brick-wall-width)
+                neomacs-brick-wall-width nil)
+            val))))
+
+(defcustom neomacs-brick-wall-opacity 6
+  "Brick wall opacity (0-100)."
+  :type '(integer :tag "Opacity (0-100)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-brick-wall)
+                    (boundp 'neomacs-brick-wall)
+                    neomacs-brick-wall)
+           (neomacs-set-brick-wall t
+            (if (boundp 'neomacs-brick-wall-color)
+                neomacs-brick-wall-color nil)
+            (if (boundp 'neomacs-brick-wall-width)
+                neomacs-brick-wall-width nil)
+            (if (boundp 'neomacs-brick-wall-height)
+                neomacs-brick-wall-height nil)
+            val))))
+
+;; Cursor compass needle effect
+(declare-function neomacs-set-cursor-compass-needle "neomacsterm.c")
+
+(defcustom neomacs-cursor-compass-needle nil
+  "Enable cursor compass needle effect."
+  :type 'boolean
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-cursor-compass-needle)
+           (if val
+               (neomacs-set-cursor-compass-needle t)
+             (neomacs-set-cursor-compass-needle nil)))))
+
+(defcustom neomacs-cursor-compass-needle-color "#FF4D4D"
+  "Compass needle color."
+  :type 'color
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-compass-needle)
+                    (boundp 'neomacs-cursor-compass-needle)
+                    neomacs-cursor-compass-needle)
+           (neomacs-set-cursor-compass-needle t val))))
+
+(defcustom neomacs-cursor-compass-needle-length 20
+  "Needle length in pixels."
+  :type '(integer :tag "Length (px)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-compass-needle)
+                    (boundp 'neomacs-cursor-compass-needle)
+                    neomacs-cursor-compass-needle)
+           (neomacs-set-cursor-compass-needle t
+            (if (boundp 'neomacs-cursor-compass-needle-color)
+                neomacs-cursor-compass-needle-color nil)
+            val))))
+
+(defcustom neomacs-cursor-compass-needle-spin-speed 200
+  "Spin speed (multiplied by 100)."
+  :type '(integer :tag "Speed * 100")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-compass-needle)
+                    (boundp 'neomacs-cursor-compass-needle)
+                    neomacs-cursor-compass-needle)
+           (neomacs-set-cursor-compass-needle t
+            (if (boundp 'neomacs-cursor-compass-needle-color)
+                neomacs-cursor-compass-needle-color nil)
+            (if (boundp 'neomacs-cursor-compass-needle-length)
+                neomacs-cursor-compass-needle-length nil)
+            val))))
+
+(defcustom neomacs-cursor-compass-needle-opacity 20
+  "Compass needle opacity (0-100)."
+  :type '(integer :tag "Opacity (0-100)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-compass-needle)
+                    (boundp 'neomacs-cursor-compass-needle)
+                    neomacs-cursor-compass-needle)
+           (neomacs-set-cursor-compass-needle t
+            (if (boundp 'neomacs-cursor-compass-needle-color)
+                neomacs-cursor-compass-needle-color nil)
+            (if (boundp 'neomacs-cursor-compass-needle-length)
+                neomacs-cursor-compass-needle-length nil)
+            (if (boundp 'neomacs-cursor-compass-needle-spin-speed)
+                neomacs-cursor-compass-needle-spin-speed nil)
+            val))))
+
+;; Sine wave overlay effect
+(declare-function neomacs-set-sine-wave "neomacsterm.c")
+
+(defcustom neomacs-sine-wave nil
+  "Enable sine wave overlay effect."
+  :type 'boolean
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-sine-wave)
+           (if val
+               (neomacs-set-sine-wave t)
+             (neomacs-set-sine-wave nil)))))
+
+(defcustom neomacs-sine-wave-color "#4DB3FF"
+  "Sine wave color."
+  :type 'color
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-sine-wave)
+                    (boundp 'neomacs-sine-wave)
+                    neomacs-sine-wave)
+           (neomacs-set-sine-wave t val))))
+
+(defcustom neomacs-sine-wave-amplitude 20
+  "Wave amplitude in pixels."
+  :type '(integer :tag "Amplitude (px)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-sine-wave)
+                    (boundp 'neomacs-sine-wave)
+                    neomacs-sine-wave)
+           (neomacs-set-sine-wave t
+            (if (boundp 'neomacs-sine-wave-color)
+                neomacs-sine-wave-color nil)
+            val))))
+
+(defcustom neomacs-sine-wave-wavelength 80
+  "Wavelength in pixels."
+  :type '(integer :tag "Wavelength (px)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-sine-wave)
+                    (boundp 'neomacs-sine-wave)
+                    neomacs-sine-wave)
+           (neomacs-set-sine-wave t
+            (if (boundp 'neomacs-sine-wave-color)
+                neomacs-sine-wave-color nil)
+            (if (boundp 'neomacs-sine-wave-amplitude)
+                neomacs-sine-wave-amplitude nil)
+            val))))
+
+(defcustom neomacs-sine-wave-speed 100
+  "Animation speed (multiplied by 100)."
+  :type '(integer :tag "Speed * 100")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-sine-wave)
+                    (boundp 'neomacs-sine-wave)
+                    neomacs-sine-wave)
+           (neomacs-set-sine-wave t
+            (if (boundp 'neomacs-sine-wave-color)
+                neomacs-sine-wave-color nil)
+            (if (boundp 'neomacs-sine-wave-amplitude)
+                neomacs-sine-wave-amplitude nil)
+            (if (boundp 'neomacs-sine-wave-wavelength)
+                neomacs-sine-wave-wavelength nil)
+            val))))
+
+(defcustom neomacs-sine-wave-opacity 6
+  "Sine wave opacity (0-100)."
+  :type '(integer :tag "Opacity (0-100)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-sine-wave)
+                    (boundp 'neomacs-sine-wave)
+                    neomacs-sine-wave)
+           (neomacs-set-sine-wave t
+            (if (boundp 'neomacs-sine-wave-color)
+                neomacs-sine-wave-color nil)
+            (if (boundp 'neomacs-sine-wave-amplitude)
+                neomacs-sine-wave-amplitude nil)
+            (if (boundp 'neomacs-sine-wave-wavelength)
+                neomacs-sine-wave-wavelength nil)
+            (if (boundp 'neomacs-sine-wave-speed)
+                neomacs-sine-wave-speed nil)
+            val))))
+
+;; Cursor galaxy effect
+(declare-function neomacs-set-cursor-galaxy "neomacsterm.c")
+
+(defcustom neomacs-cursor-galaxy nil
+  "Enable cursor galaxy effect."
+  :type 'boolean
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-cursor-galaxy)
+           (if val
+               (neomacs-set-cursor-galaxy t)
+             (neomacs-set-cursor-galaxy nil)))))
+
+(defcustom neomacs-cursor-galaxy-color "#CCCCFF"
+  "Galaxy color."
+  :type 'color
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-galaxy)
+                    (boundp 'neomacs-cursor-galaxy)
+                    neomacs-cursor-galaxy)
+           (neomacs-set-cursor-galaxy t val))))
+
+(defcustom neomacs-cursor-galaxy-star-count 30
+  "Number of stars."
+  :type '(integer :tag "Star count")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-galaxy)
+                    (boundp 'neomacs-cursor-galaxy)
+                    neomacs-cursor-galaxy)
+           (neomacs-set-cursor-galaxy t
+            (if (boundp 'neomacs-cursor-galaxy-color)
+                neomacs-cursor-galaxy-color nil)
+            val))))
+
+(defcustom neomacs-cursor-galaxy-radius 30
+  "Galaxy radius in pixels."
+  :type '(integer :tag "Radius (px)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-galaxy)
+                    (boundp 'neomacs-cursor-galaxy)
+                    neomacs-cursor-galaxy)
+           (neomacs-set-cursor-galaxy t
+            (if (boundp 'neomacs-cursor-galaxy-color)
+                neomacs-cursor-galaxy-color nil)
+            (if (boundp 'neomacs-cursor-galaxy-star-count)
+                neomacs-cursor-galaxy-star-count nil)
+            val))))
+
+(defcustom neomacs-cursor-galaxy-opacity 20
+  "Cursor galaxy opacity (0-100)."
+  :type '(integer :tag "Opacity (0-100)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-galaxy)
+                    (boundp 'neomacs-cursor-galaxy)
+                    neomacs-cursor-galaxy)
+           (neomacs-set-cursor-galaxy t
+            (if (boundp 'neomacs-cursor-galaxy-color)
+                neomacs-cursor-galaxy-color nil)
+            (if (boundp 'neomacs-cursor-galaxy-star-count)
+                neomacs-cursor-galaxy-star-count nil)
+            (if (boundp 'neomacs-cursor-galaxy-radius)
+                neomacs-cursor-galaxy-radius nil)
+            val))))
+
 ;; Rotating gear overlay effect
 (declare-function neomacs-set-rotating-gear "neomacsterm.c")
 

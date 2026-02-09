@@ -2026,6 +2026,47 @@ void neomacs_display_set_cursor_gravity_well(struct NeomacsDisplay *handle,
     int opacity);
 
 /**
+ * Configure brick wall overlay effect.
+ */
+void neomacs_display_set_brick_wall(struct NeomacsDisplay *handle,
+    int enabled,
+    int r, int g, int b,
+    int brick_width,
+    int brick_height,
+    int opacity);
+
+/**
+ * Configure cursor compass needle effect.
+ */
+void neomacs_display_set_cursor_compass_needle(struct NeomacsDisplay *handle,
+    int enabled,
+    int r, int g, int b,
+    int needle_length,
+    int spin_speed,
+    int opacity);
+
+/**
+ * Configure sine wave overlay effect.
+ */
+void neomacs_display_set_sine_wave(struct NeomacsDisplay *handle,
+    int enabled,
+    int r, int g, int b,
+    int amplitude,
+    int wavelength,
+    int speed,
+    int opacity);
+
+/**
+ * Configure cursor galaxy effect.
+ */
+void neomacs_display_set_cursor_galaxy(struct NeomacsDisplay *handle,
+    int enabled,
+    int r, int g, int b,
+    int star_count,
+    int radius,
+    int opacity);
+
+/**
  * Configure rotating gear overlay effect.
  */
 void neomacs_display_set_rotating_gear(struct NeomacsDisplay *handle,

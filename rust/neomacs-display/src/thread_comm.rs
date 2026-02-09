@@ -1467,6 +1467,39 @@ pub enum RenderCommand {
         radius: f32,
         opacity: f32,
     },
+    /// Configure brick wall overlay effect
+    SetBrickWall {
+        enabled: bool,
+        r: f32, g: f32, b: f32,
+        brick_width: f32,
+        brick_height: f32,
+        opacity: f32,
+    },
+    /// Configure cursor compass needle effect
+    SetCursorCompassNeedle {
+        enabled: bool,
+        r: f32, g: f32, b: f32,
+        needle_length: f32,
+        spin_speed: f32,
+        opacity: f32,
+    },
+    /// Configure sine wave overlay effect
+    SetSineWave {
+        enabled: bool,
+        r: f32, g: f32, b: f32,
+        amplitude: f32,
+        wavelength: f32,
+        speed: f32,
+        opacity: f32,
+    },
+    /// Configure cursor galaxy effect
+    SetCursorGalaxy {
+        enabled: bool,
+        r: f32, g: f32, b: f32,
+        star_count: u32,
+        radius: f32,
+        opacity: f32,
+    },
     /// Configure rotating gear overlay effect
     SetRotatingGear {
         enabled: bool,

@@ -878,6 +878,27 @@ struct RenderApp {
     cursor_crystal_radius: f32,
     cursor_crystal_opacity: f32,
 
+    brick_wall_enabled: bool,
+    brick_wall_color: (f32, f32, f32),
+    brick_wall_width: f32,
+    brick_wall_height: f32,
+    brick_wall_opacity: f32,
+    cursor_compass_needle_enabled: bool,
+    cursor_compass_needle_color: (f32, f32, f32),
+    cursor_compass_needle_length: f32,
+    cursor_compass_needle_spin_speed: f32,
+    cursor_compass_needle_opacity: f32,
+    sine_wave_enabled: bool,
+    sine_wave_color: (f32, f32, f32),
+    sine_wave_amplitude: f32,
+    sine_wave_wavelength: f32,
+    sine_wave_speed: f32,
+    sine_wave_opacity: f32,
+    cursor_galaxy_enabled: bool,
+    cursor_galaxy_color: (f32, f32, f32),
+    cursor_galaxy_star_count: u32,
+    cursor_galaxy_radius: f32,
+    cursor_galaxy_opacity: f32,
     rotating_gear_enabled: bool,
     rotating_gear_color: (f32, f32, f32),
     rotating_gear_size: f32,
@@ -1689,6 +1710,27 @@ impl RenderApp {
             cursor_crystal_facet_count: 6,
             cursor_crystal_radius: 25.0,
             cursor_crystal_opacity: 0.3,
+            brick_wall_enabled: false,
+            brick_wall_color: (0.6, 0.4, 0.3),
+            brick_wall_width: 40.0,
+            brick_wall_height: 20.0,
+            brick_wall_opacity: 0.06,
+            cursor_compass_needle_enabled: false,
+            cursor_compass_needle_color: (1.0, 0.3, 0.3),
+            cursor_compass_needle_length: 20.0,
+            cursor_compass_needle_spin_speed: 2.0,
+            cursor_compass_needle_opacity: 0.2,
+            sine_wave_enabled: false,
+            sine_wave_color: (0.3, 0.7, 1.0),
+            sine_wave_amplitude: 20.0,
+            sine_wave_wavelength: 80.0,
+            sine_wave_speed: 1.0,
+            sine_wave_opacity: 0.06,
+            cursor_galaxy_enabled: false,
+            cursor_galaxy_color: (0.8, 0.8, 1.0),
+            cursor_galaxy_star_count: 30,
+            cursor_galaxy_radius: 30.0,
+            cursor_galaxy_opacity: 0.2,
             rotating_gear_enabled: false,
             rotating_gear_color: (0.6, 0.7, 0.8),
             rotating_gear_size: 40.0,
@@ -3763,6 +3805,51 @@ impl RenderApp {
                     self.cursor_tornado_opacity = opacity;
                     if let Some(renderer) = self.renderer.as_mut() {
                         renderer.set_cursor_tornado(enabled, (r, g, b), radius, particle_count, opacity);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetBrickWall { enabled, r, g, b, brick_width, brick_height, opacity } => {
+                    self.brick_wall_enabled = enabled;
+                    self.brick_wall_color = (r, g, b);
+                    self.brick_wall_width = brick_width;
+                    self.brick_wall_height = brick_height;
+                    self.brick_wall_opacity = opacity;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_brick_wall(enabled, (r, g, b), brick_width, brick_height, opacity);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetCursorCompassNeedle { enabled, r, g, b, needle_length, spin_speed, opacity } => {
+                    self.cursor_compass_needle_enabled = enabled;
+                    self.cursor_compass_needle_color = (r, g, b);
+                    self.cursor_compass_needle_length = needle_length;
+                    self.cursor_compass_needle_spin_speed = spin_speed;
+                    self.cursor_compass_needle_opacity = opacity;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_cursor_compass_needle(enabled, (r, g, b), needle_length, spin_speed, opacity);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetSineWave { enabled, r, g, b, amplitude, wavelength, speed, opacity } => {
+                    self.sine_wave_enabled = enabled;
+                    self.sine_wave_color = (r, g, b);
+                    self.sine_wave_amplitude = amplitude;
+                    self.sine_wave_wavelength = wavelength;
+                    self.sine_wave_speed = speed;
+                    self.sine_wave_opacity = opacity;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_sine_wave(enabled, (r, g, b), amplitude, wavelength, speed, opacity);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetCursorGalaxy { enabled, r, g, b, star_count, radius, opacity } => {
+                    self.cursor_galaxy_enabled = enabled;
+                    self.cursor_galaxy_color = (r, g, b);
+                    self.cursor_galaxy_star_count = star_count;
+                    self.cursor_galaxy_radius = radius;
+                    self.cursor_galaxy_opacity = opacity;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_cursor_galaxy(enabled, (r, g, b), star_count, radius, opacity);
                     }
                     self.frame_dirty = true;
                 }
