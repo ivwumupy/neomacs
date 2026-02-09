@@ -792,6 +792,27 @@ struct RenderApp {
     stained_glass_enabled: bool,
     stained_glass_opacity: f32,
     stained_glass_saturation: f32,
+    /// Window corner fold effect
+    corner_fold_enabled: bool,
+    corner_fold_size: f32,
+    corner_fold_color: (f32, f32, f32),
+    corner_fold_opacity: f32,
+    /// Frosted window border effect
+    frosted_border_enabled: bool,
+    frosted_border_width: f32,
+    frosted_border_opacity: f32,
+    frosted_border_color: (f32, f32, f32),
+    /// Line number pulse effect
+    line_number_pulse_enabled: bool,
+    line_number_pulse_color: (f32, f32, f32),
+    line_number_pulse_intensity: f32,
+    line_number_pulse_cycle_ms: u32,
+    /// Window breathing border
+    breathing_border_enabled: bool,
+    breathing_border_color: (f32, f32, f32),
+    breathing_border_min_opacity: f32,
+    breathing_border_max_opacity: f32,
+    breathing_border_cycle_ms: u32,
     /// Window scanline (CRT) effect
     scanlines_enabled: bool,
     scanlines_spacing: u32,
@@ -1180,6 +1201,23 @@ impl RenderApp {
             stained_glass_enabled: false,
             stained_glass_opacity: 0.08,
             stained_glass_saturation: 0.6,
+            corner_fold_enabled: false,
+            corner_fold_size: 20.0,
+            corner_fold_color: (0.6, 0.4, 0.2),
+            corner_fold_opacity: 0.5,
+            frosted_border_enabled: false,
+            frosted_border_width: 4.0,
+            frosted_border_opacity: 0.15,
+            frosted_border_color: (1.0, 1.0, 1.0),
+            line_number_pulse_enabled: false,
+            line_number_pulse_color: (0.4, 0.6, 1.0),
+            line_number_pulse_intensity: 0.3,
+            line_number_pulse_cycle_ms: 2000,
+            breathing_border_enabled: false,
+            breathing_border_color: (0.5, 0.5, 0.5),
+            breathing_border_min_opacity: 0.05,
+            breathing_border_max_opacity: 0.3,
+            breathing_border_cycle_ms: 3000,
             scanlines_enabled: false,
             scanlines_spacing: 2,
             scanlines_opacity: 0.08,
@@ -2365,6 +2403,47 @@ impl RenderApp {
                     self.stained_glass_saturation = saturation;
                     if let Some(renderer) = self.renderer.as_mut() {
                         renderer.set_stained_glass(enabled, opacity, saturation);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetCornerFold { enabled, size, r, g, b, opacity } => {
+                    self.corner_fold_enabled = enabled;
+                    self.corner_fold_size = size;
+                    self.corner_fold_color = (r, g, b);
+                    self.corner_fold_opacity = opacity;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_corner_fold(enabled, size, (r, g, b), opacity);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetFrostedBorder { enabled, width, opacity, r, g, b } => {
+                    self.frosted_border_enabled = enabled;
+                    self.frosted_border_width = width;
+                    self.frosted_border_opacity = opacity;
+                    self.frosted_border_color = (r, g, b);
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_frosted_border(enabled, width, opacity, (r, g, b));
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetLineNumberPulse { enabled, r, g, b, intensity, cycle_ms } => {
+                    self.line_number_pulse_enabled = enabled;
+                    self.line_number_pulse_color = (r, g, b);
+                    self.line_number_pulse_intensity = intensity;
+                    self.line_number_pulse_cycle_ms = cycle_ms;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_line_number_pulse(enabled, (r, g, b), intensity, cycle_ms);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetBreathingBorder { enabled, r, g, b, min_opacity, max_opacity, cycle_ms } => {
+                    self.breathing_border_enabled = enabled;
+                    self.breathing_border_color = (r, g, b);
+                    self.breathing_border_min_opacity = min_opacity;
+                    self.breathing_border_max_opacity = max_opacity;
+                    self.breathing_border_cycle_ms = cycle_ms;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_breathing_border(enabled, (r, g, b), min_opacity, max_opacity, cycle_ms);
                     }
                     self.frame_dirty = true;
                 }

@@ -640,6 +640,56 @@ pub enum RenderCommand {
         /// Saturation of the generated color (0.0-1.0)
         saturation: f32,
     },
+    /// Configure window corner fold effect
+    SetCornerFold {
+        enabled: bool,
+        /// Fold size in pixels
+        size: f32,
+        /// Accent color (sRGB floats)
+        r: f32,
+        g: f32,
+        b: f32,
+        /// Fold opacity (0.0-1.0)
+        opacity: f32,
+    },
+    /// Configure frosted window border effect
+    SetFrostedBorder {
+        enabled: bool,
+        /// Border width in pixels
+        width: f32,
+        /// Border opacity (0.0-1.0)
+        opacity: f32,
+        /// Border color (sRGB floats)
+        r: f32,
+        g: f32,
+        b: f32,
+    },
+    /// Configure line number pulse on cursor line
+    SetLineNumberPulse {
+        enabled: bool,
+        /// Pulse color (sRGB floats)
+        r: f32,
+        g: f32,
+        b: f32,
+        /// Intensity (0.0-1.0)
+        intensity: f32,
+        /// Pulse cycle speed in milliseconds
+        cycle_ms: u32,
+    },
+    /// Configure window breathing border animation
+    SetBreathingBorder {
+        enabled: bool,
+        /// Border color (sRGB floats)
+        r: f32,
+        g: f32,
+        b: f32,
+        /// Minimum opacity (0.0-1.0)
+        min_opacity: f32,
+        /// Maximum opacity (0.0-1.0)
+        max_opacity: f32,
+        /// Full cycle duration in milliseconds
+        cycle_ms: u32,
+    },
     /// Configure window scanline (CRT) effect
     SetScanlines {
         enabled: bool,

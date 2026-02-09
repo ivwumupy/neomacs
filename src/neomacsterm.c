@@ -9169,6 +9169,160 @@ SATURATION is a percentage 0-100 controlling color intensity (default 60).  */)
   return on ? Qt : Qnil;
 }
 
+DEFUN ("neomacs-set-corner-fold",
+       Fneomacs_set_corner_fold,
+       Sneomacs_set_corner_fold, 0, 4, 0,
+       doc: /* Configure window corner fold effect.
+ENABLED non-nil renders a small triangular page fold in the top-right
+corner of each window, giving a paper-like appearance.
+SIZE is fold size in pixels (default 20).
+COLOR is an RGB hex string for the fold accent (default "#996633").
+OPACITY is a percentage 0-100 (default 50).  */)
+  (Lisp_Object enabled, Lisp_Object size, Lisp_Object color,
+   Lisp_Object opacity)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+
+  int on = !NILP (enabled);
+  int sz = 20, op = 50;
+  int r = 0x99, g = 0x66, b = 0x33;
+  if (FIXNUMP (size)) sz = XFIXNUM (size);
+  if (FIXNUMP (opacity)) op = XFIXNUM (opacity);
+  if (STRINGP (color))
+    {
+      const char *s = SSDATA (color);
+      if (s[0] == '#' && strlen (s) == 7)
+        {
+          unsigned hex = 0;
+          sscanf (s + 1, "%06x", &hex);
+          r = (hex >> 16) & 0xFF;
+          g = (hex >> 8) & 0xFF;
+          b = hex & 0xFF;
+        }
+    }
+
+  neomacs_display_set_corner_fold (dpyinfo->display_handle, on, sz, r, g, b, op);
+  return on ? Qt : Qnil;
+}
+
+DEFUN ("neomacs-set-frosted-border",
+       Fneomacs_set_frosted_border,
+       Sneomacs_set_frosted_border, 0, 4, 0,
+       doc: /* Configure frosted window border effect.
+ENABLED non-nil renders a multi-layered semi-transparent border around
+each window, simulating frosted glass.
+WIDTH is border width in pixels (default 4).
+OPACITY is a percentage 0-100 (default 15).
+COLOR is an RGB hex string (default "#FFFFFF").  */)
+  (Lisp_Object enabled, Lisp_Object width, Lisp_Object opacity,
+   Lisp_Object color)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+
+  int on = !NILP (enabled);
+  int w = 4, op = 15;
+  int r = 0xFF, g = 0xFF, b = 0xFF;
+  if (FIXNUMP (width)) w = XFIXNUM (width);
+  if (FIXNUMP (opacity)) op = XFIXNUM (opacity);
+  if (STRINGP (color))
+    {
+      const char *s = SSDATA (color);
+      if (s[0] == '#' && strlen (s) == 7)
+        {
+          unsigned hex = 0;
+          sscanf (s + 1, "%06x", &hex);
+          r = (hex >> 16) & 0xFF;
+          g = (hex >> 8) & 0xFF;
+          b = hex & 0xFF;
+        }
+    }
+
+  neomacs_display_set_frosted_border (dpyinfo->display_handle, on, w, op, r, g, b);
+  return on ? Qt : Qnil;
+}
+
+DEFUN ("neomacs-set-line-number-pulse",
+       Fneomacs_set_line_number_pulse,
+       Sneomacs_set_line_number_pulse, 0, 4, 0,
+       doc: /* Configure line number pulse on cursor line.
+ENABLED non-nil renders a pulsing glow on the line number gutter area
+of the current cursor line.
+COLOR is an RGB hex string (default "#6699FF").
+INTENSITY is a percentage 0-100 (default 30).
+CYCLE-MS is the pulse cycle duration in milliseconds (default 2000).  */)
+  (Lisp_Object enabled, Lisp_Object color, Lisp_Object intensity,
+   Lisp_Object cycle_ms)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+
+  int on = !NILP (enabled);
+  int inten = 30, cm = 2000;
+  int r = 0x66, g = 0x99, b = 0xFF;
+  if (FIXNUMP (intensity)) inten = XFIXNUM (intensity);
+  if (FIXNUMP (cycle_ms)) cm = XFIXNUM (cycle_ms);
+  if (STRINGP (color))
+    {
+      const char *s = SSDATA (color);
+      if (s[0] == '#' && strlen (s) == 7)
+        {
+          unsigned hex = 0;
+          sscanf (s + 1, "%06x", &hex);
+          r = (hex >> 16) & 0xFF;
+          g = (hex >> 8) & 0xFF;
+          b = hex & 0xFF;
+        }
+    }
+
+  neomacs_display_set_line_number_pulse (dpyinfo->display_handle, on, r, g, b, inten, cm);
+  return on ? Qt : Qnil;
+}
+
+DEFUN ("neomacs-set-breathing-border",
+       Fneomacs_set_breathing_border,
+       Sneomacs_set_breathing_border, 0, 5, 0,
+       doc: /* Configure window breathing border animation.
+ENABLED non-nil animates window borders with a slow sinusoidal opacity
+change, creating a gentle breathing effect.
+COLOR is an RGB hex string (default "#808080").
+MIN-OPACITY is minimum opacity percentage 0-100 (default 5).
+MAX-OPACITY is maximum opacity percentage 0-100 (default 30).
+CYCLE-MS is the full cycle duration in milliseconds (default 3000).  */)
+  (Lisp_Object enabled, Lisp_Object color, Lisp_Object min_opacity,
+   Lisp_Object max_opacity, Lisp_Object cycle_ms)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+
+  int on = !NILP (enabled);
+  int mn = 5, mx = 30, cm = 3000;
+  int r = 0x80, g = 0x80, b = 0x80;
+  if (FIXNUMP (min_opacity)) mn = XFIXNUM (min_opacity);
+  if (FIXNUMP (max_opacity)) mx = XFIXNUM (max_opacity);
+  if (FIXNUMP (cycle_ms)) cm = XFIXNUM (cycle_ms);
+  if (STRINGP (color))
+    {
+      const char *s = SSDATA (color);
+      if (s[0] == '#' && strlen (s) == 7)
+        {
+          unsigned hex = 0;
+          sscanf (s + 1, "%06x", &hex);
+          r = (hex >> 16) & 0xFF;
+          g = (hex >> 8) & 0xFF;
+          b = hex & 0xFF;
+        }
+    }
+
+  neomacs_display_set_breathing_border (dpyinfo->display_handle, on, r, g, b, mn, mx, cm);
+  return on ? Qt : Qnil;
+}
+
 DEFUN ("neomacs-set-scanlines",
        Fneomacs_set_scanlines,
        Sneomacs_set_scanlines, 0, 4, 0,
@@ -11063,6 +11217,10 @@ syms_of_neomacsterm (void)
   defsubr (&Sneomacs_set_scanlines);
   defsubr (&Sneomacs_set_cursor_comet);
   defsubr (&Sneomacs_set_cursor_spotlight);
+  defsubr (&Sneomacs_set_corner_fold);
+  defsubr (&Sneomacs_set_frosted_border);
+  defsubr (&Sneomacs_set_line_number_pulse);
+  defsubr (&Sneomacs_set_breathing_border);
   defsubr (&Sneomacs_set_region_glow);
   defsubr (&Sneomacs_set_window_glow);
   defsubr (&Sneomacs_set_scroll_progress);

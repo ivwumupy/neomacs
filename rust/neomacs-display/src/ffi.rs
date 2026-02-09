@@ -3073,6 +3073,104 @@ pub unsafe extern "C" fn neomacs_display_set_stained_glass(
     }
 }
 
+/// Configure window corner fold effect
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_corner_fold(
+    _handle: *mut NeomacsDisplay,
+    enabled: c_int,
+    size: c_int,
+    r: c_int,
+    g: c_int,
+    b: c_int,
+    opacity: c_int,
+) {
+    let cmd = RenderCommand::SetCornerFold {
+        enabled: enabled != 0,
+        size: size as f32,
+        r: r as f32 / 255.0,
+        g: g as f32 / 255.0,
+        b: b as f32 / 255.0,
+        opacity: opacity as f32 / 100.0,
+    };
+    if let Some(ref state) = THREADED_STATE {
+        let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+    }
+}
+
+/// Configure frosted window border effect
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_frosted_border(
+    _handle: *mut NeomacsDisplay,
+    enabled: c_int,
+    width: c_int,
+    opacity: c_int,
+    r: c_int,
+    g: c_int,
+    b: c_int,
+) {
+    let cmd = RenderCommand::SetFrostedBorder {
+        enabled: enabled != 0,
+        width: width as f32,
+        opacity: opacity as f32 / 100.0,
+        r: r as f32 / 255.0,
+        g: g as f32 / 255.0,
+        b: b as f32 / 255.0,
+    };
+    if let Some(ref state) = THREADED_STATE {
+        let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+    }
+}
+
+/// Configure line number pulse on cursor line
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_line_number_pulse(
+    _handle: *mut NeomacsDisplay,
+    enabled: c_int,
+    r: c_int,
+    g: c_int,
+    b: c_int,
+    intensity: c_int,
+    cycle_ms: c_int,
+) {
+    let cmd = RenderCommand::SetLineNumberPulse {
+        enabled: enabled != 0,
+        r: r as f32 / 255.0,
+        g: g as f32 / 255.0,
+        b: b as f32 / 255.0,
+        intensity: intensity as f32 / 100.0,
+        cycle_ms: cycle_ms as u32,
+    };
+    if let Some(ref state) = THREADED_STATE {
+        let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+    }
+}
+
+/// Configure window breathing border animation
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_breathing_border(
+    _handle: *mut NeomacsDisplay,
+    enabled: c_int,
+    r: c_int,
+    g: c_int,
+    b: c_int,
+    min_opacity: c_int,
+    max_opacity: c_int,
+    cycle_ms: c_int,
+) {
+    let cmd = RenderCommand::SetBreathingBorder {
+        enabled: enabled != 0,
+        r: r as f32 / 255.0,
+        g: g as f32 / 255.0,
+        b: b as f32 / 255.0,
+        min_opacity: min_opacity as f32 / 100.0,
+        max_opacity: max_opacity as f32 / 100.0,
+        cycle_ms: cycle_ms as u32,
+    };
+    if let Some(ref state) = THREADED_STATE {
+        let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+    }
+}
+
 /// Configure window scanline (CRT) effect
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_set_scanlines(

@@ -2286,6 +2286,300 @@ buffer's identity, creating a stained-glass appearance."
                 neomacs-stained-glass-opacity nil)
             val))))
 
+;; --- Window corner fold effect ---
+(declare-function neomacs-set-corner-fold "neomacsterm.c"
+  (&optional enabled size color opacity))
+
+(defcustom neomacs-corner-fold nil
+  "Enable window corner fold effect.
+Non-nil renders a triangular page fold in the top-right corner."
+  :type 'boolean
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-corner-fold)
+           (neomacs-set-corner-fold val
+            (if (boundp 'neomacs-corner-fold-size)
+                neomacs-corner-fold-size nil)
+            (if (boundp 'neomacs-corner-fold-color)
+                neomacs-corner-fold-color nil)
+            (if (boundp 'neomacs-corner-fold-opacity)
+                neomacs-corner-fold-opacity nil)))))
+
+(defcustom neomacs-corner-fold-size 20
+  "Corner fold size in pixels."
+  :type '(integer :tag "Size (px)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-corner-fold)
+                    (boundp 'neomacs-corner-fold)
+                    neomacs-corner-fold)
+           (neomacs-set-corner-fold t val
+            (if (boundp 'neomacs-corner-fold-color)
+                neomacs-corner-fold-color nil)
+            (if (boundp 'neomacs-corner-fold-opacity)
+                neomacs-corner-fold-opacity nil)))))
+
+(defcustom neomacs-corner-fold-color "#996633"
+  "Corner fold accent color as hex RGB string."
+  :type '(string :tag "Color (#RRGGBB)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-corner-fold)
+                    (boundp 'neomacs-corner-fold)
+                    neomacs-corner-fold)
+           (neomacs-set-corner-fold t
+            (if (boundp 'neomacs-corner-fold-size)
+                neomacs-corner-fold-size nil)
+            val
+            (if (boundp 'neomacs-corner-fold-opacity)
+                neomacs-corner-fold-opacity nil)))))
+
+(defcustom neomacs-corner-fold-opacity 50
+  "Corner fold opacity (0-100)."
+  :type '(integer :tag "Opacity (%)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-corner-fold)
+                    (boundp 'neomacs-corner-fold)
+                    neomacs-corner-fold)
+           (neomacs-set-corner-fold t
+            (if (boundp 'neomacs-corner-fold-size)
+                neomacs-corner-fold-size nil)
+            (if (boundp 'neomacs-corner-fold-color)
+                neomacs-corner-fold-color nil)
+            val))))
+
+;; --- Frosted window border effect ---
+(declare-function neomacs-set-frosted-border "neomacsterm.c"
+  (&optional enabled width opacity color))
+
+(defcustom neomacs-frosted-border nil
+  "Enable frosted window border effect.
+Non-nil renders multi-layered semi-transparent borders."
+  :type 'boolean
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-frosted-border)
+           (neomacs-set-frosted-border val
+            (if (boundp 'neomacs-frosted-border-width)
+                neomacs-frosted-border-width nil)
+            (if (boundp 'neomacs-frosted-border-opacity)
+                neomacs-frosted-border-opacity nil)
+            (if (boundp 'neomacs-frosted-border-color)
+                neomacs-frosted-border-color nil)))))
+
+(defcustom neomacs-frosted-border-width 4
+  "Frosted border width in pixels."
+  :type '(integer :tag "Width (px)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-frosted-border)
+                    (boundp 'neomacs-frosted-border)
+                    neomacs-frosted-border)
+           (neomacs-set-frosted-border t val
+            (if (boundp 'neomacs-frosted-border-opacity)
+                neomacs-frosted-border-opacity nil)
+            (if (boundp 'neomacs-frosted-border-color)
+                neomacs-frosted-border-color nil)))))
+
+(defcustom neomacs-frosted-border-opacity 15
+  "Frosted border opacity (0-100)."
+  :type '(integer :tag "Opacity (%)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-frosted-border)
+                    (boundp 'neomacs-frosted-border)
+                    neomacs-frosted-border)
+           (neomacs-set-frosted-border t
+            (if (boundp 'neomacs-frosted-border-width)
+                neomacs-frosted-border-width nil)
+            val
+            (if (boundp 'neomacs-frosted-border-color)
+                neomacs-frosted-border-color nil)))))
+
+(defcustom neomacs-frosted-border-color "#FFFFFF"
+  "Frosted border color as hex RGB string."
+  :type '(string :tag "Color (#RRGGBB)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-frosted-border)
+                    (boundp 'neomacs-frosted-border)
+                    neomacs-frosted-border)
+           (neomacs-set-frosted-border t
+            (if (boundp 'neomacs-frosted-border-width)
+                neomacs-frosted-border-width nil)
+            (if (boundp 'neomacs-frosted-border-opacity)
+                neomacs-frosted-border-opacity nil)
+            val))))
+
+;; --- Line number pulse on cursor line ---
+(declare-function neomacs-set-line-number-pulse "neomacsterm.c"
+  (&optional enabled color intensity cycle-ms))
+
+(defcustom neomacs-line-number-pulse nil
+  "Enable line number pulse on cursor line.
+Non-nil renders a pulsing glow on the line number gutter."
+  :type 'boolean
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-line-number-pulse)
+           (neomacs-set-line-number-pulse val
+            (if (boundp 'neomacs-line-number-pulse-color)
+                neomacs-line-number-pulse-color nil)
+            (if (boundp 'neomacs-line-number-pulse-intensity)
+                neomacs-line-number-pulse-intensity nil)
+            (if (boundp 'neomacs-line-number-pulse-cycle-ms)
+                neomacs-line-number-pulse-cycle-ms nil)))))
+
+(defcustom neomacs-line-number-pulse-color "#6699FF"
+  "Line number pulse color as hex RGB string."
+  :type '(string :tag "Color (#RRGGBB)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-line-number-pulse)
+                    (boundp 'neomacs-line-number-pulse)
+                    neomacs-line-number-pulse)
+           (neomacs-set-line-number-pulse t val
+            (if (boundp 'neomacs-line-number-pulse-intensity)
+                neomacs-line-number-pulse-intensity nil)
+            (if (boundp 'neomacs-line-number-pulse-cycle-ms)
+                neomacs-line-number-pulse-cycle-ms nil)))))
+
+(defcustom neomacs-line-number-pulse-intensity 30
+  "Line number pulse intensity (0-100)."
+  :type '(integer :tag "Intensity (%)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-line-number-pulse)
+                    (boundp 'neomacs-line-number-pulse)
+                    neomacs-line-number-pulse)
+           (neomacs-set-line-number-pulse t
+            (if (boundp 'neomacs-line-number-pulse-color)
+                neomacs-line-number-pulse-color nil)
+            val
+            (if (boundp 'neomacs-line-number-pulse-cycle-ms)
+                neomacs-line-number-pulse-cycle-ms nil)))))
+
+(defcustom neomacs-line-number-pulse-cycle-ms 2000
+  "Line number pulse cycle duration in milliseconds."
+  :type '(integer :tag "Cycle (ms)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-line-number-pulse)
+                    (boundp 'neomacs-line-number-pulse)
+                    neomacs-line-number-pulse)
+           (neomacs-set-line-number-pulse t
+            (if (boundp 'neomacs-line-number-pulse-color)
+                neomacs-line-number-pulse-color nil)
+            (if (boundp 'neomacs-line-number-pulse-intensity)
+                neomacs-line-number-pulse-intensity nil)
+            val))))
+
+;; --- Window breathing border animation ---
+(declare-function neomacs-set-breathing-border "neomacsterm.c"
+  (&optional enabled color min-opacity max-opacity cycle-ms))
+
+(defcustom neomacs-breathing-border nil
+  "Enable window breathing border animation.
+Non-nil animates window borders with sinusoidal opacity."
+  :type 'boolean
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-breathing-border)
+           (neomacs-set-breathing-border val
+            (if (boundp 'neomacs-breathing-border-color)
+                neomacs-breathing-border-color nil)
+            (if (boundp 'neomacs-breathing-border-min-opacity)
+                neomacs-breathing-border-min-opacity nil)
+            (if (boundp 'neomacs-breathing-border-max-opacity)
+                neomacs-breathing-border-max-opacity nil)
+            (if (boundp 'neomacs-breathing-border-cycle-ms)
+                neomacs-breathing-border-cycle-ms nil)))))
+
+(defcustom neomacs-breathing-border-color "#808080"
+  "Breathing border color as hex RGB string."
+  :type '(string :tag "Color (#RRGGBB)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-breathing-border)
+                    (boundp 'neomacs-breathing-border)
+                    neomacs-breathing-border)
+           (neomacs-set-breathing-border t val
+            (if (boundp 'neomacs-breathing-border-min-opacity)
+                neomacs-breathing-border-min-opacity nil)
+            (if (boundp 'neomacs-breathing-border-max-opacity)
+                neomacs-breathing-border-max-opacity nil)
+            (if (boundp 'neomacs-breathing-border-cycle-ms)
+                neomacs-breathing-border-cycle-ms nil)))))
+
+(defcustom neomacs-breathing-border-min-opacity 5
+  "Breathing border minimum opacity (0-100)."
+  :type '(integer :tag "Min Opacity (%)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-breathing-border)
+                    (boundp 'neomacs-breathing-border)
+                    neomacs-breathing-border)
+           (neomacs-set-breathing-border t
+            (if (boundp 'neomacs-breathing-border-color)
+                neomacs-breathing-border-color nil)
+            val
+            (if (boundp 'neomacs-breathing-border-max-opacity)
+                neomacs-breathing-border-max-opacity nil)
+            (if (boundp 'neomacs-breathing-border-cycle-ms)
+                neomacs-breathing-border-cycle-ms nil)))))
+
+(defcustom neomacs-breathing-border-max-opacity 30
+  "Breathing border maximum opacity (0-100)."
+  :type '(integer :tag "Max Opacity (%)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-breathing-border)
+                    (boundp 'neomacs-breathing-border)
+                    neomacs-breathing-border)
+           (neomacs-set-breathing-border t
+            (if (boundp 'neomacs-breathing-border-color)
+                neomacs-breathing-border-color nil)
+            (if (boundp 'neomacs-breathing-border-min-opacity)
+                neomacs-breathing-border-min-opacity nil)
+            val
+            (if (boundp 'neomacs-breathing-border-cycle-ms)
+                neomacs-breathing-border-cycle-ms nil)))))
+
+(defcustom neomacs-breathing-border-cycle-ms 3000
+  "Breathing border full cycle duration in milliseconds."
+  :type '(integer :tag "Cycle (ms)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-breathing-border)
+                    (boundp 'neomacs-breathing-border)
+                    neomacs-breathing-border)
+           (neomacs-set-breathing-border t
+            (if (boundp 'neomacs-breathing-border-color)
+                neomacs-breathing-border-color nil)
+            (if (boundp 'neomacs-breathing-border-min-opacity)
+                neomacs-breathing-border-min-opacity nil)
+            (if (boundp 'neomacs-breathing-border-max-opacity)
+                neomacs-breathing-border-max-opacity nil)
+            val))))
+
 ;; --- Window scanline (CRT) effect ---
 (declare-function neomacs-set-scanlines "neomacsterm.c"
   (&optional enabled spacing opacity color))

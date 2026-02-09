@@ -283,6 +283,27 @@ pub struct WgpuRenderer {
     stained_glass_enabled: bool,
     stained_glass_opacity: f32,
     stained_glass_saturation: f32,
+    /// Window corner fold effect
+    corner_fold_enabled: bool,
+    corner_fold_size: f32,
+    corner_fold_color: (f32, f32, f32),
+    corner_fold_opacity: f32,
+    /// Frosted window border effect
+    frosted_border_enabled: bool,
+    frosted_border_width: f32,
+    frosted_border_opacity: f32,
+    frosted_border_color: (f32, f32, f32),
+    /// Line number pulse on cursor line
+    line_number_pulse_enabled: bool,
+    line_number_pulse_color: (f32, f32, f32),
+    line_number_pulse_intensity: f32,
+    line_number_pulse_cycle_ms: u32,
+    /// Window breathing border animation
+    breathing_border_enabled: bool,
+    breathing_border_color: (f32, f32, f32),
+    breathing_border_min_opacity: f32,
+    breathing_border_max_opacity: f32,
+    breathing_border_cycle_ms: u32,
     /// Window scanline (CRT) effect
     scanlines_enabled: bool,
     scanlines_spacing: u32,
@@ -1095,6 +1116,23 @@ impl WgpuRenderer {
             stained_glass_enabled: false,
             stained_glass_opacity: 0.08,
             stained_glass_saturation: 0.6,
+            corner_fold_enabled: false,
+            corner_fold_size: 20.0,
+            corner_fold_color: (0.6, 0.4, 0.2),
+            corner_fold_opacity: 0.5,
+            frosted_border_enabled: false,
+            frosted_border_width: 4.0,
+            frosted_border_opacity: 0.15,
+            frosted_border_color: (1.0, 1.0, 1.0),
+            line_number_pulse_enabled: false,
+            line_number_pulse_color: (0.4, 0.6, 1.0),
+            line_number_pulse_intensity: 0.3,
+            line_number_pulse_cycle_ms: 2000,
+            breathing_border_enabled: false,
+            breathing_border_color: (0.5, 0.5, 0.5),
+            breathing_border_min_opacity: 0.05,
+            breathing_border_max_opacity: 0.3,
+            breathing_border_cycle_ms: 3000,
             scanlines_enabled: false,
             scanlines_spacing: 2,
             scanlines_opacity: 0.08,
@@ -1435,6 +1473,39 @@ impl WgpuRenderer {
         self.stained_glass_enabled = enabled;
         self.stained_glass_opacity = opacity;
         self.stained_glass_saturation = saturation;
+    }
+
+    /// Update corner fold config
+    pub fn set_corner_fold(&mut self, enabled: bool, size: f32, color: (f32, f32, f32), opacity: f32) {
+        self.corner_fold_enabled = enabled;
+        self.corner_fold_size = size;
+        self.corner_fold_color = color;
+        self.corner_fold_opacity = opacity;
+    }
+
+    /// Update frosted border config
+    pub fn set_frosted_border(&mut self, enabled: bool, width: f32, opacity: f32, color: (f32, f32, f32)) {
+        self.frosted_border_enabled = enabled;
+        self.frosted_border_width = width;
+        self.frosted_border_opacity = opacity;
+        self.frosted_border_color = color;
+    }
+
+    /// Update line number pulse config
+    pub fn set_line_number_pulse(&mut self, enabled: bool, color: (f32, f32, f32), intensity: f32, cycle_ms: u32) {
+        self.line_number_pulse_enabled = enabled;
+        self.line_number_pulse_color = color;
+        self.line_number_pulse_intensity = intensity;
+        self.line_number_pulse_cycle_ms = cycle_ms;
+    }
+
+    /// Update breathing border config
+    pub fn set_breathing_border(&mut self, enabled: bool, color: (f32, f32, f32), min_opacity: f32, max_opacity: f32, cycle_ms: u32) {
+        self.breathing_border_enabled = enabled;
+        self.breathing_border_color = color;
+        self.breathing_border_min_opacity = min_opacity;
+        self.breathing_border_max_opacity = max_opacity;
+        self.breathing_border_cycle_ms = cycle_ms;
     }
 
     /// Update scanline config
@@ -3812,7 +3883,157 @@ impl WgpuRenderer {
                 }
             }
 
-            // === Step 1i: Window scanline (CRT) effect ===
+            // === Step 1i: Window corner fold effect ===
+            if self.corner_fold_enabled {
+                let fold_size = self.corner_fold_size;
+                let (fr, fg, fb) = self.corner_fold_color;
+                let fold_alpha = self.corner_fold_opacity;
+                let mut fold_verts: Vec<RectVertex> = Vec::new();
+                for win_info in &frame_glyphs.window_infos {
+                    if win_info.is_minibuffer { continue; }
+                    let b = &win_info.bounds;
+                    // Draw triangular fold in top-right corner
+                    // Approximate triangle with thin horizontal strips
+                    let steps = fold_size.ceil() as u32;
+                    for i in 0..steps {
+                        let t = i as f32 / steps as f32;
+                        let strip_w = fold_size * (1.0 - t);
+                        let strip_x = b.x + b.width - strip_w;
+                        let strip_y = b.y + i as f32;
+                        let alpha = fold_alpha * (1.0 - t * 0.3);
+                        let c = Color::new(fr, fg, fb, alpha);
+                        self.add_rect(&mut fold_verts, strip_x, strip_y, strip_w, 1.0, &c);
+                    }
+                }
+                if !fold_verts.is_empty() {
+                    let fold_buf = self.device.create_buffer_init(
+                        &wgpu::util::BufferInitDescriptor {
+                            label: Some("Corner Fold Buffer"),
+                            contents: bytemuck::cast_slice(&fold_verts),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        },
+                    );
+                    render_pass.set_pipeline(&self.rect_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, fold_buf.slice(..));
+                    render_pass.draw(0..fold_verts.len() as u32, 0..1);
+                }
+            }
+
+            // === Step 1i2: Frosted window border effect ===
+            if self.frosted_border_enabled {
+                let bw = self.frosted_border_width;
+                let (fbr, fbg, fbb) = self.frosted_border_color;
+                let layers = 4u32;
+                let mut frost_verts: Vec<RectVertex> = Vec::new();
+                for win_info in &frame_glyphs.window_infos {
+                    if win_info.is_minibuffer { continue; }
+                    let b = &win_info.bounds;
+                    for layer in 0..layers {
+                        let t = layer as f32 / layers as f32;
+                        let layer_w = bw * (1.0 - t * 0.5);
+                        let alpha = self.frosted_border_opacity * (1.0 - t * 0.7);
+                        let c = Color::new(fbr, fbg, fbb, alpha);
+                        let inset = layer as f32 * (bw / layers as f32);
+                        // Top
+                        self.add_rect(&mut frost_verts, b.x + inset, b.y + inset, b.width - inset * 2.0, layer_w / layers as f32, &c);
+                        // Bottom
+                        self.add_rect(&mut frost_verts, b.x + inset, b.y + b.height - inset - layer_w / layers as f32, b.width - inset * 2.0, layer_w / layers as f32, &c);
+                        // Left
+                        self.add_rect(&mut frost_verts, b.x + inset, b.y + inset, layer_w / layers as f32, b.height - inset * 2.0, &c);
+                        // Right
+                        self.add_rect(&mut frost_verts, b.x + b.width - inset - layer_w / layers as f32, b.y + inset, layer_w / layers as f32, b.height - inset * 2.0, &c);
+                    }
+                }
+                if !frost_verts.is_empty() {
+                    let frost_buf = self.device.create_buffer_init(
+                        &wgpu::util::BufferInitDescriptor {
+                            label: Some("Frosted Border Buffer"),
+                            contents: bytemuck::cast_slice(&frost_verts),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        },
+                    );
+                    render_pass.set_pipeline(&self.rect_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, frost_buf.slice(..));
+                    render_pass.draw(0..frost_verts.len() as u32, 0..1);
+                }
+            }
+
+            // === Step 1i3: Line number pulse on cursor line ===
+            if self.line_number_pulse_enabled {
+                if let Some(ref anim) = animated_cursor {
+                    let now = std::time::Instant::now();
+                    let cycle = self.line_number_pulse_cycle_ms as f64 / 1000.0;
+                    let elapsed = now.elapsed().as_secs_f64();
+                    let phase = (elapsed % cycle) / cycle;
+                    let pulse = ((phase * std::f64::consts::TAU).sin() * 0.5 + 0.5) as f32;
+                    let alpha = self.line_number_pulse_intensity * pulse;
+                    let (pr, pg, pb) = self.line_number_pulse_color;
+                    if alpha > 0.001 {
+                        for win_info in &frame_glyphs.window_infos {
+                            if !win_info.selected { continue; }
+                            let b = &win_info.bounds;
+                            let gutter_width = 40.0_f32;
+                            let c = Color::new(pr, pg, pb, alpha);
+                            let mut pulse_verts: Vec<RectVertex> = Vec::new();
+                            self.add_rect(&mut pulse_verts, b.x, anim.y, gutter_width, anim.height, &c);
+                            if !pulse_verts.is_empty() {
+                                let pulse_buf = self.device.create_buffer_init(
+                                    &wgpu::util::BufferInitDescriptor {
+                                        label: Some("Line Number Pulse Buffer"),
+                                        contents: bytemuck::cast_slice(&pulse_verts),
+                                        usage: wgpu::BufferUsages::VERTEX,
+                                    },
+                                );
+                                render_pass.set_pipeline(&self.rect_pipeline);
+                                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                                render_pass.set_vertex_buffer(0, pulse_buf.slice(..));
+                                render_pass.draw(0..pulse_verts.len() as u32, 0..1);
+                            }
+                        }
+                    }
+                    self.needs_continuous_redraw = true;
+                }
+            }
+
+            // === Step 1i4: Window breathing border animation ===
+            if self.breathing_border_enabled {
+                let now = std::time::Instant::now();
+                let cycle = self.breathing_border_cycle_ms as f64 / 1000.0;
+                let elapsed = now.elapsed().as_secs_f64();
+                let phase = (elapsed % cycle) / cycle;
+                let breath = ((phase * std::f64::consts::TAU).sin() * 0.5 + 0.5) as f32;
+                let alpha = self.breathing_border_min_opacity + breath * (self.breathing_border_max_opacity - self.breathing_border_min_opacity);
+                let (br, bg, bb) = self.breathing_border_color;
+                let c = Color::new(br, bg, bb, alpha);
+                let border_w = 2.0_f32;
+                let mut breath_verts: Vec<RectVertex> = Vec::new();
+                for win_info in &frame_glyphs.window_infos {
+                    if win_info.is_minibuffer { continue; }
+                    let b = &win_info.bounds;
+                    self.add_rect(&mut breath_verts, b.x, b.y, b.width, border_w, &c);
+                    self.add_rect(&mut breath_verts, b.x, b.y + b.height - border_w, b.width, border_w, &c);
+                    self.add_rect(&mut breath_verts, b.x, b.y, border_w, b.height, &c);
+                    self.add_rect(&mut breath_verts, b.x + b.width - border_w, b.y, border_w, b.height, &c);
+                }
+                if !breath_verts.is_empty() {
+                    let breath_buf = self.device.create_buffer_init(
+                        &wgpu::util::BufferInitDescriptor {
+                            label: Some("Breathing Border Buffer"),
+                            contents: bytemuck::cast_slice(&breath_verts),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        },
+                    );
+                    render_pass.set_pipeline(&self.rect_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, breath_buf.slice(..));
+                    render_pass.draw(0..breath_verts.len() as u32, 0..1);
+                }
+                self.needs_continuous_redraw = true;
+            }
+
+            // === Step 1i5: Window scanline (CRT) effect ===
             if self.scanlines_enabled {
                 let spacing = self.scanlines_spacing.max(1) as f32;
                 let (sr, sg, sb) = self.scanlines_color;

@@ -1542,6 +1542,43 @@ void neomacs_display_set_stained_glass(
     int opacity,
     int saturation);
 
+void neomacs_display_set_corner_fold(
+    struct NeomacsDisplay *handle,
+    int enabled,
+    int size,
+    int r,
+    int g,
+    int b,
+    int opacity);
+
+void neomacs_display_set_frosted_border(
+    struct NeomacsDisplay *handle,
+    int enabled,
+    int width,
+    int opacity,
+    int r,
+    int g,
+    int b);
+
+void neomacs_display_set_line_number_pulse(
+    struct NeomacsDisplay *handle,
+    int enabled,
+    int r,
+    int g,
+    int b,
+    int intensity,
+    int cycle_ms);
+
+void neomacs_display_set_breathing_border(
+    struct NeomacsDisplay *handle,
+    int enabled,
+    int r,
+    int g,
+    int b,
+    int min_opacity,
+    int max_opacity,
+    int cycle_ms);
+
 void neomacs_display_set_scanlines(
     struct NeomacsDisplay *handle,
     int enabled,

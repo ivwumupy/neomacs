@@ -1511,6 +1511,51 @@ void neomacs_display_set_stained_glass(struct NeomacsDisplay *handle,
                                        int saturation);
 
 /**
+ * Configure window corner fold effect
+ */
+void neomacs_display_set_corner_fold(struct NeomacsDisplay *handle,
+                                     int enabled,
+                                     int size,
+                                     int r,
+                                     int g,
+                                     int b,
+                                     int opacity);
+
+/**
+ * Configure frosted window border effect
+ */
+void neomacs_display_set_frosted_border(struct NeomacsDisplay *handle,
+                                        int enabled,
+                                        int width,
+                                        int opacity,
+                                        int r,
+                                        int g,
+                                        int b);
+
+/**
+ * Configure line number pulse on cursor line
+ */
+void neomacs_display_set_line_number_pulse(struct NeomacsDisplay *handle,
+                                           int enabled,
+                                           int r,
+                                           int g,
+                                           int b,
+                                           int intensity,
+                                           int cycleMs);
+
+/**
+ * Configure window breathing border animation
+ */
+void neomacs_display_set_breathing_border(struct NeomacsDisplay *handle,
+                                          int enabled,
+                                          int r,
+                                          int g,
+                                          int b,
+                                          int minOpacity,
+                                          int maxOpacity,
+                                          int cycleMs);
+
+/**
  * Configure window scanline (CRT) effect
  */
 void neomacs_display_set_scanlines(struct NeomacsDisplay *handle,
