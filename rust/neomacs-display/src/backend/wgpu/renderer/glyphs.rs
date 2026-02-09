@@ -142,10 +142,12 @@ impl WgpuRenderer {
         // Advance glyph atlas generation for LRU tracking
         glyph_atlas.advance_generation();
 
-        // Update uniforms with logical size for correct coordinate transformation
-        // (Emacs sends positions in logical pixels; surface is in physical pixels)
-        let logical_w = surface_width as f32 / self.scale_factor;
-        let logical_h = surface_height as f32 / self.scale_factor;
+        // Use the frame's own logical dimensions for coordinate transformation.
+        // Emacs may round up the frame size to char grid boundaries, so the frame
+        // can be slightly larger than the window surface. Using the frame dimensions
+        // ensures glyph positions (which are relative to the frame) map correctly.
+        let logical_w = if frame_glyphs.width > 0.0 { frame_glyphs.width } else { surface_width as f32 / self.scale_factor };
+        let logical_h = if frame_glyphs.height > 0.0 { frame_glyphs.height } else { surface_height as f32 / self.scale_factor };
         let uniforms = Uniforms {
             screen_size: [logical_w, logical_h],
             _padding: [0.0, 0.0],
@@ -6164,6 +6166,15 @@ impl WgpuRenderer {
 
                 log::trace!("render_frame_glyphs: overlay={} {} mask glyphs, {} color glyphs",
                     want_overlay, mask_data.len(), color_data.len());
+                // Debug: dump first few glyph positions
+                if !mask_data.is_empty() && !want_overlay {
+                    for (i, (key, verts)) in mask_data.iter().take(3).enumerate() {
+                        let p0 = verts[0].position;
+                        let c0 = verts[0].color;
+                        log::debug!("  glyph[{}]: charcode={} pos=({:.1},{:.1}) color=({:.3},{:.3},{:.3},{:.3}) logical_w={:.1}",
+                            i, key.charcode, p0[0], p0[1], c0[0], c0[1], c0[2], c0[3], logical_w);
+                    }
+                }
 
                 // Draw mask glyphs with glyph pipeline (alpha tinted with foreground)
                 // Sort by GlyphKey so identical characters batch into single draw calls,

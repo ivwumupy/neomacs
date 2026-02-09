@@ -226,6 +226,12 @@
                 libdrm
                 libxkbcommon
                 libgbm
+                # X11 libs dynamically loaded by winit
+                libx11
+                libxcursor
+                libxrandr
+                libxi
+                libxinerama
                 wpewebkit
                 libwpe
                 libwpe-fdo

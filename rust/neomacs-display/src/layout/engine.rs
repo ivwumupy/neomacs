@@ -62,10 +62,19 @@ impl LayoutEngine {
 
         // Get number of windows
         let window_count = neomacs_layout_frame_window_count(frame);
+        log::debug!("layout_frame: {}x{} char={}x{} windows={}",
+            frame_params.width, frame_params.height,
+            frame_params.char_width, frame_params.char_height,
+            window_count);
 
         for i in 0..window_count {
             let mut wp = WindowParamsFFI::default();
-            if neomacs_layout_get_window_params(frame, i, &mut wp) != 0 {
+            let ret = neomacs_layout_get_window_params(frame, i, &mut wp);
+            log::debug!("  window[{}]: id={} mini={} bounds=({},{},{},{}) bufsz={} start={} point={}",
+                i, wp.window_id, wp.is_minibuffer,
+                wp.x, wp.y, wp.width, wp.height,
+                wp.buffer_zv, wp.window_start, wp.point);
+            if ret != 0 {
                 continue;
             }
 
@@ -296,6 +305,7 @@ impl LayoutEngine {
         let buffer = wp.buffer_ptr;
         let window = wp.window_ptr;
         if buffer.is_null() || window.is_null() {
+            log::debug!("  layout_window: EARLY RETURN — null buffer={:?} or window={:?}", buffer, window);
             return;
         }
 
@@ -336,6 +346,7 @@ impl LayoutEngine {
         let max_rows = (text_height / char_h).floor() as i32;
 
         if cols <= 0 || max_rows <= 0 {
+            log::debug!("  layout_window id={}: skip — cols={} max_rows={}", params.window_id, cols, max_rows);
             return;
         }
 

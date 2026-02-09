@@ -71,6 +71,7 @@ static void neomacs_show_hourglass (struct frame *f);
 static void neomacs_hide_hourglass (struct frame *f);
 static void neomacs_compute_glyph_string_overhangs (struct glyph_string *s);
 static void neomacs_clear_under_internal_border (struct frame *f);
+static void neomacs_display_wakeup_handler (int fd, void *data);
 
 /* Rust layout engine FFI entry point (defined in layout/engine.rs via ffi.rs) */
 extern void neomacs_rust_layout_frame (void *display_handle, void *frame_ptr,
@@ -291,25 +292,37 @@ neomacs_query_monitors (struct neomacs_display_info *dpyinfo)
     }
 
   int max_width = 0, max_height = 0;
+  double max_scale = 1.0;
   for (int i = 0; i < n; i++)
     {
       struct NeomacsMonitorInfo info;
       if (neomacs_display_get_monitor_info (i, &info))
         {
-          int right = info.x + info.width;
-          int bottom = info.y + info.height;
+          /* Monitor dimensions from winit are in physical pixels.
+             Convert to logical pixels using the monitor's scale factor
+             so that Emacs frame dimensions match the renderer's logical
+             coordinate space. */
+          double scale = info.scale > 0.0 ? info.scale : 1.0;
+          int logical_x = (int) (info.x / scale);
+          int logical_y = (int) (info.y / scale);
+          int logical_w = (int) (info.width / scale);
+          int logical_h = (int) (info.height / scale);
+          int right = logical_x + logical_w;
+          int bottom = logical_y + logical_h;
           if (right > max_width)
             max_width = right;
           if (bottom > max_height)
             max_height = bottom;
+          if (scale > max_scale)
+            max_scale = scale;
         }
     }
   if (max_width > 0 && max_height > 0)
     {
       dpyinfo->width = max_width;
       dpyinfo->height = max_height;
-      nlog_debug ("Display size from winit: %dx%d",
-                  dpyinfo->width, dpyinfo->height);
+      nlog_debug ("Display size from winit (logical): %dx%d (scale=%.1f)",
+                  dpyinfo->width, dpyinfo->height, max_scale);
     }
 }
 
@@ -4127,7 +4140,14 @@ neomacs_update_end (struct frame *f)
         neomacs_display_end_frame (dpyinfo->display_handle);
     }
 
-  /* Rendering is handled by the Rust render thread — no GTK widget redraw needed. */
+  /* Drain any pending events from the render thread to prevent busy loop.
+     During startup, the render thread sends resize events that put data
+     on the wakeup pipe.  If we don't drain here, xg_select() will see
+     the pipe as readable and return immediately forever, causing 100% CPU.
+     This is safe to call here because the event handler only sets flags
+     (SET_FRAME_GARBAGED, enqueue events) — no immediate redisplay.  */
+  if (dpyinfo && dpyinfo->connection >= 0)
+    neomacs_display_wakeup_handler (dpyinfo->connection, dpyinfo);
 }
 
 /* Called at the beginning of updating a window */
@@ -6882,13 +6902,25 @@ neomacs_resend_frame (struct frame *f)
 }
 
 /* Read socket events for the Neomacs terminal.
-   In threaded mode, events are delivered via the wakeup handler
-   (neomacs_display_wakeup_handler) which calls neomacs_display_drain_input.
-   This function just flushes any queued events to Emacs.  */
+   This is the main event polling entry point, called from read_avail_input().
+   We must drain events from the render thread here because the fd callback
+   (neomacs_display_wakeup_handler) is only invoked from
+   wait_reading_process_output, which may not run during startup or when
+   Emacs is waiting for keyboard input via gobble_input().  */
 int
 neomacs_read_socket (struct terminal *terminal, struct input_event *hold_quit)
 {
   int count;
+
+  /* Drain events from the render thread — this is the primary event pump.
+     In GUI backends like X11/GTK, read_socket directly reads from the
+     display connection.  We do the same by draining our render thread.
+     The wakeup_handler processes events and enqueues them, sets frame
+     flags like SET_FRAME_GARBAGED for resize events.  The connection fd
+     is stored in dpyinfo->connection.  */
+  struct neomacs_display_info *dpyinfo = terminal->display_info.neomacs;
+  if (dpyinfo && dpyinfo->connection >= 0)
+    neomacs_display_wakeup_handler (dpyinfo->connection, dpyinfo);
 
   /* Flush queued events to Emacs */
   count = neomacs_evq_flush (hold_quit);
@@ -13968,6 +14000,7 @@ neomacs_display_wakeup_handler (int fd, void *data)
 
   /* Drain input events from render thread */
   count = neomacs_display_drain_input (events, 64);
+  nlog_debug ("wakeup_handler: drained %d events from fd=%d", count, fd);
 
   /* Process events */
   for (int i = 0; i < count; i++)
@@ -14331,17 +14364,19 @@ neomacs_display_wakeup_handler (int fd, void *data)
             int new_width = ev->width;
             int new_height = ev->height;
 
+            nlog_info ("RESIZE: %dx%d -> %dx%d",
+                       FRAME_PIXEL_WIDTH (f), FRAME_PIXEL_HEIGHT (f),
+                       new_width, new_height);
+
             /* Update the Rust display handle */
             if (dpyinfo && dpyinfo->display_handle)
               neomacs_display_resize (dpyinfo->display_handle, new_width, new_height);
 
-            /* Update the Emacs frame size - queue for later since we're in event handler */
             if (FRAME_PIXEL_WIDTH (f) != new_width
                 || FRAME_PIXEL_HEIGHT (f) != new_height)
-              {
-                change_frame_size (f, new_width, new_height, false, true, false);
-                SET_FRAME_GARBAGED (f);
-              }
+              change_frame_size (f, new_width, new_height, false, true, false);
+
+            SET_FRAME_GARBAGED (f);
           }
           break;
 

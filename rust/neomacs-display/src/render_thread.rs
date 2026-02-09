@@ -1540,7 +1540,8 @@ impl RenderApp {
                 }
                 RenderCommand::SetWindowSize { width, height } => {
                     if let Some(ref window) = self.window {
-                        let size = winit::dpi::PhysicalSize::new(width, height);
+                        // Emacs sends logical pixel dimensions
+                        let size = winit::dpi::LogicalSize::new(width, height);
                         let _ = window.request_inner_size(size);
                     }
                 }
@@ -3357,9 +3358,9 @@ impl RenderApp {
         output.present();
     }
 
-    /// Set the window icon from the embedded Emacs icon PNG.
+    /// Set the window icon from the embedded Neomacs logo PNG.
     fn set_window_icon(window: &Window) {
-        let icon_bytes = include_bytes!("../../../etc/images/icons/hicolor/128x128/apps/emacs.png");
+        let icon_bytes = include_bytes!("../../../assets/logo-128.png");
         if let Ok(img) = image::load_from_memory(icon_bytes) {
             let rgba = img.to_rgba8();
             let (w, h) = rgba.dimensions();
