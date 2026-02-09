@@ -1,6 +1,6 @@
 { lib
 , stdenv
-, rustPlatform
+, craneLib
 , rust-cbindgen
 , pkg-config
 , autoconf
@@ -51,21 +51,23 @@
 }:
 
 let
-  # Build the Rust library first
-  neomacs-display = rustPlatform.buildRustPackage {
+  # Rust crate source — include assets/ and shaders alongside Cargo sources
+  rustSrc = lib.cleanSourceWith {
+    src = ../rust/neomacs-display;
+    filter = path: type:
+      (craneLib.filterCargoSources path type)
+      || (lib.hasInfix "/assets/" path)
+      || (lib.hasInfix "/shaders/" path)
+      || (lib.hasSuffix ".wgsl" path)
+      || (lib.hasSuffix ".png" path);
+  };
+
+  # Common arguments shared between deps-only and full builds
+  commonArgs = {
     pname = "neomacs-display";
     version = "0.1.0";
 
-    src = ../rust/neomacs-display;
-
-    cargoLock = {
-      lockFile = ../rust/neomacs-display/Cargo.lock;
-    };
-
-    # Only build the library, not examples (examples may be out of sync)
-    cargoBuildFlags = [ "--lib" ];
-    cargoTestFlags = [ "--lib" ];
-    doCheck = false;  # Skip tests for now
+    src = rustSrc;
 
     nativeBuildInputs = [
       pkg-config
@@ -82,8 +84,8 @@ let
       gdk-pixbuf
       gst_all_1.gstreamer
       gst_all_1.gst-plugins-base
-      gst_all_1.gst-plugins-bad  # Contains gst-va plugin (gstva-1.0)
-      libva                       # VA-API for hardware video decoding
+      gst_all_1.gst-plugins-bad
+      libva
       libGL
       libxkbcommon
       wayland
@@ -94,7 +96,6 @@ let
       libsoup_3
     ];
 
-    # pkg-config path for finding WPE and other libraries
     PKG_CONFIG_PATH = lib.makeSearchPath "lib/pkgconfig" [
       gtk4.dev
       glib.dev
@@ -104,8 +105,8 @@ let
       gdk-pixbuf.dev
       gst_all_1.gstreamer.dev
       gst_all_1.gst-plugins-base.dev
-      gst_all_1.gst-plugins-bad.dev  # For gstva-1.0
-      libva                           # For libva
+      gst_all_1.gst-plugins-bad.dev
+      libva
       libGL.dev
       libxkbcommon.dev
       wayland.dev
@@ -117,7 +118,6 @@ let
 
     LIBCLANG_PATH = "${llvmPackages.libclang.lib}/lib";
 
-    # Bindgen needs to find C standard headers and library headers
     BINDGEN_EXTRA_CLANG_ARGS = builtins.concatStringsSep " " [
       "-isystem ${stdenv.cc.libc.dev}/include"
       "-isystem ${libxkbcommon.dev}/include"
@@ -132,6 +132,17 @@ let
       "-isystem ${libGL.dev}/include"
     ];
 
+    cargoExtraArgs = "--lib";
+    doCheck = false;
+  };
+
+  # Step 1: Build only dependencies (cached when Cargo.lock unchanged)
+  cargoArtifacts = craneLib.buildDepsOnly commonArgs;
+
+  # Step 2: Build the actual crate (reuses cached deps)
+  neomacs-display = craneLib.buildPackage (commonArgs // {
+    inherit cargoArtifacts;
+
     # Generate C headers after build
     postBuild = ''
       cbindgen --config cbindgen.toml --crate neomacs-display --output include/neomacs_display.h || true
@@ -141,7 +152,7 @@ let
       mkdir -p $out/include
       cp -r include/* $out/include/ || true
     '';
-  };
+  });
 
 in stdenv.mkDerivation {
   pname = "neomacs";
@@ -249,7 +260,6 @@ in stdenv.mkDerivation {
     homepage = "https://github.com/eval-exec/neomacs";
     license = licenses.gpl3Plus;
     platforms = platforms.linux;
-    # `nix run` uses this when no explicit `apps.<system>.default` is defined.
     mainProgram = "emacs";
     maintainers = [ ];
   };

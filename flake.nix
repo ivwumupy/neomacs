@@ -14,6 +14,9 @@
       url = "github:oxalica/rust-overlay";
     };
 
+    # Crane for incremental Rust builds (caches deps separately from source)
+    crane.url = "github:ipetkov/crane";
+
     # WPE WebKit standalone flake with Cachix binary cache
     # Do NOT use `inputs.nixpkgs.follows` here — the Cachix binary was built
     # with nix-wpe-webkit's own pinned nixpkgs, so follows would change the
@@ -23,7 +26,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, rust-overlay, nix-wpe-webkit }:
+  outputs = { self, nixpkgs, rust-overlay, crane, nix-wpe-webkit }:
     let
       supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
 
@@ -259,10 +262,11 @@
       packages = forAllSystems (system:
         let
           pkgs = pkgsFor system;
+          craneLib = (crane.mkLib pkgs).overrideToolchain pkgs.rust-neomacs;
         in {
           default = self.packages.${system}.neomacs;
 
-          neomacs = pkgs.callPackage ./nix/neomacs.nix { };
+          neomacs = pkgs.callPackage ./nix/neomacs.nix { inherit craneLib; };
         }
       );
     };
