@@ -1093,6 +1093,72 @@ impl LayoutEngine {
                     next_display_check = display_prop.covers_to;
                     current_face_id = -1;
                     continue;
+                } else if display_prop.prop_type == 9 {
+                    // Video display property: render video glyph
+                    let vid_w = display_prop.image_width as f32;
+                    let vid_h = display_prop.image_height as f32;
+
+                    if row < max_rows && display_prop.video_id != 0 {
+                        let gx = content_x + col as f32 * char_w;
+                        let gy = row_y[row as usize];
+
+                        frame_glyphs.add_video(
+                            display_prop.video_id,
+                            gx, gy, vid_w, vid_h,
+                        );
+                        let vid_cols = (vid_w / char_w).ceil() as i32;
+                        col += vid_cols;
+                        let vid_rows = ((vid_h / char_h).ceil() as i32).max(1);
+                        if vid_rows > 1 {
+                            row += vid_rows - 1;
+                        }
+                    }
+
+                    // Skip original buffer text
+                    let chars_to_skip = display_prop.covers_to - charpos;
+                    for _ in 0..chars_to_skip {
+                        if byte_idx >= bytes_read as usize { break; }
+                        let (_, ch_len) = decode_utf8(&text[byte_idx..]);
+                        byte_idx += ch_len;
+                    }
+                    charpos = display_prop.covers_to;
+                    window_end_charpos = charpos;
+                    next_display_check = display_prop.covers_to;
+                    current_face_id = -1;
+                    continue;
+                } else if display_prop.prop_type == 10 {
+                    // WebKit display property: render webkit glyph
+                    let wk_w = display_prop.image_width as f32;
+                    let wk_h = display_prop.image_height as f32;
+
+                    if row < max_rows && display_prop.webkit_id != 0 {
+                        let gx = content_x + col as f32 * char_w;
+                        let gy = row_y[row as usize];
+
+                        frame_glyphs.add_webkit(
+                            display_prop.webkit_id,
+                            gx, gy, wk_w, wk_h,
+                        );
+                        let wk_cols = (wk_w / char_w).ceil() as i32;
+                        col += wk_cols;
+                        let wk_rows = ((wk_h / char_h).ceil() as i32).max(1);
+                        if wk_rows > 1 {
+                            row += wk_rows - 1;
+                        }
+                    }
+
+                    // Skip original buffer text
+                    let chars_to_skip = display_prop.covers_to - charpos;
+                    for _ in 0..chars_to_skip {
+                        if byte_idx >= bytes_read as usize { break; }
+                        let (_, ch_len) = decode_utf8(&text[byte_idx..]);
+                        byte_idx += ch_len;
+                    }
+                    charpos = display_prop.covers_to;
+                    window_end_charpos = charpos;
+                    next_display_check = display_prop.covers_to;
+                    current_face_id = -1;
+                    continue;
                 } else if display_prop.prop_type == 5 || display_prop.prop_type == 8 {
                     // Raise and/or height: modify rendering of subsequent glyphs
                     if display_prop.raise_factor != 0.0 {

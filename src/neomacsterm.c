@@ -2844,15 +2844,17 @@ neomacs_layout_buffer_byte_at (void *buffer_ptr, int64_t byte_pos)
 /* FFI struct for display text property results.
    Layout must match Rust DisplayPropFFI in emacs_ffi.rs. */
 struct DisplayPropFFI {
-  int type;           /* 0=none, 1=string, 2=space, 3=align-to, 4=image */
+  int type;           /* 0=none, 1=string, 2=space, 3=align-to, 4=image,
+                         5=raise, 6=left-fringe, 7=right-fringe, 8=height,
+                         9=video, 10=webkit */
   int str_len;        /* bytes of replacement string (type=1) */
   float space_width;  /* width in columns (type=2) */
   float space_height; /* height in pixels (type=2), 0 = use default char_h */
   int64_t covers_to;  /* charpos where display prop region ends */
   float align_to;     /* align-to column (type=3) */
   uint32_t image_gpu_id;  /* GPU image ID (type=4) */
-  int image_width;        /* image width in pixels (type=4) */
-  int image_height;       /* image height in pixels (type=4) */
+  int image_width;        /* image/video/webkit width in pixels (type=4,9,10) */
+  int image_height;       /* image/video/webkit height in pixels (type=4,9,10) */
   int image_hmargin;      /* image horizontal margin in pixels (type=4) */
   int image_vmargin;      /* image vertical margin in pixels (type=4) */
   int image_ascent;       /* image ascent: 0-100 = percent, -1 = centered (type=4) */
@@ -2863,6 +2865,8 @@ struct DisplayPropFFI {
   uint32_t fringe_fg;     /* fringe face foreground color (type=6,7) */
   uint32_t fringe_bg;     /* fringe face background color (type=6,7) */
   float height_factor;    /* font height multiplier (0.0=default, >0=scale) */
+  uint32_t video_id;      /* video ID (type=9) */
+  uint32_t webkit_id;     /* webkit view ID (type=10) */
 };
 
 /* Check for a 'display text property at charpos.
@@ -2899,6 +2903,8 @@ neomacs_layout_check_display_prop (void *buffer_ptr, void *window_ptr,
   out->fringe_fg = 0;
   out->fringe_bg = 0;
   out->height_factor = 0;
+  out->video_id = 0;
+  out->webkit_id = 0;
 
   if (!buf)
     return -1;
@@ -3275,12 +3281,49 @@ neomacs_layout_check_display_prop (void *buffer_ptr, void *window_ptr,
           return 0;
         }
 
+      /* Check for (video :id N :width W :height H) display property */
+      if (EQ (car, Qvideo))
+        {
+          Lisp_Object plist = XCDR (display_prop);
+          Lisp_Object id_val = Fplist_get (plist, QCid, Qnil);
+          Lisp_Object w_val = Fplist_get (plist, QCwidth, Qnil);
+          Lisp_Object h_val = Fplist_get (plist, QCheight, Qnil);
+          if (FIXNUMP (id_val))
+            {
+              out->type = 9;
+              out->video_id = (uint32_t) XFIXNUM (id_val);
+              out->image_width = FIXNUMP (w_val) ? (int) XFIXNUM (w_val) : 640;
+              out->image_height = FIXNUMP (h_val) ? (int) XFIXNUM (h_val) : 360;
+            }
+          set_buffer_internal_1 (old);
+          return 0;
+        }
+
+      /* Check for (webkit :id N :width W :height H) display property */
+      if (EQ (car, Qwebkit))
+        {
+          Lisp_Object plist = XCDR (display_prop);
+          Lisp_Object id_val = Fplist_get (plist, QCid, Qnil);
+          Lisp_Object w_val = Fplist_get (plist, QCwidth, Qnil);
+          Lisp_Object h_val = Fplist_get (plist, QCheight, Qnil);
+          if (FIXNUMP (id_val))
+            {
+              out->type = 10;
+              out->webkit_id = (uint32_t) XFIXNUM (id_val);
+              out->image_width = FIXNUMP (w_val) ? (int) XFIXNUM (w_val) : 800;
+              out->image_height = FIXNUMP (h_val) ? (int) XFIXNUM (h_val) : 600;
+            }
+          set_buffer_internal_1 (old);
+          return 0;
+        }
+
       /* If car is not a known keyword, treat as list of specs.
          Each element is a single spec like (raise 0.3) or
          (height 0.7). Process all non-replacing specs, stop
          at first replacing spec (string/image/space). */
       if (!EQ (car, Qspace) && !EQ (car, Qimage) && !EQ (car, Qraise)
           && !EQ (car, Qleft_fringe) && !EQ (car, Qright_fringe)
+          && !EQ (car, Qvideo) && !EQ (car, Qwebkit)
           && !NILP (car)
           && !(CONSP (car) && EQ (XCAR (car), Qmargin)))
         {

@@ -391,6 +391,10 @@ pub struct DisplayPropFFI {
     pub fringe_bg: u32,
     /// Font height multiplier (type=5,8): 0.0=default, >0=scale factor
     pub height_factor: f32,
+    /// Video ID (type=9)
+    pub video_id: u32,
+    /// WebKit view ID (type=10)
+    pub webkit_id: u32,
 }
 
 /// FFI-safe window parameters struct.
