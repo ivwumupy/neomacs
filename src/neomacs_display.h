@@ -2026,6 +2026,46 @@ void neomacs_display_set_cursor_gravity_well(struct NeomacsDisplay *handle,
     int opacity);
 
 /**
+ * Configure sunburst pattern overlay effect.
+ */
+void neomacs_display_set_sunburst_pattern(struct NeomacsDisplay *handle,
+    int enabled,
+    int r, int g, int b,
+    int ray_count,
+    int speed,
+    int opacity);
+
+/**
+ * Configure cursor firework effect.
+ */
+void neomacs_display_set_cursor_firework(struct NeomacsDisplay *handle,
+    int enabled,
+    int r, int g, int b,
+    int particle_count,
+    int burst_radius,
+    int opacity);
+
+/**
+ * Configure honeycomb dissolve overlay effect.
+ */
+void neomacs_display_set_honeycomb_dissolve(struct NeomacsDisplay *handle,
+    int enabled,
+    int r, int g, int b,
+    int cell_size,
+    int dissolve_speed,
+    int opacity);
+
+/**
+ * Configure cursor tornado effect.
+ */
+void neomacs_display_set_cursor_tornado(struct NeomacsDisplay *handle,
+    int enabled,
+    int r, int g, int b,
+    int radius,
+    int particle_count,
+    int opacity);
+
+/**
  * Configure wave interference overlay effect.
  */
 void neomacs_display_set_wave_interference(struct NeomacsDisplay *handle,

@@ -1369,6 +1369,38 @@ pub enum RenderCommand {
         rise_speed: f32,
         opacity: f32,
     },
+    /// Configure sunburst pattern overlay effect
+    SetSunburstPattern {
+        enabled: bool,
+        r: f32, g: f32, b: f32,
+        ray_count: u32,
+        speed: f32,
+        opacity: f32,
+    },
+    /// Configure cursor firework effect
+    SetCursorFirework {
+        enabled: bool,
+        r: f32, g: f32, b: f32,
+        particle_count: u32,
+        burst_radius: f32,
+        opacity: f32,
+    },
+    /// Configure honeycomb dissolve overlay effect
+    SetHoneycombDissolve {
+        enabled: bool,
+        r: f32, g: f32, b: f32,
+        cell_size: f32,
+        dissolve_speed: f32,
+        opacity: f32,
+    },
+    /// Configure cursor tornado effect
+    SetCursorTornado {
+        enabled: bool,
+        r: f32, g: f32, b: f32,
+        radius: f32,
+        particle_count: u32,
+        opacity: f32,
+    },
     /// Configure background pattern
     SetBackgroundPattern {
         /// 0=none, 1=dots, 2=grid, 3=crosshatch

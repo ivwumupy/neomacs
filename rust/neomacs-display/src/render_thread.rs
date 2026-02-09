@@ -802,6 +802,31 @@ struct RenderApp {
     cursor_bubble_rise_speed: f32,
     cursor_bubble_opacity: f32,
 
+    // Sunburst pattern
+    sunburst_pattern_enabled: bool,
+    sunburst_pattern_color: (f32, f32, f32),
+    sunburst_pattern_ray_count: u32,
+    sunburst_pattern_speed: f32,
+    sunburst_pattern_opacity: f32,
+    // Cursor firework
+    cursor_firework_enabled: bool,
+    cursor_firework_color: (f32, f32, f32),
+    cursor_firework_particle_count: u32,
+    cursor_firework_burst_radius: f32,
+    cursor_firework_opacity: f32,
+    // Honeycomb dissolve
+    honeycomb_dissolve_enabled: bool,
+    honeycomb_dissolve_color: (f32, f32, f32),
+    honeycomb_dissolve_cell_size: f32,
+    honeycomb_dissolve_speed: f32,
+    honeycomb_dissolve_opacity: f32,
+    // Cursor tornado
+    cursor_tornado_enabled: bool,
+    cursor_tornado_color: (f32, f32, f32),
+    cursor_tornado_radius: f32,
+    cursor_tornado_particle_count: u32,
+    cursor_tornado_opacity: f32,
+
     // Per-window metadata from previous frame (for transition detection)
     prev_window_infos: HashMap<i64, crate::core::frame_glyphs::WindowInfo>,
 
@@ -1529,6 +1554,26 @@ impl RenderApp {
             cursor_bubble_count: 6,
             cursor_bubble_rise_speed: 80.0,
             cursor_bubble_opacity: 0.2,
+            sunburst_pattern_enabled: false,
+            sunburst_pattern_color: (1.0, 0.8, 0.3),
+            sunburst_pattern_ray_count: 12,
+            sunburst_pattern_speed: 0.5,
+            sunburst_pattern_opacity: 0.08,
+            cursor_firework_enabled: false,
+            cursor_firework_color: (1.0, 0.6, 0.2),
+            cursor_firework_particle_count: 16,
+            cursor_firework_burst_radius: 60.0,
+            cursor_firework_opacity: 0.3,
+            honeycomb_dissolve_enabled: false,
+            honeycomb_dissolve_color: (0.8, 0.6, 0.2),
+            honeycomb_dissolve_cell_size: 30.0,
+            honeycomb_dissolve_speed: 0.8,
+            honeycomb_dissolve_opacity: 0.08,
+            cursor_tornado_enabled: false,
+            cursor_tornado_color: (0.5, 0.7, 1.0),
+            cursor_tornado_radius: 40.0,
+            cursor_tornado_particle_count: 12,
+            cursor_tornado_opacity: 0.25,
             prev_window_infos: HashMap::new(),
             crossfade_enabled: true,
             crossfade_duration: std::time::Duration::from_millis(200),
@@ -3538,6 +3583,50 @@ impl RenderApp {
                     self.cursor_bubble_opacity = opacity;
                     if let Some(renderer) = self.renderer.as_mut() {
                         renderer.set_cursor_bubble(enabled, (r, g, b), count, rise_speed, opacity);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetSunburstPattern { enabled, r, g, b, ray_count, speed, opacity } => {
+                    self.sunburst_pattern_enabled = enabled;
+                    self.sunburst_pattern_color = (r, g, b);
+                    self.sunburst_pattern_ray_count = ray_count;
+                    self.sunburst_pattern_speed = speed;
+                    self.sunburst_pattern_opacity = opacity;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_sunburst_pattern(enabled, (r, g, b), ray_count, speed, opacity);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetCursorFirework { enabled, r, g, b, particle_count, burst_radius, opacity } => {
+                    self.cursor_firework_enabled = enabled;
+                    self.cursor_firework_color = (r, g, b);
+                    self.cursor_firework_particle_count = particle_count;
+                    self.cursor_firework_burst_radius = burst_radius;
+                    self.cursor_firework_opacity = opacity;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_cursor_firework(enabled, (r, g, b), particle_count, burst_radius, opacity);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetHoneycombDissolve { enabled, r, g, b, cell_size, dissolve_speed, opacity } => {
+                    self.honeycomb_dissolve_enabled = enabled;
+                    self.honeycomb_dissolve_color = (r, g, b);
+                    self.honeycomb_dissolve_cell_size = cell_size;
+                    self.honeycomb_dissolve_speed = dissolve_speed;
+                    self.honeycomb_dissolve_opacity = opacity;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_honeycomb_dissolve(enabled, (r, g, b), cell_size, dissolve_speed, opacity);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetCursorTornado { enabled, r, g, b, radius, particle_count, opacity } => {
+                    self.cursor_tornado_enabled = enabled;
+                    self.cursor_tornado_color = (r, g, b);
+                    self.cursor_tornado_radius = radius;
+                    self.cursor_tornado_particle_count = particle_count;
+                    self.cursor_tornado_opacity = opacity;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_cursor_tornado(enabled, (r, g, b), radius, particle_count, opacity);
                     }
                     self.frame_dirty = true;
                 }

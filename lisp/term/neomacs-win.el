@@ -5982,6 +5982,298 @@ Non-nil renders animated flowing color bands at the top of the frame."
                 neomacs-cursor-gravity-well-line-count nil)
             val))))
 
+;; Sunburst pattern overlay effect
+(declare-function neomacs-set-sunburst-pattern "neomacsterm.c")
+
+(defcustom neomacs-sunburst-pattern nil
+  "Enable sunburst pattern overlay effect."
+  :type 'boolean
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-sunburst-pattern)
+           (if val
+               (neomacs-set-sunburst-pattern t)
+             (neomacs-set-sunburst-pattern nil)))))
+
+(defcustom neomacs-sunburst-pattern-color "#FFCC4D"
+  "Sunburst color."
+  :type 'color
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-sunburst-pattern)
+                    (boundp 'neomacs-sunburst-pattern)
+                    neomacs-sunburst-pattern)
+           (neomacs-set-sunburst-pattern t val))))
+
+(defcustom neomacs-sunburst-pattern-ray-count 12
+  "Number of rays."
+  :type '(integer :tag "Ray count")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-sunburst-pattern)
+                    (boundp 'neomacs-sunburst-pattern)
+                    neomacs-sunburst-pattern)
+           (neomacs-set-sunburst-pattern t
+            (if (boundp 'neomacs-sunburst-pattern-color)
+                neomacs-sunburst-pattern-color nil)
+            val))))
+
+(defcustom neomacs-sunburst-pattern-speed 50
+  "Rotation speed (multiplied by 100)."
+  :type '(integer :tag "Speed * 100")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-sunburst-pattern)
+                    (boundp 'neomacs-sunburst-pattern)
+                    neomacs-sunburst-pattern)
+           (neomacs-set-sunburst-pattern t
+            (if (boundp 'neomacs-sunburst-pattern-color)
+                neomacs-sunburst-pattern-color nil)
+            (if (boundp 'neomacs-sunburst-pattern-ray-count)
+                neomacs-sunburst-pattern-ray-count nil)
+            val))))
+
+(defcustom neomacs-sunburst-pattern-opacity 8
+  "Sunburst opacity (0-100)."
+  :type '(integer :tag "Opacity (0-100)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-sunburst-pattern)
+                    (boundp 'neomacs-sunburst-pattern)
+                    neomacs-sunburst-pattern)
+           (neomacs-set-sunburst-pattern t
+            (if (boundp 'neomacs-sunburst-pattern-color)
+                neomacs-sunburst-pattern-color nil)
+            (if (boundp 'neomacs-sunburst-pattern-ray-count)
+                neomacs-sunburst-pattern-ray-count nil)
+            (if (boundp 'neomacs-sunburst-pattern-speed)
+                neomacs-sunburst-pattern-speed nil)
+            val))))
+
+;; Cursor firework effect
+(declare-function neomacs-set-cursor-firework "neomacsterm.c")
+
+(defcustom neomacs-cursor-firework nil
+  "Enable cursor firework effect."
+  :type 'boolean
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-cursor-firework)
+           (if val
+               (neomacs-set-cursor-firework t)
+             (neomacs-set-cursor-firework nil)))))
+
+(defcustom neomacs-cursor-firework-color "#FF9933"
+  "Firework color."
+  :type 'color
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-firework)
+                    (boundp 'neomacs-cursor-firework)
+                    neomacs-cursor-firework)
+           (neomacs-set-cursor-firework t val))))
+
+(defcustom neomacs-cursor-firework-particle-count 16
+  "Number of particles."
+  :type '(integer :tag "Particle count")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-firework)
+                    (boundp 'neomacs-cursor-firework)
+                    neomacs-cursor-firework)
+           (neomacs-set-cursor-firework t
+            (if (boundp 'neomacs-cursor-firework-color)
+                neomacs-cursor-firework-color nil)
+            val))))
+
+(defcustom neomacs-cursor-firework-burst-radius 60
+  "Burst radius in pixels."
+  :type '(integer :tag "Radius (px)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-firework)
+                    (boundp 'neomacs-cursor-firework)
+                    neomacs-cursor-firework)
+           (neomacs-set-cursor-firework t
+            (if (boundp 'neomacs-cursor-firework-color)
+                neomacs-cursor-firework-color nil)
+            (if (boundp 'neomacs-cursor-firework-particle-count)
+                neomacs-cursor-firework-particle-count nil)
+            val))))
+
+(defcustom neomacs-cursor-firework-opacity 30
+  "Firework opacity (0-100)."
+  :type '(integer :tag "Opacity (0-100)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-firework)
+                    (boundp 'neomacs-cursor-firework)
+                    neomacs-cursor-firework)
+           (neomacs-set-cursor-firework t
+            (if (boundp 'neomacs-cursor-firework-color)
+                neomacs-cursor-firework-color nil)
+            (if (boundp 'neomacs-cursor-firework-particle-count)
+                neomacs-cursor-firework-particle-count nil)
+            (if (boundp 'neomacs-cursor-firework-burst-radius)
+                neomacs-cursor-firework-burst-radius nil)
+            val))))
+
+;; Honeycomb dissolve overlay effect
+(declare-function neomacs-set-honeycomb-dissolve "neomacsterm.c")
+
+(defcustom neomacs-honeycomb-dissolve nil
+  "Enable honeycomb dissolve overlay effect."
+  :type 'boolean
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-honeycomb-dissolve)
+           (if val
+               (neomacs-set-honeycomb-dissolve t)
+             (neomacs-set-honeycomb-dissolve nil)))))
+
+(defcustom neomacs-honeycomb-dissolve-color "#CC9933"
+  "Honeycomb color."
+  :type 'color
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-honeycomb-dissolve)
+                    (boundp 'neomacs-honeycomb-dissolve)
+                    neomacs-honeycomb-dissolve)
+           (neomacs-set-honeycomb-dissolve t val))))
+
+(defcustom neomacs-honeycomb-dissolve-cell-size 30
+  "Hexagonal cell size in pixels."
+  :type '(integer :tag "Cell size (px)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-honeycomb-dissolve)
+                    (boundp 'neomacs-honeycomb-dissolve)
+                    neomacs-honeycomb-dissolve)
+           (neomacs-set-honeycomb-dissolve t
+            (if (boundp 'neomacs-honeycomb-dissolve-color)
+                neomacs-honeycomb-dissolve-color nil)
+            val))))
+
+(defcustom neomacs-honeycomb-dissolve-speed 80
+  "Dissolve animation speed (multiplied by 100)."
+  :type '(integer :tag "Speed * 100")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-honeycomb-dissolve)
+                    (boundp 'neomacs-honeycomb-dissolve)
+                    neomacs-honeycomb-dissolve)
+           (neomacs-set-honeycomb-dissolve t
+            (if (boundp 'neomacs-honeycomb-dissolve-color)
+                neomacs-honeycomb-dissolve-color nil)
+            (if (boundp 'neomacs-honeycomb-dissolve-cell-size)
+                neomacs-honeycomb-dissolve-cell-size nil)
+            val))))
+
+(defcustom neomacs-honeycomb-dissolve-opacity 8
+  "Honeycomb dissolve opacity (0-100)."
+  :type '(integer :tag "Opacity (0-100)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-honeycomb-dissolve)
+                    (boundp 'neomacs-honeycomb-dissolve)
+                    neomacs-honeycomb-dissolve)
+           (neomacs-set-honeycomb-dissolve t
+            (if (boundp 'neomacs-honeycomb-dissolve-color)
+                neomacs-honeycomb-dissolve-color nil)
+            (if (boundp 'neomacs-honeycomb-dissolve-cell-size)
+                neomacs-honeycomb-dissolve-cell-size nil)
+            (if (boundp 'neomacs-honeycomb-dissolve-speed)
+                neomacs-honeycomb-dissolve-speed nil)
+            val))))
+
+;; Cursor tornado effect
+(declare-function neomacs-set-cursor-tornado "neomacsterm.c")
+
+(defcustom neomacs-cursor-tornado nil
+  "Enable cursor tornado effect."
+  :type 'boolean
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-cursor-tornado)
+           (if val
+               (neomacs-set-cursor-tornado t)
+             (neomacs-set-cursor-tornado nil)))))
+
+(defcustom neomacs-cursor-tornado-color "#80B3FF"
+  "Tornado color."
+  :type 'color
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-tornado)
+                    (boundp 'neomacs-cursor-tornado)
+                    neomacs-cursor-tornado)
+           (neomacs-set-cursor-tornado t val))))
+
+(defcustom neomacs-cursor-tornado-radius 40
+  "Tornado radius in pixels."
+  :type '(integer :tag "Radius (px)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-tornado)
+                    (boundp 'neomacs-cursor-tornado)
+                    neomacs-cursor-tornado)
+           (neomacs-set-cursor-tornado t
+            (if (boundp 'neomacs-cursor-tornado-color)
+                neomacs-cursor-tornado-color nil)
+            val))))
+
+(defcustom neomacs-cursor-tornado-particle-count 12
+  "Number of tornado particles."
+  :type '(integer :tag "Particle count")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-tornado)
+                    (boundp 'neomacs-cursor-tornado)
+                    neomacs-cursor-tornado)
+           (neomacs-set-cursor-tornado t
+            (if (boundp 'neomacs-cursor-tornado-color)
+                neomacs-cursor-tornado-color nil)
+            (if (boundp 'neomacs-cursor-tornado-radius)
+                neomacs-cursor-tornado-radius nil)
+            val))))
+
+(defcustom neomacs-cursor-tornado-opacity 25
+  "Tornado opacity (0-100)."
+  :type '(integer :tag "Opacity (0-100)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-tornado)
+                    (boundp 'neomacs-cursor-tornado)
+                    neomacs-cursor-tornado)
+           (neomacs-set-cursor-tornado t
+            (if (boundp 'neomacs-cursor-tornado-color)
+                neomacs-cursor-tornado-color nil)
+            (if (boundp 'neomacs-cursor-tornado-radius)
+                neomacs-cursor-tornado-radius nil)
+            (if (boundp 'neomacs-cursor-tornado-particle-count)
+                neomacs-cursor-tornado-particle-count nil)
+            val))))
+
 ;; Wave interference overlay effect
 (declare-function neomacs-set-wave-interference "neomacsterm.c")
 

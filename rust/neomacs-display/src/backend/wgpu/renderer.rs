@@ -646,6 +646,33 @@ pub struct WgpuRenderer {
     cursor_bubble_spawn_time: Option<std::time::Instant>,
     cursor_bubble_last_x: f32,
     cursor_bubble_last_y: f32,
+    /// Sunburst pattern
+    sunburst_pattern_enabled: bool,
+    sunburst_pattern_color: (f32, f32, f32),
+    sunburst_pattern_ray_count: u32,
+    sunburst_pattern_speed: f32,
+    sunburst_pattern_opacity: f32,
+    /// Cursor firework
+    cursor_firework_enabled: bool,
+    cursor_firework_color: (f32, f32, f32),
+    cursor_firework_particle_count: u32,
+    cursor_firework_burst_radius: f32,
+    cursor_firework_opacity: f32,
+    cursor_firework_start: Option<std::time::Instant>,
+    cursor_firework_last_x: f32,
+    cursor_firework_last_y: f32,
+    /// Honeycomb dissolve
+    honeycomb_dissolve_enabled: bool,
+    honeycomb_dissolve_color: (f32, f32, f32),
+    honeycomb_dissolve_cell_size: f32,
+    honeycomb_dissolve_speed: f32,
+    honeycomb_dissolve_opacity: f32,
+    /// Cursor tornado
+    cursor_tornado_enabled: bool,
+    cursor_tornado_color: (f32, f32, f32),
+    cursor_tornado_radius: f32,
+    cursor_tornado_particle_count: u32,
+    cursor_tornado_opacity: f32,
     /// Window edge glow on scroll boundaries
     edge_glow_enabled: bool,
     edge_glow_color: (f32, f32, f32),
@@ -1781,6 +1808,29 @@ impl WgpuRenderer {
             cursor_bubble_spawn_time: None,
             cursor_bubble_last_x: 0.0,
             cursor_bubble_last_y: 0.0,
+            sunburst_pattern_enabled: false,
+            sunburst_pattern_color: (1.0, 0.8, 0.3),
+            sunburst_pattern_ray_count: 12,
+            sunburst_pattern_speed: 0.5,
+            sunburst_pattern_opacity: 0.08,
+            cursor_firework_enabled: false,
+            cursor_firework_color: (1.0, 0.6, 0.2),
+            cursor_firework_particle_count: 16,
+            cursor_firework_burst_radius: 60.0,
+            cursor_firework_opacity: 0.3,
+            cursor_firework_start: None,
+            cursor_firework_last_x: 0.0,
+            cursor_firework_last_y: 0.0,
+            honeycomb_dissolve_enabled: false,
+            honeycomb_dissolve_color: (0.8, 0.6, 0.2),
+            honeycomb_dissolve_cell_size: 30.0,
+            honeycomb_dissolve_speed: 0.8,
+            honeycomb_dissolve_opacity: 0.08,
+            cursor_tornado_enabled: false,
+            cursor_tornado_color: (0.5, 0.7, 1.0),
+            cursor_tornado_radius: 40.0,
+            cursor_tornado_particle_count: 12,
+            cursor_tornado_opacity: 0.25,
             edge_glow_enabled: false,
             edge_glow_color: (0.4, 0.6, 1.0),
             edge_glow_height: 40.0,
@@ -2721,6 +2771,42 @@ impl WgpuRenderer {
         self.cursor_bubble_count = count;
         self.cursor_bubble_rise_speed = rise_speed;
         self.cursor_bubble_opacity = opacity;
+    }
+
+    /// Update sunburst pattern config
+    pub fn set_sunburst_pattern(&mut self, enabled: bool, color: (f32, f32, f32), ray_count: u32, speed: f32, opacity: f32) {
+        self.sunburst_pattern_enabled = enabled;
+        self.sunburst_pattern_color = color;
+        self.sunburst_pattern_ray_count = ray_count;
+        self.sunburst_pattern_speed = speed;
+        self.sunburst_pattern_opacity = opacity;
+    }
+
+    /// Update cursor firework config
+    pub fn set_cursor_firework(&mut self, enabled: bool, color: (f32, f32, f32), particle_count: u32, burst_radius: f32, opacity: f32) {
+        self.cursor_firework_enabled = enabled;
+        self.cursor_firework_color = color;
+        self.cursor_firework_particle_count = particle_count;
+        self.cursor_firework_burst_radius = burst_radius;
+        self.cursor_firework_opacity = opacity;
+    }
+
+    /// Update honeycomb dissolve config
+    pub fn set_honeycomb_dissolve(&mut self, enabled: bool, color: (f32, f32, f32), cell_size: f32, dissolve_speed: f32, opacity: f32) {
+        self.honeycomb_dissolve_enabled = enabled;
+        self.honeycomb_dissolve_color = color;
+        self.honeycomb_dissolve_cell_size = cell_size;
+        self.honeycomb_dissolve_speed = dissolve_speed;
+        self.honeycomb_dissolve_opacity = opacity;
+    }
+
+    /// Update cursor tornado config
+    pub fn set_cursor_tornado(&mut self, enabled: bool, color: (f32, f32, f32), radius: f32, particle_count: u32, opacity: f32) {
+        self.cursor_tornado_enabled = enabled;
+        self.cursor_tornado_color = color;
+        self.cursor_tornado_radius = radius;
+        self.cursor_tornado_particle_count = particle_count;
+        self.cursor_tornado_opacity = opacity;
     }
 
     /// Update hex grid config
@@ -7166,6 +7252,216 @@ impl WgpuRenderer {
                             self.cursor_bubble_spawn_time = None;
                         }
                     }
+                }
+            }
+
+            // === Sunburst pattern overlay effect ===
+            if self.sunburst_pattern_enabled {
+                let now = std::time::Instant::now().duration_since(self.aurora_start).as_secs_f32();
+                let (cr, cg, cb) = self.sunburst_pattern_color;
+                let ray_count = self.sunburst_pattern_ray_count.max(4) as f32;
+                let speed = self.sunburst_pattern_speed;
+                let opacity = self.sunburst_pattern_opacity;
+                let mut sb_verts: Vec<RectVertex> = Vec::new();
+                let width = self.width() as f32;
+                let height = self.height() as f32;
+                let cx = width / 2.0;
+                let cy = height / 2.0;
+                let max_radius = (cx * cx + cy * cy).sqrt();
+                let rotation = now * speed;
+                // Draw rays as thin triangular wedges from center
+                for i in 0..self.sunburst_pattern_ray_count {
+                    let angle = rotation + (i as f32 / ray_count) * std::f32::consts::TAU;
+                    let half_width = std::f32::consts::PI / ray_count * 0.4;
+                    let a1 = angle - half_width;
+                    let a2 = angle + half_width;
+                    // Draw ray as series of small rects along the ray direction
+                    let steps = 30u32;
+                    for s in 0..steps {
+                        let t0 = s as f32 / steps as f32;
+                        let t1 = (s + 1) as f32 / steps as f32;
+                        let r0 = t0 * max_radius;
+                        let r1 = t1 * max_radius;
+                        let mid_angle = (a1 + a2) / 2.0;
+                        let x0 = cx + mid_angle.cos() * r0;
+                        let y0 = cy + mid_angle.sin() * r0;
+                        let x1 = cx + mid_angle.cos() * r1;
+                        let y1 = cy + mid_angle.sin() * r1;
+                        let w = (r0 * (a2 - a1)).abs().max(1.0);
+                        let mx = (x0 + x1) / 2.0;
+                        let my = (y0 + y1) / 2.0;
+                        let seg_len = ((x1 - x0).powi(2) + (y1 - y0).powi(2)).sqrt().max(1.0);
+                        let fade = 1.0 - t0;
+                        let alpha = opacity * fade;
+                        let c = Color::new(cr, cg, cb, alpha);
+                        self.add_rect(&mut sb_verts, mx - w / 2.0, my - seg_len / 2.0, w, seg_len, &c);
+                    }
+                }
+                if !sb_verts.is_empty() {
+                    let sb_buf = self.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("sunburst_pattern_vb"),
+                        contents: bytemuck::cast_slice(&sb_verts),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    });
+                    render_pass.set_pipeline(&self.rect_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, sb_buf.slice(..));
+                    render_pass.draw(0..sb_verts.len() as u32, 0..1);
+                }
+                self.needs_continuous_redraw = true;
+            }
+
+            // === Cursor firework effect ===
+            if self.cursor_firework_enabled && cursor_visible {
+                if let Some(ref anim) = animated_cursor {
+                    let cx = anim.x + anim.width / 2.0;
+                    let cy = anim.y + anim.height / 2.0;
+                    // Detect movement
+                    let dx = cx - self.cursor_firework_last_x;
+                    let dy = cy - self.cursor_firework_last_y;
+                    if dx.abs() > 1.0 || dy.abs() > 1.0 {
+                        self.cursor_firework_start = Some(std::time::Instant::now());
+                        self.cursor_firework_last_x = cx;
+                        self.cursor_firework_last_y = cy;
+                    }
+                    if let Some(start) = self.cursor_firework_start {
+                        let elapsed = start.elapsed().as_secs_f32();
+                        let duration = 0.6;
+                        if elapsed < duration {
+                            let t = elapsed / duration;
+                            let (cr, cg, cb) = self.cursor_firework_color;
+                            let opacity = self.cursor_firework_opacity;
+                            let radius = self.cursor_firework_burst_radius;
+                            let mut fw_verts: Vec<RectVertex> = Vec::new();
+                            for i in 0..self.cursor_firework_particle_count {
+                                let angle = (i as f32 / self.cursor_firework_particle_count as f32) * std::f32::consts::TAU;
+                                // Add some variation using deterministic hash
+                                let mut h = i.wrapping_mul(2654435761);
+                                h ^= h >> 16;
+                                let speed_var = 0.7 + (h % 60) as f32 / 100.0;
+                                let dist = t * radius * speed_var;
+                                let px = cx + angle.cos() * dist;
+                                let py = cy + angle.sin() * dist;
+                                let size = 3.0 * (1.0 - t);
+                                let alpha = opacity * (1.0 - t * t);
+                                let c = Color::new(cr, cg, cb, alpha);
+                                self.add_rect(&mut fw_verts, px - size / 2.0, py - size / 2.0, size, size, &c);
+                            }
+                            if !fw_verts.is_empty() {
+                                let fw_buf = self.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                    label: Some("cursor_firework_vb"),
+                                    contents: bytemuck::cast_slice(&fw_verts),
+                                    usage: wgpu::BufferUsages::VERTEX,
+                                });
+                                render_pass.set_pipeline(&self.rect_pipeline);
+                                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                                render_pass.set_vertex_buffer(0, fw_buf.slice(..));
+                                render_pass.draw(0..fw_verts.len() as u32, 0..1);
+                            }
+                            self.needs_continuous_redraw = true;
+                        } else {
+                            self.cursor_firework_start = None;
+                        }
+                    }
+                }
+            }
+
+            // === Honeycomb dissolve overlay effect ===
+            if self.honeycomb_dissolve_enabled {
+                let now = std::time::Instant::now().duration_since(self.aurora_start).as_secs_f32();
+                let (cr, cg, cb) = self.honeycomb_dissolve_color;
+                let cell = self.honeycomb_dissolve_cell_size.max(8.0);
+                let speed = self.honeycomb_dissolve_speed;
+                let opacity = self.honeycomb_dissolve_opacity;
+                let mut hc_verts: Vec<RectVertex> = Vec::new();
+                let width = self.width() as f32;
+                let height = self.height() as f32;
+                // Hex grid layout
+                let hex_h = cell * 0.866; // sqrt(3)/2
+                let cols = (width / (cell * 1.5)) as u32 + 2;
+                let rows = (height / hex_h) as u32 + 2;
+                for row in 0..rows {
+                    for col in 0..cols {
+                        let offset_x = if row % 2 == 1 { cell * 0.75 } else { 0.0 };
+                        let hx = col as f32 * cell * 1.5 + offset_x;
+                        let hy = row as f32 * hex_h;
+                        // Deterministic phase per cell
+                        let mut h = ((row * 137 + col) as u64).wrapping_mul(2654435761);
+                        h ^= h >> 16;
+                        let phase = (h % 1000) as f32 / 1000.0 * std::f32::consts::TAU;
+                        let dissolve = ((now * speed + phase).sin() * 0.5 + 0.5);
+                        if dissolve > 0.1 {
+                            let alpha = opacity * dissolve;
+                            let cell_draw = cell * 0.4 * dissolve;
+                            let c = Color::new(cr, cg, cb, alpha);
+                            self.add_rect(&mut hc_verts, hx - cell_draw / 2.0, hy - cell_draw / 2.0, cell_draw, cell_draw, &c);
+                        }
+                    }
+                }
+                if !hc_verts.is_empty() {
+                    let hc_buf = self.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("honeycomb_dissolve_vb"),
+                        contents: bytemuck::cast_slice(&hc_verts),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    });
+                    render_pass.set_pipeline(&self.rect_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, hc_buf.slice(..));
+                    render_pass.draw(0..hc_verts.len() as u32, 0..1);
+                }
+                self.needs_continuous_redraw = true;
+            }
+
+            // === Cursor tornado effect ===
+            if self.cursor_tornado_enabled && cursor_visible {
+                if let Some(ref anim) = animated_cursor {
+                    let cx = anim.x + anim.width / 2.0;
+                    let cy = anim.y + anim.height / 2.0;
+                    let now = std::time::Instant::now().duration_since(self.aurora_start).as_secs_f32();
+                    let (cr, cg, cb) = self.cursor_tornado_color;
+                    let radius = self.cursor_tornado_radius;
+                    let opacity = self.cursor_tornado_opacity;
+                    let mut tn_verts: Vec<RectVertex> = Vec::new();
+                    for i in 0..self.cursor_tornado_particle_count {
+                        let t = i as f32 / self.cursor_tornado_particle_count as f32;
+                        // Particles spiral inward at different heights
+                        let angle = now * 3.0 + t * std::f32::consts::TAU * 2.0;
+                        let r = radius * (1.0 - t * 0.7);
+                        let px = cx + angle.cos() * r;
+                        let py = cy + angle.sin() * r - t * radius * 0.5;
+                        let size = 3.0 * (1.0 - t * 0.5);
+                        let alpha = opacity * (1.0 - t * 0.6);
+                        let c = Color::new(cr, cg, cb, alpha);
+                        self.add_rect(&mut tn_verts, px - size / 2.0, py - size / 2.0, size, size, &c);
+                    }
+                    // Add funnel outline rings
+                    let ring_count = 5u32;
+                    for r_idx in 0..ring_count {
+                        let t = r_idx as f32 / ring_count as f32;
+                        let ring_r = radius * (1.0 - t * 0.6);
+                        let ring_y = cy - t * radius * 0.4;
+                        let segments = 24u32;
+                        for s in 0..segments {
+                            let angle = (s as f32 / segments as f32) * std::f32::consts::TAU + now * 2.0 * (1.0 + t);
+                            let px = cx + angle.cos() * ring_r;
+                            let py = ring_y + angle.sin() * ring_r * 0.3;
+                            let alpha = opacity * 0.4 * (1.0 - t);
+                            let c = Color::new(cr, cg, cb, alpha);
+                            self.add_rect(&mut tn_verts, px - 1.0, py - 1.0, 2.0, 2.0, &c);
+                        }
+                    }
+                    if !tn_verts.is_empty() {
+                        let tn_buf = self.device().create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                            label: Some("cursor_tornado_vb"),
+                            contents: bytemuck::cast_slice(&tn_verts),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        });
+                        render_pass.set_pipeline(&self.rect_pipeline);
+                        render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                        render_pass.set_vertex_buffer(0, tn_buf.slice(..));
+                        render_pass.draw(0..tn_verts.len() as u32, 0..1);
+                    }
+                    self.needs_continuous_redraw = true;
                 }
             }
 

@@ -10967,6 +10967,154 @@ OPACITY is 0-100 (default 20). */)
   return on ? Qt : Qnil;
 }
 
+DEFUN ("neomacs-set-sunburst-pattern",
+       Fneomacs_set_sunburst_pattern,
+       Sneomacs_set_sunburst_pattern, 0, 5, 0,
+       doc: /* Configure sunburst pattern overlay effect.
+ENABLED non-nil activates radial ray pattern from window center.
+COLOR is a hex color string like "#RRGGBB" (default "#FFCC4D").
+RAY-COUNT is number of rays (default 12).
+SPEED is rotation speed * 100 (default 50).
+OPACITY is 0-100 (default 8). */)
+  (Lisp_Object enabled, Lisp_Object color, Lisp_Object ray_count,
+   Lisp_Object speed, Lisp_Object opacity)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+  int on = !NILP (enabled);
+  int r = 0xFF, g = 0xCC, b = 0x4D, rc = 12, sp = 50, op = 8;
+  if (STRINGP (color))
+    {
+      const char *s = SSDATA (color);
+      if (s[0] == '#' && strlen (s) == 7)
+        {
+          unsigned int hex;
+          sscanf (s + 1, "%06x", &hex);
+          r = (hex >> 16) & 0xFF;
+          g = (hex >> 8) & 0xFF;
+          b = hex & 0xFF;
+        }
+    }
+  if (FIXNUMP (ray_count)) rc = XFIXNUM (ray_count);
+  if (FIXNUMP (speed)) sp = XFIXNUM (speed);
+  if (FIXNUMP (opacity)) op = XFIXNUM (opacity);
+
+  neomacs_display_set_sunburst_pattern (dpyinfo->display_handle, on, r, g, b, rc, sp, op);
+  return on ? Qt : Qnil;
+}
+
+DEFUN ("neomacs-set-cursor-firework",
+       Fneomacs_set_cursor_firework,
+       Sneomacs_set_cursor_firework, 0, 5, 0,
+       doc: /* Configure cursor firework effect.
+ENABLED non-nil activates firework particle burst on cursor movement.
+COLOR is a hex color string like "#RRGGBB" (default "#FF9933").
+PARTICLE-COUNT is number of particles (default 16).
+BURST-RADIUS is burst radius in pixels (default 60).
+OPACITY is 0-100 (default 30). */)
+  (Lisp_Object enabled, Lisp_Object color, Lisp_Object particle_count,
+   Lisp_Object burst_radius, Lisp_Object opacity)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+  int on = !NILP (enabled);
+  int r = 0xFF, g = 0x99, b = 0x33, pc = 16, br = 60, op = 30;
+  if (STRINGP (color))
+    {
+      const char *s = SSDATA (color);
+      if (s[0] == '#' && strlen (s) == 7)
+        {
+          unsigned int hex;
+          sscanf (s + 1, "%06x", &hex);
+          r = (hex >> 16) & 0xFF;
+          g = (hex >> 8) & 0xFF;
+          b = hex & 0xFF;
+        }
+    }
+  if (FIXNUMP (particle_count)) pc = XFIXNUM (particle_count);
+  if (FIXNUMP (burst_radius)) br = XFIXNUM (burst_radius);
+  if (FIXNUMP (opacity)) op = XFIXNUM (opacity);
+
+  neomacs_display_set_cursor_firework (dpyinfo->display_handle, on, r, g, b, pc, br, op);
+  return on ? Qt : Qnil;
+}
+
+DEFUN ("neomacs-set-honeycomb-dissolve",
+       Fneomacs_set_honeycomb_dissolve,
+       Sneomacs_set_honeycomb_dissolve, 0, 5, 0,
+       doc: /* Configure honeycomb dissolve overlay effect.
+ENABLED non-nil activates hexagonal cells fading in and out.
+COLOR is a hex color string like "#RRGGBB" (default "#CC9933").
+CELL-SIZE is hexagonal cell size in pixels (default 30).
+DISSOLVE-SPEED is dissolve animation speed * 100 (default 80).
+OPACITY is 0-100 (default 8). */)
+  (Lisp_Object enabled, Lisp_Object color, Lisp_Object cell_size,
+   Lisp_Object dissolve_speed, Lisp_Object opacity)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+  int on = !NILP (enabled);
+  int r = 0xCC, g = 0x99, b = 0x33, cs = 30, ds = 80, op = 8;
+  if (STRINGP (color))
+    {
+      const char *s = SSDATA (color);
+      if (s[0] == '#' && strlen (s) == 7)
+        {
+          unsigned int hex;
+          sscanf (s + 1, "%06x", &hex);
+          r = (hex >> 16) & 0xFF;
+          g = (hex >> 8) & 0xFF;
+          b = hex & 0xFF;
+        }
+    }
+  if (FIXNUMP (cell_size)) cs = XFIXNUM (cell_size);
+  if (FIXNUMP (dissolve_speed)) ds = XFIXNUM (dissolve_speed);
+  if (FIXNUMP (opacity)) op = XFIXNUM (opacity);
+
+  neomacs_display_set_honeycomb_dissolve (dpyinfo->display_handle, on, r, g, b, cs, ds, op);
+  return on ? Qt : Qnil;
+}
+
+DEFUN ("neomacs-set-cursor-tornado",
+       Fneomacs_set_cursor_tornado,
+       Sneomacs_set_cursor_tornado, 0, 5, 0,
+       doc: /* Configure cursor tornado effect.
+ENABLED non-nil activates spinning funnel vortex around cursor.
+COLOR is a hex color string like "#RRGGBB" (default "#80B3FF").
+RADIUS is tornado radius in pixels (default 40).
+PARTICLE-COUNT is number of particles (default 12).
+OPACITY is 0-100 (default 25). */)
+  (Lisp_Object enabled, Lisp_Object color, Lisp_Object radius,
+   Lisp_Object particle_count, Lisp_Object opacity)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+  int on = !NILP (enabled);
+  int r = 0x80, g = 0xB3, b = 0xFF, rd = 40, pc = 12, op = 25;
+  if (STRINGP (color))
+    {
+      const char *s = SSDATA (color);
+      if (s[0] == '#' && strlen (s) == 7)
+        {
+          unsigned int hex;
+          sscanf (s + 1, "%06x", &hex);
+          r = (hex >> 16) & 0xFF;
+          g = (hex >> 8) & 0xFF;
+          b = hex & 0xFF;
+        }
+    }
+  if (FIXNUMP (radius)) rd = XFIXNUM (radius);
+  if (FIXNUMP (particle_count)) pc = XFIXNUM (particle_count);
+  if (FIXNUMP (opacity)) op = XFIXNUM (opacity);
+
+  neomacs_display_set_cursor_tornado (dpyinfo->display_handle, on, r, g, b, rd, pc, op);
+  return on ? Qt : Qnil;
+}
+
 DEFUN ("neomacs-set-wave-interference",
        Fneomacs_set_wave_interference,
        Sneomacs_set_wave_interference, 0, 6, 0,
@@ -12950,6 +13098,10 @@ syms_of_neomacsterm (void)
   defsubr (&Sneomacs_set_cursor_shockwave);
   defsubr (&Sneomacs_set_diamond_lattice);
   defsubr (&Sneomacs_set_cursor_gravity_well);
+  defsubr (&Sneomacs_set_sunburst_pattern);
+  defsubr (&Sneomacs_set_cursor_firework);
+  defsubr (&Sneomacs_set_honeycomb_dissolve);
+  defsubr (&Sneomacs_set_cursor_tornado);
   defsubr (&Sneomacs_set_wave_interference);
   defsubr (&Sneomacs_set_cursor_portal);
   defsubr (&Sneomacs_set_chevron_pattern);
