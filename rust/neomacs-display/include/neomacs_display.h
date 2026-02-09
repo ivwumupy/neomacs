@@ -2775,6 +2775,55 @@ void neomacs_display_set_cursor_gravity_well(struct NeomacsDisplay *handle,
                                              int opacity);
 
 /**
+ * Configure wave interference overlay effect
+ */
+void neomacs_display_set_wave_interference(struct NeomacsDisplay *handle,
+                                           int enabled,
+                                           int r,
+                                           int g,
+                                           int b,
+                                           int wavelength,
+                                           int sourceCount,
+                                           int speed,
+                                           int opacity);
+
+/**
+ * Configure cursor portal effect
+ */
+void neomacs_display_set_cursor_portal(struct NeomacsDisplay *handle,
+                                       int enabled,
+                                       int r,
+                                       int g,
+                                       int b,
+                                       int radius,
+                                       int speed,
+                                       int opacity);
+
+/**
+ * Configure chevron pattern overlay effect
+ */
+void neomacs_display_set_chevron_pattern(struct NeomacsDisplay *handle,
+                                         int enabled,
+                                         int r,
+                                         int g,
+                                         int b,
+                                         int spacing,
+                                         int speed,
+                                         int opacity);
+
+/**
+ * Configure cursor bubble effect
+ */
+void neomacs_display_set_cursor_bubble(struct NeomacsDisplay *handle,
+                                       int enabled,
+                                       int r,
+                                       int g,
+                                       int b,
+                                       int count,
+                                       int riseSpeed,
+                                       int opacity);
+
+/**
  * Shutdown threaded display
  */
 void neomacs_display_shutdown_threaded(void);

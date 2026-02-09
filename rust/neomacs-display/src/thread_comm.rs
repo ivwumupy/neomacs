@@ -1336,6 +1336,39 @@ pub enum RenderCommand {
         /// Opacity (0.0-1.0)
         opacity: f32,
     },
+    /// Configure wave interference overlay effect
+    SetWaveInterference {
+        enabled: bool,
+        r: f32, g: f32, b: f32,
+        wavelength: f32,
+        source_count: u32,
+        speed: f32,
+        opacity: f32,
+    },
+    /// Configure cursor portal effect
+    SetCursorPortal {
+        enabled: bool,
+        r: f32, g: f32, b: f32,
+        radius: f32,
+        speed: f32,
+        opacity: f32,
+    },
+    /// Configure chevron pattern overlay effect
+    SetChevronPattern {
+        enabled: bool,
+        r: f32, g: f32, b: f32,
+        spacing: f32,
+        speed: f32,
+        opacity: f32,
+    },
+    /// Configure cursor bubble effect
+    SetCursorBubble {
+        enabled: bool,
+        r: f32, g: f32, b: f32,
+        count: u32,
+        rise_speed: f32,
+        opacity: f32,
+    },
     /// Configure background pattern
     SetBackgroundPattern {
         /// 0=none, 1=dots, 2=grid, 3=crosshatch

@@ -5982,6 +5982,318 @@ Non-nil renders animated flowing color bands at the top of the frame."
                 neomacs-cursor-gravity-well-line-count nil)
             val))))
 
+;; Wave interference overlay effect
+(declare-function neomacs-set-wave-interference "neomacsterm.c")
+
+(defcustom neomacs-wave-interference nil
+  "Enable wave interference overlay effect."
+  :type 'boolean
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-wave-interference)
+           (if val
+               (neomacs-set-wave-interference t)
+             (neomacs-set-wave-interference nil)))))
+
+(defcustom neomacs-wave-interference-color "#4D99E5"
+  "Wave interference color."
+  :type 'color
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-wave-interference)
+                    (boundp 'neomacs-wave-interference)
+                    neomacs-wave-interference)
+           (neomacs-set-wave-interference t val))))
+
+(defcustom neomacs-wave-interference-wavelength 60
+  "Wave wavelength in pixels."
+  :type '(integer :tag "Wavelength (px)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-wave-interference)
+                    (boundp 'neomacs-wave-interference)
+                    neomacs-wave-interference)
+           (neomacs-set-wave-interference t
+            (if (boundp 'neomacs-wave-interference-color)
+                neomacs-wave-interference-color nil)
+            val))))
+
+(defcustom neomacs-wave-interference-source-count 3
+  "Number of wave sources."
+  :type '(integer :tag "Source count")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-wave-interference)
+                    (boundp 'neomacs-wave-interference)
+                    neomacs-wave-interference)
+           (neomacs-set-wave-interference t
+            (if (boundp 'neomacs-wave-interference-color)
+                neomacs-wave-interference-color nil)
+            (if (boundp 'neomacs-wave-interference-wavelength)
+                neomacs-wave-interference-wavelength nil)
+            val))))
+
+(defcustom neomacs-wave-interference-speed 100
+  "Wave animation speed (multiplied by 100)."
+  :type '(integer :tag "Speed * 100")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-wave-interference)
+                    (boundp 'neomacs-wave-interference)
+                    neomacs-wave-interference)
+           (neomacs-set-wave-interference t
+            (if (boundp 'neomacs-wave-interference-color)
+                neomacs-wave-interference-color nil)
+            (if (boundp 'neomacs-wave-interference-wavelength)
+                neomacs-wave-interference-wavelength nil)
+            (if (boundp 'neomacs-wave-interference-source-count)
+                neomacs-wave-interference-source-count nil)
+            val))))
+
+(defcustom neomacs-wave-interference-opacity 10
+  "Wave interference opacity (0-100)."
+  :type '(integer :tag "Opacity (0-100)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-wave-interference)
+                    (boundp 'neomacs-wave-interference)
+                    neomacs-wave-interference)
+           (neomacs-set-wave-interference t
+            (if (boundp 'neomacs-wave-interference-color)
+                neomacs-wave-interference-color nil)
+            (if (boundp 'neomacs-wave-interference-wavelength)
+                neomacs-wave-interference-wavelength nil)
+            (if (boundp 'neomacs-wave-interference-source-count)
+                neomacs-wave-interference-source-count nil)
+            (if (boundp 'neomacs-wave-interference-speed)
+                neomacs-wave-interference-speed nil)
+            val))))
+
+;; Cursor portal effect
+(declare-function neomacs-set-cursor-portal "neomacsterm.c")
+
+(defcustom neomacs-cursor-portal nil
+  "Enable cursor portal effect."
+  :type 'boolean
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-cursor-portal)
+           (if val
+               (neomacs-set-cursor-portal t)
+             (neomacs-set-cursor-portal nil)))))
+
+(defcustom neomacs-cursor-portal-color "#9966FF"
+  "Portal color."
+  :type 'color
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-portal)
+                    (boundp 'neomacs-cursor-portal)
+                    neomacs-cursor-portal)
+           (neomacs-set-cursor-portal t val))))
+
+(defcustom neomacs-cursor-portal-radius 30
+  "Portal radius in pixels."
+  :type '(integer :tag "Radius (px)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-portal)
+                    (boundp 'neomacs-cursor-portal)
+                    neomacs-cursor-portal)
+           (neomacs-set-cursor-portal t
+            (if (boundp 'neomacs-cursor-portal-color)
+                neomacs-cursor-portal-color nil)
+            val))))
+
+(defcustom neomacs-cursor-portal-speed 200
+  "Portal swirl speed (multiplied by 100)."
+  :type '(integer :tag "Speed * 100")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-portal)
+                    (boundp 'neomacs-cursor-portal)
+                    neomacs-cursor-portal)
+           (neomacs-set-cursor-portal t
+            (if (boundp 'neomacs-cursor-portal-color)
+                neomacs-cursor-portal-color nil)
+            (if (boundp 'neomacs-cursor-portal-radius)
+                neomacs-cursor-portal-radius nil)
+            val))))
+
+(defcustom neomacs-cursor-portal-opacity 25
+  "Portal opacity (0-100)."
+  :type '(integer :tag "Opacity (0-100)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-portal)
+                    (boundp 'neomacs-cursor-portal)
+                    neomacs-cursor-portal)
+           (neomacs-set-cursor-portal t
+            (if (boundp 'neomacs-cursor-portal-color)
+                neomacs-cursor-portal-color nil)
+            (if (boundp 'neomacs-cursor-portal-radius)
+                neomacs-cursor-portal-radius nil)
+            (if (boundp 'neomacs-cursor-portal-speed)
+                neomacs-cursor-portal-speed nil)
+            val))))
+
+;; Chevron pattern overlay effect
+(declare-function neomacs-set-chevron-pattern "neomacsterm.c")
+
+(defcustom neomacs-chevron-pattern nil
+  "Enable chevron pattern overlay effect."
+  :type 'boolean
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-chevron-pattern)
+           (if val
+               (neomacs-set-chevron-pattern t)
+             (neomacs-set-chevron-pattern nil)))))
+
+(defcustom neomacs-chevron-pattern-color "#4DE5B0"
+  "Chevron pattern color."
+  :type 'color
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-chevron-pattern)
+                    (boundp 'neomacs-chevron-pattern)
+                    neomacs-chevron-pattern)
+           (neomacs-set-chevron-pattern t val))))
+
+(defcustom neomacs-chevron-pattern-spacing 40
+  "Chevron spacing in pixels."
+  :type '(integer :tag "Spacing (px)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-chevron-pattern)
+                    (boundp 'neomacs-chevron-pattern)
+                    neomacs-chevron-pattern)
+           (neomacs-set-chevron-pattern t
+            (if (boundp 'neomacs-chevron-pattern-color)
+                neomacs-chevron-pattern-color nil)
+            val))))
+
+(defcustom neomacs-chevron-pattern-speed 50
+  "Chevron scroll speed (multiplied by 100)."
+  :type '(integer :tag "Speed * 100")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-chevron-pattern)
+                    (boundp 'neomacs-chevron-pattern)
+                    neomacs-chevron-pattern)
+           (neomacs-set-chevron-pattern t
+            (if (boundp 'neomacs-chevron-pattern-color)
+                neomacs-chevron-pattern-color nil)
+            (if (boundp 'neomacs-chevron-pattern-spacing)
+                neomacs-chevron-pattern-spacing nil)
+            val))))
+
+(defcustom neomacs-chevron-pattern-opacity 8
+  "Chevron pattern opacity (0-100)."
+  :type '(integer :tag "Opacity (0-100)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-chevron-pattern)
+                    (boundp 'neomacs-chevron-pattern)
+                    neomacs-chevron-pattern)
+           (neomacs-set-chevron-pattern t
+            (if (boundp 'neomacs-chevron-pattern-color)
+                neomacs-chevron-pattern-color nil)
+            (if (boundp 'neomacs-chevron-pattern-spacing)
+                neomacs-chevron-pattern-spacing nil)
+            (if (boundp 'neomacs-chevron-pattern-speed)
+                neomacs-chevron-pattern-speed nil)
+            val))))
+
+;; Cursor bubble effect
+(declare-function neomacs-set-cursor-bubble "neomacsterm.c")
+
+(defcustom neomacs-cursor-bubble nil
+  "Enable cursor bubble effect."
+  :type 'boolean
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-cursor-bubble)
+           (if val
+               (neomacs-set-cursor-bubble t)
+             (neomacs-set-cursor-bubble nil)))))
+
+(defcustom neomacs-cursor-bubble-color "#66CCFF"
+  "Bubble color."
+  :type 'color
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-bubble)
+                    (boundp 'neomacs-cursor-bubble)
+                    neomacs-cursor-bubble)
+           (neomacs-set-cursor-bubble t val))))
+
+(defcustom neomacs-cursor-bubble-count 6
+  "Number of bubbles."
+  :type '(integer :tag "Count")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-bubble)
+                    (boundp 'neomacs-cursor-bubble)
+                    neomacs-cursor-bubble)
+           (neomacs-set-cursor-bubble t
+            (if (boundp 'neomacs-cursor-bubble-color)
+                neomacs-cursor-bubble-color nil)
+            val))))
+
+(defcustom neomacs-cursor-bubble-rise-speed 40
+  "Bubble rise speed in pixels per second."
+  :type '(integer :tag "Rise speed (px/s)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-bubble)
+                    (boundp 'neomacs-cursor-bubble)
+                    neomacs-cursor-bubble)
+           (neomacs-set-cursor-bubble t
+            (if (boundp 'neomacs-cursor-bubble-color)
+                neomacs-cursor-bubble-color nil)
+            (if (boundp 'neomacs-cursor-bubble-count)
+                neomacs-cursor-bubble-count nil)
+            val))))
+
+(defcustom neomacs-cursor-bubble-opacity 20
+  "Bubble opacity (0-100)."
+  :type '(integer :tag "Opacity (0-100)")
+  :group 'neomacs
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-cursor-bubble)
+                    (boundp 'neomacs-cursor-bubble)
+                    neomacs-cursor-bubble)
+           (neomacs-set-cursor-bubble t
+            (if (boundp 'neomacs-cursor-bubble-color)
+                neomacs-cursor-bubble-color nil)
+            (if (boundp 'neomacs-cursor-bubble-count)
+                neomacs-cursor-bubble-count nil)
+            (if (boundp 'neomacs-cursor-bubble-rise-speed)
+                neomacs-cursor-bubble-rise-speed nil)
+            val))))
+
 ;; Hex grid overlay effect
 (declare-function neomacs-set-hex-grid "neomacsterm.c")
 

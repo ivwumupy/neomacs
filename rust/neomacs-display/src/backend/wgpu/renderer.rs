@@ -618,6 +618,34 @@ pub struct WgpuRenderer {
     cursor_gravity_well_field_radius: f32,
     cursor_gravity_well_line_count: u32,
     cursor_gravity_well_opacity: f32,
+    /// Wave interference overlay
+    wave_interference_enabled: bool,
+    wave_interference_color: (f32, f32, f32),
+    wave_interference_wavelength: f32,
+    wave_interference_source_count: u32,
+    wave_interference_speed: f32,
+    wave_interference_opacity: f32,
+    /// Cursor portal
+    cursor_portal_enabled: bool,
+    cursor_portal_color: (f32, f32, f32),
+    cursor_portal_radius: f32,
+    cursor_portal_speed: f32,
+    cursor_portal_opacity: f32,
+    /// Chevron pattern overlay
+    chevron_pattern_enabled: bool,
+    chevron_pattern_color: (f32, f32, f32),
+    chevron_pattern_spacing: f32,
+    chevron_pattern_speed: f32,
+    chevron_pattern_opacity: f32,
+    /// Cursor bubble
+    cursor_bubble_enabled: bool,
+    cursor_bubble_color: (f32, f32, f32),
+    cursor_bubble_count: u32,
+    cursor_bubble_rise_speed: f32,
+    cursor_bubble_opacity: f32,
+    cursor_bubble_spawn_time: Option<std::time::Instant>,
+    cursor_bubble_last_x: f32,
+    cursor_bubble_last_y: f32,
     /// Window edge glow on scroll boundaries
     edge_glow_enabled: bool,
     edge_glow_color: (f32, f32, f32),
@@ -1729,6 +1757,30 @@ impl WgpuRenderer {
             cursor_gravity_well_field_radius: 80.0,
             cursor_gravity_well_line_count: 8,
             cursor_gravity_well_opacity: 0.2,
+            wave_interference_enabled: false,
+            wave_interference_color: (0.3, 0.5, 0.9),
+            wave_interference_wavelength: 30.0,
+            wave_interference_source_count: 3,
+            wave_interference_speed: 1.0,
+            wave_interference_opacity: 0.08,
+            cursor_portal_enabled: false,
+            cursor_portal_color: (0.6, 0.2, 0.9),
+            cursor_portal_radius: 30.0,
+            cursor_portal_speed: 2.0,
+            cursor_portal_opacity: 0.25,
+            chevron_pattern_enabled: false,
+            chevron_pattern_color: (0.4, 0.7, 0.5),
+            chevron_pattern_spacing: 40.0,
+            chevron_pattern_speed: 0.5,
+            chevron_pattern_opacity: 0.06,
+            cursor_bubble_enabled: false,
+            cursor_bubble_color: (0.4, 0.8, 1.0),
+            cursor_bubble_count: 6,
+            cursor_bubble_rise_speed: 80.0,
+            cursor_bubble_opacity: 0.2,
+            cursor_bubble_spawn_time: None,
+            cursor_bubble_last_x: 0.0,
+            cursor_bubble_last_y: 0.0,
             edge_glow_enabled: false,
             edge_glow_color: (0.4, 0.6, 1.0),
             edge_glow_height: 40.0,
@@ -2632,6 +2684,43 @@ impl WgpuRenderer {
         self.cursor_gravity_well_field_radius = field_radius;
         self.cursor_gravity_well_line_count = line_count;
         self.cursor_gravity_well_opacity = opacity;
+    }
+
+    /// Update wave interference config
+    pub fn set_wave_interference(&mut self, enabled: bool, color: (f32, f32, f32), wavelength: f32, source_count: u32, speed: f32, opacity: f32) {
+        self.wave_interference_enabled = enabled;
+        self.wave_interference_color = color;
+        self.wave_interference_wavelength = wavelength;
+        self.wave_interference_source_count = source_count;
+        self.wave_interference_speed = speed;
+        self.wave_interference_opacity = opacity;
+    }
+
+    /// Update cursor portal config
+    pub fn set_cursor_portal(&mut self, enabled: bool, color: (f32, f32, f32), radius: f32, speed: f32, opacity: f32) {
+        self.cursor_portal_enabled = enabled;
+        self.cursor_portal_color = color;
+        self.cursor_portal_radius = radius;
+        self.cursor_portal_speed = speed;
+        self.cursor_portal_opacity = opacity;
+    }
+
+    /// Update chevron pattern config
+    pub fn set_chevron_pattern(&mut self, enabled: bool, color: (f32, f32, f32), spacing: f32, speed: f32, opacity: f32) {
+        self.chevron_pattern_enabled = enabled;
+        self.chevron_pattern_color = color;
+        self.chevron_pattern_spacing = spacing;
+        self.chevron_pattern_speed = speed;
+        self.chevron_pattern_opacity = opacity;
+    }
+
+    /// Update cursor bubble config
+    pub fn set_cursor_bubble(&mut self, enabled: bool, color: (f32, f32, f32), count: u32, rise_speed: f32, opacity: f32) {
+        self.cursor_bubble_enabled = enabled;
+        self.cursor_bubble_color = color;
+        self.cursor_bubble_count = count;
+        self.cursor_bubble_rise_speed = rise_speed;
+        self.cursor_bubble_opacity = opacity;
     }
 
     /// Update hex grid config
@@ -6845,6 +6934,238 @@ impl WgpuRenderer {
                         render_pass.draw(0..gw_verts.len() as u32, 0..1);
                     }
                     self.needs_continuous_redraw = true;
+                }
+            }
+
+            // === Wave interference overlay effect ===
+            if self.wave_interference_enabled {
+                let now = std::time::Instant::now().duration_since(self.aurora_start).as_secs_f32();
+                let (wr, wg, wb) = self.wave_interference_color;
+                let wop = self.wave_interference_opacity;
+                let wl = self.wave_interference_wavelength.max(10.0);
+                let sources = self.wave_interference_source_count.max(2).min(6);
+                let spd = self.wave_interference_speed;
+                let fw = self.width() as f32;
+                let fh = self.height() as f32;
+                let mut wave_verts: Vec<RectVertex> = Vec::new();
+                // Generate deterministic source positions
+                let mut src_pos: Vec<(f32, f32)> = Vec::new();
+                for i in 0..sources {
+                    let mut h = i.wrapping_mul(2654435761);
+                    h ^= h >> 16;
+                    let x = (h as f32 / u32::MAX as f32) * fw;
+                    h = h.wrapping_mul(0x45d9f3b);
+                    h ^= h >> 16;
+                    let y = (h as f32 / u32::MAX as f32) * fh;
+                    src_pos.push((x, y));
+                }
+                let step = wl * 0.5;
+                let cols = (fw / step) as i32 + 1;
+                let rows = (fh / step) as i32 + 1;
+                for row in 0..rows {
+                    for col in 0..cols {
+                        let x = col as f32 * step;
+                        let y = row as f32 * step;
+                        let mut val = 0.0f32;
+                        for src in &src_pos {
+                            let dx = x - src.0;
+                            let dy = y - src.1;
+                            let dist = (dx * dx + dy * dy).sqrt();
+                            val += (dist / wl * std::f32::consts::PI * 2.0 - now * spd * 3.0).sin();
+                        }
+                        let intensity = (val / sources as f32).abs();
+                        let alpha = wop * intensity;
+                        if alpha > 0.005 {
+                            let c = Color::new(wr, wg, wb, alpha);
+                            self.add_rect(&mut wave_verts, x, y, step, step, &c);
+                        }
+                    }
+                }
+                if !wave_verts.is_empty() {
+                    let wi_buf = self.device.create_buffer_init(
+                        &wgpu::util::BufferInitDescriptor {
+                            label: Some("Wave Interference Buffer"),
+                            contents: bytemuck::cast_slice(&wave_verts),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        },
+                    );
+                    render_pass.set_pipeline(&self.rect_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, wi_buf.slice(..));
+                    render_pass.draw(0..wave_verts.len() as u32, 0..1);
+                }
+                self.needs_continuous_redraw = true;
+            }
+
+            // === Cursor portal effect ===
+            if self.cursor_portal_enabled && cursor_visible {
+                if let Some(ref anim) = animated_cursor {
+                    let now = std::time::Instant::now().duration_since(self.aurora_start).as_secs_f32();
+                    let cx = anim.x + anim.width / 2.0;
+                    let cy = anim.y + anim.height / 2.0;
+                    let (pr, pg, pb) = self.cursor_portal_color;
+                    let pop = self.cursor_portal_opacity;
+                    let radius = self.cursor_portal_radius;
+                    let spd = self.cursor_portal_speed;
+                    let mut portal_verts: Vec<RectVertex> = Vec::new();
+                    // Outer swirling ring
+                    let ring_segs = 36;
+                    for seg in 0..ring_segs {
+                        let a = seg as f32 / ring_segs as f32 * std::f32::consts::PI * 2.0;
+                        let wobble = (a * 3.0 + now * spd * 2.0).sin() * 3.0;
+                        let r = radius + wobble;
+                        let px = cx + a.cos() * r;
+                        let py = cy + a.sin() * r;
+                        let sz = 2.5 + (a * 5.0 + now * spd * 3.0).sin().abs() * 1.5;
+                        let alpha = pop * (0.6 + 0.4 * (a * 4.0 + now * spd).sin());
+                        let c = Color::new(pr, pg, pb, alpha);
+                        self.add_rect(&mut portal_verts, px - sz / 2.0, py - sz / 2.0, sz, sz, &c);
+                    }
+                    // Inner spiral
+                    let spiral_segs = 20;
+                    for seg in 0..spiral_segs {
+                        let t = seg as f32 / spiral_segs as f32;
+                        let a = t * std::f32::consts::PI * 4.0 + now * spd * 3.0;
+                        let r = radius * (1.0 - t) * 0.8;
+                        let px = cx + a.cos() * r;
+                        let py = cy + a.sin() * r;
+                        let sz = 1.5 * (1.0 - t);
+                        let c = Color::new(pr, pg, pb, pop * t * 0.5);
+                        self.add_rect(&mut portal_verts, px - sz / 2.0, py - sz / 2.0, sz, sz, &c);
+                    }
+                    if !portal_verts.is_empty() {
+                        let pt_buf = self.device.create_buffer_init(
+                            &wgpu::util::BufferInitDescriptor {
+                                label: Some("Cursor Portal Buffer"),
+                                contents: bytemuck::cast_slice(&portal_verts),
+                                usage: wgpu::BufferUsages::VERTEX,
+                            },
+                        );
+                        render_pass.set_pipeline(&self.rect_pipeline);
+                        render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                        render_pass.set_vertex_buffer(0, pt_buf.slice(..));
+                        render_pass.draw(0..portal_verts.len() as u32, 0..1);
+                    }
+                    self.needs_continuous_redraw = true;
+                }
+            }
+
+            // === Chevron pattern overlay effect ===
+            if self.chevron_pattern_enabled {
+                let now = std::time::Instant::now().duration_since(self.aurora_start).as_secs_f32();
+                let (cr, cg, cb) = self.chevron_pattern_color;
+                let cop = self.chevron_pattern_opacity;
+                let spacing = self.chevron_pattern_spacing.max(15.0);
+                let spd = self.chevron_pattern_speed;
+                let fw = self.width() as f32;
+                let fh = self.height() as f32;
+                let mut chev_verts: Vec<RectVertex> = Vec::new();
+                let rows = (fh / spacing) as i32 + 2;
+                let line_thick = 1.0;
+                for row in 0..rows {
+                    let base_y = row as f32 * spacing + (now * spd * 20.0) % spacing;
+                    let num_v = (fw / spacing) as i32 + 1;
+                    for v in 0..num_v {
+                        let vx = v as f32 * spacing;
+                        // Draw V shape: left leg
+                        let segs = 4;
+                        for s in 0..segs {
+                            let t = s as f32 / segs as f32;
+                            let px = vx + t * spacing * 0.5;
+                            let py = base_y - t * spacing * 0.5;
+                            let shimmer = (0.5 + 0.5 * ((vx * 0.01 + now * spd).sin())).max(0.0);
+                            let c = Color::new(cr, cg, cb, cop * shimmer);
+                            self.add_rect(&mut chev_verts, px, py, line_thick * 2.0, line_thick, &c);
+                        }
+                        // Right leg
+                        for s in 0..segs {
+                            let t = s as f32 / segs as f32;
+                            let px = vx + spacing * 0.5 + t * spacing * 0.5;
+                            let py = base_y - spacing * 0.5 + t * spacing * 0.5;
+                            let shimmer = (0.5 + 0.5 * ((vx * 0.01 + now * spd).sin())).max(0.0);
+                            let c = Color::new(cr, cg, cb, cop * shimmer);
+                            self.add_rect(&mut chev_verts, px, py, line_thick * 2.0, line_thick, &c);
+                        }
+                    }
+                }
+                if !chev_verts.is_empty() {
+                    let cv_buf = self.device.create_buffer_init(
+                        &wgpu::util::BufferInitDescriptor {
+                            label: Some("Chevron Pattern Buffer"),
+                            contents: bytemuck::cast_slice(&chev_verts),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        },
+                    );
+                    render_pass.set_pipeline(&self.rect_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, cv_buf.slice(..));
+                    render_pass.draw(0..chev_verts.len() as u32, 0..1);
+                }
+                self.needs_continuous_redraw = true;
+            }
+
+            // === Cursor bubble effect ===
+            if self.cursor_bubble_enabled && cursor_visible {
+                if let Some(ref anim) = animated_cursor {
+                    let cx = anim.x + anim.width / 2.0;
+                    let cy = anim.y + anim.height / 2.0;
+                    // Detect cursor move
+                    if (cx - self.cursor_bubble_last_x).abs() > 1.0 || (cy - self.cursor_bubble_last_y).abs() > 1.0 {
+                        self.cursor_bubble_spawn_time = Some(std::time::Instant::now());
+                        self.cursor_bubble_last_x = cx;
+                        self.cursor_bubble_last_y = cy;
+                    }
+                    if let Some(spawn) = self.cursor_bubble_spawn_time {
+                        let elapsed = spawn.elapsed().as_secs_f32();
+                        let duration = 1.5;
+                        if elapsed < duration {
+                            let (br, bg, bb) = self.cursor_bubble_color;
+                            let bop = self.cursor_bubble_opacity;
+                            let count = self.cursor_bubble_count.max(2).min(12);
+                            let rspd = self.cursor_bubble_rise_speed;
+                            let mut bub_verts: Vec<RectVertex> = Vec::new();
+                            for i in 0..count {
+                                let mut h = i.wrapping_mul(2654435761);
+                                h ^= h >> 16;
+                                let offset_x = (h as f32 / u32::MAX as f32 - 0.5) * 20.0;
+                                h = h.wrapping_mul(0x45d9f3b);
+                                h ^= h >> 16;
+                                let offset_delay = (h as f32 / u32::MAX as f32) * 0.3;
+                                let t = (elapsed - offset_delay).max(0.0) / duration;
+                                if t <= 0.0 || t >= 1.0 { continue; }
+                                let rise = t * rspd;
+                                let bx = cx + offset_x + (t * 5.0 + i as f32).sin() * 4.0;
+                                let by = cy - rise;
+                                let sz = (3.0 + i as f32 * 0.5) * (1.0 - t * 0.5);
+                                let fade = (1.0 - t) * bop;
+                                let c = Color::new(br, bg, bb, fade);
+                                // Draw circle approximation with ring of dots
+                                let ring = 8;
+                                for r in 0..ring {
+                                    let a = r as f32 / ring as f32 * std::f32::consts::PI * 2.0;
+                                    let px = bx + a.cos() * sz;
+                                    let py = by + a.sin() * sz;
+                                    self.add_rect(&mut bub_verts, px - 0.75, py - 0.75, 1.5, 1.5, &c);
+                                }
+                            }
+                            if !bub_verts.is_empty() {
+                                let bb_buf = self.device.create_buffer_init(
+                                    &wgpu::util::BufferInitDescriptor {
+                                        label: Some("Cursor Bubble Buffer"),
+                                        contents: bytemuck::cast_slice(&bub_verts),
+                                        usage: wgpu::BufferUsages::VERTEX,
+                                    },
+                                );
+                                render_pass.set_pipeline(&self.rect_pipeline);
+                                render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                                render_pass.set_vertex_buffer(0, bb_buf.slice(..));
+                                render_pass.draw(0..bub_verts.len() as u32, 0..1);
+                            }
+                            self.needs_continuous_redraw = true;
+                        } else {
+                            self.cursor_bubble_spawn_time = None;
+                        }
+                    }
                 }
             }
 

@@ -10967,6 +10967,156 @@ OPACITY is 0-100 (default 20). */)
   return on ? Qt : Qnil;
 }
 
+DEFUN ("neomacs-set-wave-interference",
+       Fneomacs_set_wave_interference,
+       Sneomacs_set_wave_interference, 0, 6, 0,
+       doc: /* Configure wave interference overlay effect.
+ENABLED non-nil activates multi-source wave interference pattern.
+COLOR is a hex color string like "#RRGGBB" (default "#4D99E5").
+WAVELENGTH is wave wavelength in pixels (default 60).
+SOURCE-COUNT is number of wave sources (default 3).
+SPEED is animation speed * 100 (default 100).
+OPACITY is 0-100 (default 10). */)
+  (Lisp_Object enabled, Lisp_Object color, Lisp_Object wavelength,
+   Lisp_Object source_count, Lisp_Object speed, Lisp_Object opacity)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+  int on = !NILP (enabled);
+  int r = 0x4D, g = 0x99, b = 0xE5, wl = 60, sc = 3, sp = 100, op = 10;
+  if (STRINGP (color))
+    {
+      const char *s = SSDATA (color);
+      if (s[0] == '#' && strlen (s) == 7)
+        {
+          unsigned int hex;
+          sscanf (s + 1, "%06x", &hex);
+          r = (hex >> 16) & 0xFF;
+          g = (hex >> 8) & 0xFF;
+          b = hex & 0xFF;
+        }
+    }
+  if (FIXNUMP (wavelength)) wl = XFIXNUM (wavelength);
+  if (FIXNUMP (source_count)) sc = XFIXNUM (source_count);
+  if (FIXNUMP (speed)) sp = XFIXNUM (speed);
+  if (FIXNUMP (opacity)) op = XFIXNUM (opacity);
+
+  neomacs_display_set_wave_interference (dpyinfo->display_handle, on, r, g, b, wl, sc, sp, op);
+  return on ? Qt : Qnil;
+}
+
+DEFUN ("neomacs-set-cursor-portal",
+       Fneomacs_set_cursor_portal,
+       Sneomacs_set_cursor_portal, 0, 5, 0,
+       doc: /* Configure cursor portal effect.
+ENABLED non-nil activates swirling portal ring around cursor.
+COLOR is a hex color string like "#RRGGBB" (default "#9966FF").
+RADIUS is portal radius in pixels (default 30).
+SPEED is swirl animation speed * 100 (default 200).
+OPACITY is 0-100 (default 25). */)
+  (Lisp_Object enabled, Lisp_Object color, Lisp_Object radius,
+   Lisp_Object speed, Lisp_Object opacity)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+  int on = !NILP (enabled);
+  int r = 0x99, g = 0x66, b = 0xFF, rd = 30, sp = 200, op = 25;
+  if (STRINGP (color))
+    {
+      const char *s = SSDATA (color);
+      if (s[0] == '#' && strlen (s) == 7)
+        {
+          unsigned int hex;
+          sscanf (s + 1, "%06x", &hex);
+          r = (hex >> 16) & 0xFF;
+          g = (hex >> 8) & 0xFF;
+          b = hex & 0xFF;
+        }
+    }
+  if (FIXNUMP (radius)) rd = XFIXNUM (radius);
+  if (FIXNUMP (speed)) sp = XFIXNUM (speed);
+  if (FIXNUMP (opacity)) op = XFIXNUM (opacity);
+
+  neomacs_display_set_cursor_portal (dpyinfo->display_handle, on, r, g, b, rd, sp, op);
+  return on ? Qt : Qnil;
+}
+
+DEFUN ("neomacs-set-chevron-pattern",
+       Fneomacs_set_chevron_pattern,
+       Sneomacs_set_chevron_pattern, 0, 5, 0,
+       doc: /* Configure chevron pattern overlay effect.
+ENABLED non-nil activates V-shaped repeating chevron pattern.
+COLOR is a hex color string like "#RRGGBB" (default "#4DE5B0").
+SPACING is chevron spacing in pixels (default 40).
+SPEED is scroll speed * 100 (default 50).
+OPACITY is 0-100 (default 8). */)
+  (Lisp_Object enabled, Lisp_Object color, Lisp_Object spacing,
+   Lisp_Object speed, Lisp_Object opacity)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+  int on = !NILP (enabled);
+  int r = 0x4D, g = 0xE5, b = 0xB0, sp_val = 40, spd = 50, op = 8;
+  if (STRINGP (color))
+    {
+      const char *s = SSDATA (color);
+      if (s[0] == '#' && strlen (s) == 7)
+        {
+          unsigned int hex;
+          sscanf (s + 1, "%06x", &hex);
+          r = (hex >> 16) & 0xFF;
+          g = (hex >> 8) & 0xFF;
+          b = hex & 0xFF;
+        }
+    }
+  if (FIXNUMP (spacing)) sp_val = XFIXNUM (spacing);
+  if (FIXNUMP (speed)) spd = XFIXNUM (speed);
+  if (FIXNUMP (opacity)) op = XFIXNUM (opacity);
+
+  neomacs_display_set_chevron_pattern (dpyinfo->display_handle, on, r, g, b, sp_val, spd, op);
+  return on ? Qt : Qnil;
+}
+
+DEFUN ("neomacs-set-cursor-bubble",
+       Fneomacs_set_cursor_bubble,
+       Sneomacs_set_cursor_bubble, 0, 5, 0,
+       doc: /* Configure cursor bubble effect.
+ENABLED non-nil activates bubbles rising from cursor position.
+COLOR is a hex color string like "#RRGGBB" (default "#66CCFF").
+COUNT is number of bubbles (default 6).
+RISE-SPEED is rise speed in pixels per second (default 40).
+OPACITY is 0-100 (default 20). */)
+  (Lisp_Object enabled, Lisp_Object color, Lisp_Object count,
+   Lisp_Object rise_speed, Lisp_Object opacity)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+  int on = !NILP (enabled);
+  int r = 0x66, g = 0xCC, b = 0xFF, ct = 6, rs = 40, op = 20;
+  if (STRINGP (color))
+    {
+      const char *s = SSDATA (color);
+      if (s[0] == '#' && strlen (s) == 7)
+        {
+          unsigned int hex;
+          sscanf (s + 1, "%06x", &hex);
+          r = (hex >> 16) & 0xFF;
+          g = (hex >> 8) & 0xFF;
+          b = hex & 0xFF;
+        }
+    }
+  if (FIXNUMP (count)) ct = XFIXNUM (count);
+  if (FIXNUMP (rise_speed)) rs = XFIXNUM (rise_speed);
+  if (FIXNUMP (opacity)) op = XFIXNUM (opacity);
+
+  neomacs_display_set_cursor_bubble (dpyinfo->display_handle, on, r, g, b, ct, rs, op);
+  return on ? Qt : Qnil;
+}
+
 DEFUN ("neomacs-set-hex-grid",
        Fneomacs_set_hex_grid,
        Sneomacs_set_hex_grid, 0, 5, 0,
@@ -12800,6 +12950,10 @@ syms_of_neomacsterm (void)
   defsubr (&Sneomacs_set_cursor_shockwave);
   defsubr (&Sneomacs_set_diamond_lattice);
   defsubr (&Sneomacs_set_cursor_gravity_well);
+  defsubr (&Sneomacs_set_wave_interference);
+  defsubr (&Sneomacs_set_cursor_portal);
+  defsubr (&Sneomacs_set_chevron_pattern);
+  defsubr (&Sneomacs_set_cursor_bubble);
   defsubr (&Sneomacs_set_hex_grid);
   defsubr (&Sneomacs_set_cursor_sparkle_burst);
   defsubr (&Sneomacs_set_circuit_trace);

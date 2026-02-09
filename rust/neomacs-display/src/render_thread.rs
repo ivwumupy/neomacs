@@ -776,6 +776,31 @@ struct RenderApp {
     cursor_gravity_well_field_radius: f32,
     cursor_gravity_well_line_count: u32,
     cursor_gravity_well_opacity: f32,
+    // Wave interference overlay
+    wave_interference_enabled: bool,
+    wave_interference_color: (f32, f32, f32),
+    wave_interference_wavelength: f32,
+    wave_interference_source_count: u32,
+    wave_interference_speed: f32,
+    wave_interference_opacity: f32,
+    // Cursor portal
+    cursor_portal_enabled: bool,
+    cursor_portal_color: (f32, f32, f32),
+    cursor_portal_radius: f32,
+    cursor_portal_speed: f32,
+    cursor_portal_opacity: f32,
+    // Chevron pattern overlay
+    chevron_pattern_enabled: bool,
+    chevron_pattern_color: (f32, f32, f32),
+    chevron_pattern_spacing: f32,
+    chevron_pattern_speed: f32,
+    chevron_pattern_opacity: f32,
+    // Cursor bubble
+    cursor_bubble_enabled: bool,
+    cursor_bubble_color: (f32, f32, f32),
+    cursor_bubble_count: u32,
+    cursor_bubble_rise_speed: f32,
+    cursor_bubble_opacity: f32,
 
     // Per-window metadata from previous frame (for transition detection)
     prev_window_infos: HashMap<i64, crate::core::frame_glyphs::WindowInfo>,
@@ -1483,6 +1508,27 @@ impl RenderApp {
             cursor_gravity_well_field_radius: 80.0,
             cursor_gravity_well_line_count: 8,
             cursor_gravity_well_opacity: 0.2,
+            wave_interference_enabled: false,
+            wave_interference_color: (0.3, 0.5, 0.9),
+            wave_interference_wavelength: 30.0,
+            wave_interference_source_count: 3,
+            wave_interference_speed: 1.0,
+            wave_interference_opacity: 0.08,
+            cursor_portal_enabled: false,
+            cursor_portal_color: (0.6, 0.2, 0.9),
+            cursor_portal_radius: 30.0,
+            cursor_portal_speed: 2.0,
+            cursor_portal_opacity: 0.25,
+            chevron_pattern_enabled: false,
+            chevron_pattern_color: (0.4, 0.7, 0.5),
+            chevron_pattern_spacing: 40.0,
+            chevron_pattern_speed: 0.5,
+            chevron_pattern_opacity: 0.06,
+            cursor_bubble_enabled: false,
+            cursor_bubble_color: (0.4, 0.8, 1.0),
+            cursor_bubble_count: 6,
+            cursor_bubble_rise_speed: 80.0,
+            cursor_bubble_opacity: 0.2,
             prev_window_infos: HashMap::new(),
             crossfade_enabled: true,
             crossfade_duration: std::time::Duration::from_millis(200),
@@ -3447,6 +3493,51 @@ impl RenderApp {
                     self.cursor_gravity_well_opacity = opacity;
                     if let Some(renderer) = self.renderer.as_mut() {
                         renderer.set_cursor_gravity_well(enabled, (r, g, b), field_radius, line_count, opacity);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetWaveInterference { enabled, r, g, b, wavelength, source_count, speed, opacity } => {
+                    self.wave_interference_enabled = enabled;
+                    self.wave_interference_color = (r, g, b);
+                    self.wave_interference_wavelength = wavelength;
+                    self.wave_interference_source_count = source_count;
+                    self.wave_interference_speed = speed;
+                    self.wave_interference_opacity = opacity;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_wave_interference(enabled, (r, g, b), wavelength, source_count, speed, opacity);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetCursorPortal { enabled, r, g, b, radius, speed, opacity } => {
+                    self.cursor_portal_enabled = enabled;
+                    self.cursor_portal_color = (r, g, b);
+                    self.cursor_portal_radius = radius;
+                    self.cursor_portal_speed = speed;
+                    self.cursor_portal_opacity = opacity;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_cursor_portal(enabled, (r, g, b), radius, speed, opacity);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetChevronPattern { enabled, r, g, b, spacing, speed, opacity } => {
+                    self.chevron_pattern_enabled = enabled;
+                    self.chevron_pattern_color = (r, g, b);
+                    self.chevron_pattern_spacing = spacing;
+                    self.chevron_pattern_speed = speed;
+                    self.chevron_pattern_opacity = opacity;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_chevron_pattern(enabled, (r, g, b), spacing, speed, opacity);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetCursorBubble { enabled, r, g, b, count, rise_speed, opacity } => {
+                    self.cursor_bubble_enabled = enabled;
+                    self.cursor_bubble_color = (r, g, b);
+                    self.cursor_bubble_count = count;
+                    self.cursor_bubble_rise_speed = rise_speed;
+                    self.cursor_bubble_opacity = opacity;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_cursor_bubble(enabled, (r, g, b), count, rise_speed, opacity);
                     }
                     self.frame_dirty = true;
                 }
