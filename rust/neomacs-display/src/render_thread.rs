@@ -2868,6 +2868,7 @@ impl RenderApp {
                 fg.a *= opacity;
                 out.push(FrameGlyph::Char {
                     char: cell.c,
+                    composed: None,
                     x: cx, y: cy,
                     width: cell_w, height: cell_h,
                     ascent, fg,

@@ -12,7 +12,7 @@ use super::super::vertex::{GlyphVertex, RectVertex, RoundedRectVertex, Uniforms}
 use crate::core::types::{Color, Rect, AnimatedCursor};
 use crate::core::frame_glyphs::{FrameGlyph, FrameGlyphBuffer};
 use crate::core::face::{BoxType, Face, FaceAttributes};
-use super::super::glyph_atlas::{GlyphKey, WgpuGlyphAtlas};
+use super::super::glyph_atlas::{ComposedGlyphKey, GlyphKey, WgpuGlyphAtlas};
 
 impl WgpuRenderer {
     /// Render frame glyphs to a texture view
@@ -6092,22 +6092,36 @@ impl WgpuRenderer {
 
                 let mut mask_data: Vec<(GlyphKey, [GlyphVertex; 6])> = Vec::new();
                 let mut color_data: Vec<(GlyphKey, [GlyphVertex; 6])> = Vec::new();
+                // Composed glyphs rendered individually (each is unique, no batching)
+                let mut composed_mask_data: Vec<(ComposedGlyphKey, [GlyphVertex; 6])> = Vec::new();
+                let mut composed_color_data: Vec<(ComposedGlyphKey, [GlyphVertex; 6])> = Vec::new();
 
                 for glyph in &frame_glyphs.glyphs {
-                    if let FrameGlyph::Char { char, x, y, width, ascent, fg, face_id, font_size, is_overlay, .. } = glyph {
+                    if let FrameGlyph::Char { char, composed, x, y, width, ascent, fg, face_id, font_size, is_overlay, .. } = glyph {
                         if *is_overlay != want_overlay {
                             continue;
                         }
 
-                        let key = GlyphKey {
-                            charcode: *char as u32,
-                            face_id: *face_id,
-                            font_size_bits: font_size.to_bits(),
-                        };
-
                         let face = faces.get(face_id);
 
-                        if let Some(cached) = glyph_atlas.get_or_create(&self.device, &self.queue, &key, face) {
+                        // Look up or create the glyph texture
+                        let cached_opt = if let Some(ref text) = composed {
+                            // Composed grapheme cluster (emoji ZWJ, combining marks, etc.)
+                            glyph_atlas.get_or_create_composed(
+                                &self.device, &self.queue,
+                                text, *face_id, font_size.to_bits(), face,
+                            )
+                        } else {
+                            // Single character
+                            let key = GlyphKey {
+                                charcode: *char as u32,
+                                face_id: *face_id,
+                                font_size_bits: font_size.to_bits(),
+                            };
+                            glyph_atlas.get_or_create(&self.device, &self.queue, &key, face)
+                        };
+
+                        if let Some(cached) = cached_opt {
                             // Cached glyphs are rasterized at physical resolution (scale_factor).
                             // Divide bearing/size by scale_factor to get logical pixel positions
                             // that match Emacs coordinate space.
@@ -6155,10 +6169,28 @@ impl WgpuRenderer {
                                 GlyphVertex { position: [glyph_x, glyph_y + glyph_h], tex_coords: [0.0, 1.0], color },
                             ];
 
-                            if cached.is_color {
-                                color_data.push((key, vertices));
+                            if composed.is_some() {
+                                let ckey = ComposedGlyphKey {
+                                    text: composed.as_ref().unwrap().clone(),
+                                    face_id: *face_id,
+                                    font_size_bits: font_size.to_bits(),
+                                };
+                                if cached.is_color {
+                                    composed_color_data.push((ckey, vertices));
+                                } else {
+                                    composed_mask_data.push((ckey, vertices));
+                                }
                             } else {
-                                mask_data.push((key, vertices));
+                                let key = GlyphKey {
+                                    charcode: *char as u32,
+                                    face_id: *face_id,
+                                    font_size_bits: font_size.to_bits(),
+                                };
+                                if cached.is_color {
+                                    color_data.push((key, vertices));
+                                } else {
+                                    mask_data.push((key, vertices));
+                                }
                             }
                         }
                     }
@@ -6260,6 +6292,44 @@ impl WgpuRenderer {
                             render_pass.draw(vert_start..vert_end, 0..1);
                         } else {
                             i += 1;
+                        }
+                    }
+                }
+
+                // Draw composed mask glyphs (each unique, no batching)
+                if !composed_mask_data.is_empty() {
+                    render_pass.set_pipeline(&self.glyph_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+
+                    for (ref ckey, verts) in &composed_mask_data {
+                        if let Some(cached) = glyph_atlas.get_composed(ckey) {
+                            let vbuf = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("Composed Glyph VB"),
+                                contents: bytemuck::cast_slice(verts),
+                                usage: wgpu::BufferUsages::VERTEX,
+                            });
+                            render_pass.set_vertex_buffer(0, vbuf.slice(..));
+                            render_pass.set_bind_group(1, &cached.bind_group, &[]);
+                            render_pass.draw(0..6, 0..1);
+                        }
+                    }
+                }
+
+                // Draw composed color glyphs (emoji ZWJ sequences, etc.)
+                if !composed_color_data.is_empty() {
+                    render_pass.set_pipeline(&self.image_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+
+                    for (ref ckey, verts) in &composed_color_data {
+                        if let Some(cached) = glyph_atlas.get_composed(ckey) {
+                            let vbuf = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                                label: Some("Composed Color Glyph VB"),
+                                contents: bytemuck::cast_slice(verts),
+                                usage: wgpu::BufferUsages::VERTEX,
+                            });
+                            render_pass.set_vertex_buffer(0, vbuf.slice(..));
+                            render_pass.set_bind_group(1, &cached.bind_group, &[]);
+                            render_pass.draw(0..6, 0..1);
                         }
                     }
                 }

@@ -13,8 +13,11 @@ use std::collections::HashMap;
 pub enum FrameGlyph {
     /// Character glyph with text
     Char {
-        /// Character to render
+        /// Character to render (base character for single-codepoint glyphs)
         char: char,
+        /// Composed text for multi-codepoint grapheme clusters (emoji ZWJ, combining marks).
+        /// When Some, the renderer uses this instead of `char` for glyph lookup.
+        composed: Option<Box<str>>,
         /// Frame-absolute X position
         x: f32,
         /// Frame-absolute Y position
@@ -426,6 +429,34 @@ impl FrameGlyphBuffer {
     pub fn add_char(&mut self, char: char, x: f32, y: f32, width: f32, height: f32, ascent: f32, is_overlay: bool) {
         self.glyphs.push(FrameGlyph::Char {
             char,
+            composed: None,
+            x,
+            y,
+            width,
+            height,
+            ascent,
+            fg: self.current_fg,
+            bg: self.current_bg,
+            face_id: self.current_face_id,
+            bold: self.current_bold,
+            italic: self.current_italic,
+            font_size: self.current_font_size,
+            underline: self.current_underline,
+            underline_color: self.current_underline_color,
+            strike_through: self.current_strike_through,
+            strike_through_color: self.current_strike_through_color,
+            overline: self.current_overline,
+            overline_color: self.current_overline_color,
+            is_overlay,
+        });
+    }
+
+    /// Add a composed (multi-codepoint) character glyph.
+    /// Used for grapheme clusters like emoji ZWJ sequences, combining diacritics.
+    pub fn add_composed_char(&mut self, text: &str, base_char: char, x: f32, y: f32, width: f32, height: f32, ascent: f32, is_overlay: bool) {
+        self.glyphs.push(FrameGlyph::Char {
+            char: base_char,
+            composed: Some(text.into()),
             x,
             y,
             width,

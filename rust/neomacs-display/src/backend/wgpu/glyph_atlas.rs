@@ -22,6 +22,18 @@ pub struct GlyphKey {
     pub font_size_bits: u32,
 }
 
+/// Key for composed (multi-codepoint) glyph cache lookup.
+/// Used for grapheme clusters like emoji ZWJ sequences, combining diacritics, etc.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct ComposedGlyphKey {
+    /// The full text of the composed grapheme cluster
+    pub text: Box<str>,
+    /// Face ID (determines font, style)
+    pub face_id: u32,
+    /// Font size in pixels (using u32 bits of f32 for hashing)
+    pub font_size_bits: u32,
+}
+
 /// A cached glyph with its wgpu texture and bind group
 pub struct CachedGlyph {
     /// Texture containing this glyph
@@ -50,6 +62,8 @@ pub struct CachedGlyph {
 pub struct WgpuGlyphAtlas {
     /// Cached glyphs: (charcode, face_id) -> CachedGlyph
     cache: HashMap<GlyphKey, CachedGlyph>,
+    /// Cached composed glyphs (multi-codepoint grapheme clusters)
+    composed_cache: HashMap<ComposedGlyphKey, CachedGlyph>,
     /// Font system for text rendering
     font_system: FontSystem,
     /// Swash cache for glyph rasterization
@@ -116,6 +130,7 @@ impl WgpuGlyphAtlas {
 
         Self {
             cache: HashMap::new(),
+            composed_cache: HashMap::new(),
             font_system: FontSystem::new(),
             swash_cache: SwashCache::new(),
             shape_buffer: ShapeBuffer::default(),
@@ -276,14 +291,106 @@ impl WgpuGlyphAtlas {
         self.cache.get(key)
     }
 
-    /// Rasterize a single glyph and return pixel data
+    /// Get or create a cached glyph for a composed (multi-codepoint) grapheme cluster.
+    ///
+    /// Used for emoji ZWJ sequences, combining diacritics, etc.
+    pub fn get_or_create_composed(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        text: &str,
+        face_id: u32,
+        font_size_bits: u32,
+        face: Option<&Face>,
+    ) -> Option<&CachedGlyph> {
+        let key = ComposedGlyphKey {
+            text: text.into(),
+            face_id,
+            font_size_bits,
+        };
+
+        // Check cache first
+        if let Some(cached) = self.composed_cache.get_mut(&key) {
+            cached.last_accessed = self.generation;
+            let key2 = key.clone();
+            return self.composed_cache.get(&key2);
+        }
+
+        // Rasterize the composed text
+        let rasterize_result = self.rasterize_text(text, face);
+        if rasterize_result.is_none() {
+            log::warn!("glyph_atlas: failed to rasterize composed text '{}'", text);
+            return None;
+        }
+        let (width, height, pixel_data, bearing_x, bearing_y, is_color) = rasterize_result?;
+
+        if width == 0 || height == 0 {
+            return None;
+        }
+
+        // Create GPU texture (same logic as single-char path)
+        let (format, bytes_per_pixel) = if is_color {
+            (wgpu::TextureFormat::Rgba8UnormSrgb, 4u32)
+        } else {
+            (wgpu::TextureFormat::R8Unorm, 1u32)
+        };
+
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Composed Glyph Texture"),
+            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &texture, mip_level: 0,
+                origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All,
+            },
+            &pixel_data,
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(width * bytes_per_pixel),
+                rows_per_image: Some(height),
+            },
+            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        );
+
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Composed Glyph Bind Group"),
+            layout: &self.bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.sampler) },
+            ],
+        });
+
+        let gen = self.generation;
+        self.composed_cache.insert(key.clone(), CachedGlyph {
+            texture, view, bind_group, width, height,
+            bearing_x, bearing_y, is_color, last_accessed: gen,
+        });
+        self.composed_cache.get(&key)
+    }
+
+    /// Get a cached composed glyph without creating it
+    pub fn get_composed(&self, key: &ComposedGlyphKey) -> Option<&CachedGlyph> {
+        self.composed_cache.get(key)
+    }
+
+    /// Rasterize text (single char or multi-codepoint sequence) and return pixel data.
     ///
     /// Returns (width, height, pixel_data, bearing_x, bearing_y, is_color)
     /// - For mask glyphs: pixel_data is R8 alpha, is_color=false
     /// - For color glyphs: pixel_data is RGBA, is_color=true
-    fn rasterize_glyph(
+    fn rasterize_text(
         &mut self,
-        c: char,
+        text: &str,
         face: Option<&Face>,
     ) -> Option<(u32, u32, Vec<u8>, f32, f32, bool)> {
         // Create attributes from face
@@ -296,22 +403,24 @@ impl WgpuGlyphAtlas {
         let line_height = font_size * 1.3;
         let metrics = Metrics::new(font_size, line_height);
 
-        // Create a small buffer for single character
-        // Make buffer large enough for large fonts
+        // Create a small buffer for the text
+        // Make buffer large enough for large fonts and multi-char sequences
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
-        buffer.set_size(&mut self.font_system, Some(font_size * 4.0), Some(font_size * 3.0));
+        buffer.set_size(&mut self.font_system, Some(font_size * 8.0), Some(font_size * 3.0));
         buffer.set_text(
             &mut self.font_system,
-            &c.to_string(),
+            text,
             attrs,
             cosmic_text::Shaping::Advanced,
         );
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        // Get the glyph info
+        // For multi-glyph sequences (e.g. emoji ZWJ), we need to composite
+        // all sub-glyphs into a single texture. Collect them first.
+        let mut sub_glyphs: Vec<(f32, f32, u32, u32, Vec<u8>, bool)> = Vec::new();
+
         for run in buffer.layout_runs() {
             for glyph in run.glyphs.iter() {
-                // Rasterize at display scale factor for crisp HiDPI text
                 let physical_glyph = glyph.physical((0.0, 0.0), self.scale_factor);
 
                 if let Some(image) = self
@@ -328,25 +437,20 @@ impl WgpuGlyphAtlas {
                     let bearing_x = image.placement.left as f32;
                     let bearing_y = image.placement.top as f32;
 
-                    // Log font and content type for debugging emoji rendering
                     let font_family_str = face.map(|f| f.font_family.as_str()).unwrap_or("(none)");
                     log::debug!(
-                        "rasterize_glyph: char='{}' (U+{:04X}) font='{}' content={:?} size={}x{}",
-                        c, c as u32, font_family_str, image.content, width, height
+                        "rasterize_text: text='{}' glyph U+{:04X} font='{}' content={:?} size={}x{}",
+                        text, glyph.start, font_family_str, image.content, width, height
                     );
 
-                    // Extract pixel data based on content type
                     let (pixel_data, is_color) = match image.content {
                         cosmic_text::SwashContent::Mask => {
-                            // Alpha mask (R8 format)
                             (image.data.clone(), false)
                         }
                         cosmic_text::SwashContent::Color => {
-                            // Full RGBA color data (e.g. color emoji)
                             (image.data.clone(), true)
                         }
                         cosmic_text::SwashContent::SubpixelMask => {
-                            // Convert subpixel RGB to alpha mask
                             let alpha: Vec<u8> = image
                                 .data
                                 .chunks(3)
@@ -359,12 +463,106 @@ impl WgpuGlyphAtlas {
                         }
                     };
 
-                    return Some((width, height, pixel_data, bearing_x, bearing_y, is_color));
+                    sub_glyphs.push((bearing_x, bearing_y, width, height, pixel_data, is_color));
                 }
             }
         }
 
-        None
+        if sub_glyphs.is_empty() {
+            return None;
+        }
+
+        // Single glyph: return directly (common case for single chars and
+        // composed emoji that the font renders as a single glyph)
+        if sub_glyphs.len() == 1 {
+            let (bx, by, w, h, data, is_color) = sub_glyphs.into_iter().next().unwrap();
+            return Some((w, h, data, bx, by, is_color));
+        }
+
+        // Multiple sub-glyphs: composite into a single RGBA texture.
+        // Find bounding box of all sub-glyphs.
+        let mut min_x = f32::MAX;
+        let mut max_x = f32::MIN;
+        let mut min_y = f32::MAX;
+        let mut max_y = f32::MIN;
+        let mut any_color = false;
+
+        for (bx, by, w, h, _, is_color) in &sub_glyphs {
+            min_x = min_x.min(*bx);
+            max_x = max_x.max(*bx + *w as f32);
+            min_y = min_y.min(-*by);  // bearing_y is distance from baseline (positive = up)
+            max_y = max_y.max(-*by + *h as f32);
+            if *is_color { any_color = true; }
+        }
+
+        let total_w = (max_x - min_x).ceil() as u32;
+        let total_h = (max_y - min_y).ceil() as u32;
+
+        if total_w == 0 || total_h == 0 {
+            return None;
+        }
+
+        // Composite all sub-glyphs into a single RGBA buffer
+        let bpp = 4u32; // always RGBA for composited result
+        let mut composite = vec![0u8; (total_w * total_h * bpp) as usize];
+
+        for (bx, by, w, h, data, is_color) in &sub_glyphs {
+            let ox = (*bx - min_x).round() as i32;
+            let oy = (-*by - min_y).round() as i32;
+
+            for py in 0..*h {
+                for px in 0..*w {
+                    let dx = ox + px as i32;
+                    let dy = oy + py as i32;
+                    if dx < 0 || dy < 0 || dx >= total_w as i32 || dy >= total_h as i32 {
+                        continue;
+                    }
+                    let dst_idx = ((dy as u32 * total_w + dx as u32) * bpp) as usize;
+                    if *is_color {
+                        // RGBA source
+                        let src_idx = ((py * *w + px) * 4) as usize;
+                        if src_idx + 3 < data.len() {
+                            let sa = data[src_idx + 3] as u32;
+                            if sa > 0 {
+                                // Alpha composite (premultiplied)
+                                let da = composite[dst_idx + 3] as u32;
+                                let inv_sa = 255 - sa;
+                                composite[dst_idx] = ((data[src_idx] as u32 * sa + composite[dst_idx] as u32 * inv_sa) / 255) as u8;
+                                composite[dst_idx + 1] = ((data[src_idx + 1] as u32 * sa + composite[dst_idx + 1] as u32 * inv_sa) / 255) as u8;
+                                composite[dst_idx + 2] = ((data[src_idx + 2] as u32 * sa + composite[dst_idx + 2] as u32 * inv_sa) / 255) as u8;
+                                composite[dst_idx + 3] = (sa + da * inv_sa / 255) as u8;
+                            }
+                        }
+                    } else {
+                        // Alpha mask source — treat as white text with alpha
+                        let src_idx = (py * *w + px) as usize;
+                        if src_idx < data.len() {
+                            let sa = data[src_idx] as u32;
+                            if sa > 0 {
+                                let da = composite[dst_idx + 3] as u32;
+                                let inv_sa = 255 - sa;
+                                composite[dst_idx] = ((255 * sa + composite[dst_idx] as u32 * inv_sa) / 255) as u8;
+                                composite[dst_idx + 1] = ((255 * sa + composite[dst_idx + 1] as u32 * inv_sa) / 255) as u8;
+                                composite[dst_idx + 2] = ((255 * sa + composite[dst_idx + 2] as u32 * inv_sa) / 255) as u8;
+                                composite[dst_idx + 3] = (sa + da * inv_sa / 255) as u8;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // For composited result with mixed content, always use color (RGBA)
+        Some((total_w, total_h, composite, min_x, -min_y, any_color || sub_glyphs.len() > 1))
+    }
+
+    /// Rasterize a single glyph and return pixel data (convenience wrapper)
+    fn rasterize_glyph(
+        &mut self,
+        c: char,
+        face: Option<&Face>,
+    ) -> Option<(u32, u32, Vec<u8>, f32, f32, bool)> {
+        self.rasterize_text(&c.to_string(), face)
     }
 
     /// Convert Face to cosmic-text Attrs
@@ -417,6 +615,7 @@ impl WgpuGlyphAtlas {
     /// Clear the cache
     pub fn clear(&mut self) {
         self.cache.clear();
+        self.composed_cache.clear();
     }
 
     /// Update the scale factor and clear the cache so glyphs are
@@ -425,18 +624,19 @@ impl WgpuGlyphAtlas {
         if (self.scale_factor - scale_factor).abs() > 0.001 {
             self.scale_factor = scale_factor;
             self.cache.clear();
+            self.composed_cache.clear();
             log::info!("Glyph atlas: scale factor -> {}, cache cleared", scale_factor);
         }
     }
 
     /// Get the number of cached glyphs
     pub fn len(&self) -> usize {
-        self.cache.len()
+        self.cache.len() + self.composed_cache.len()
     }
 
     /// Check if the cache is empty
     pub fn is_empty(&self) -> bool {
-        self.cache.is_empty()
+        self.cache.is_empty() && self.composed_cache.is_empty()
     }
 
     /// Get the default font size
@@ -463,7 +663,13 @@ impl WgpuGlyphAtlas {
 
     /// Advance the frame generation counter.
     /// Call once per frame before rendering.
+    /// Also evicts stale composed glyphs (not accessed for 60+ frames).
     pub fn advance_generation(&mut self) {
         self.generation = self.generation.wrapping_add(1);
+        // Evict stale composed glyphs (they're less likely to be reused)
+        if self.composed_cache.len() > 256 {
+            let cutoff = self.generation.saturating_sub(60);
+            self.composed_cache.retain(|_, v| v.last_accessed >= cutoff);
+        }
     }
 }

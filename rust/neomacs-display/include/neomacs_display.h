@@ -612,6 +612,14 @@ typedef struct DisplayPropFFI {
    * Font height multiplier (type=5,8): 0.0=default, >0=scale factor
    */
   float heightFactor;
+  /**
+   * Video ID (type=9)
+   */
+  uint32_t videoId;
+  /**
+   * WebKit view ID (type=10)
+   */
+  uint32_t webkitId;
 } DisplayPropFFI;
 
 #define VA_STATUS_SUCCESS 0
