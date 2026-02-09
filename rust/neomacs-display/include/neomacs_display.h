@@ -1503,6 +1503,14 @@ void neomacs_display_set_modified_indicator(struct NeomacsDisplay *handle,
                                             int opacity);
 
 /**
+ * Configure inactive window stained glass effect
+ */
+void neomacs_display_set_stained_glass(struct NeomacsDisplay *handle,
+                                       int enabled,
+                                       int opacity,
+                                       int saturation);
+
+/**
  * Configure cursor particle trail effect
  */
 void neomacs_display_set_cursor_particles(struct NeomacsDisplay *handle,

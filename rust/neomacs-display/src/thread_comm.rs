@@ -632,6 +632,14 @@ pub enum RenderCommand {
         /// Opacity (0.0-1.0)
         opacity: f32,
     },
+    /// Configure inactive window stained glass effect
+    SetStainedGlass {
+        enabled: bool,
+        /// Tint opacity (0.0-1.0)
+        opacity: f32,
+        /// Saturation of the generated color (0.0-1.0)
+        saturation: f32,
+    },
     /// Configure cursor particle trail effect
     SetCursorParticles {
         enabled: bool,

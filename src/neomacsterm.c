@@ -9146,6 +9146,29 @@ OPACITY is a percentage 0-100 (default 80).  */)
   return on ? Qt : Qnil;
 }
 
+DEFUN ("neomacs-set-stained-glass",
+       Fneomacs_set_stained_glass,
+       Sneomacs_set_stained_glass, 0, 3, 0,
+       doc: /* Configure inactive window stained glass effect.
+ENABLED non-nil tints inactive windows with a unique color derived
+from each buffer's identity, creating a stained-glass look.
+OPACITY is a percentage 0-100 (default 8).
+SATURATION is a percentage 0-100 controlling color intensity (default 60).  */)
+  (Lisp_Object enabled, Lisp_Object opacity, Lisp_Object saturation)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+
+  int on = !NILP (enabled);
+  int op = 8, sat = 60;
+  if (FIXNUMP (opacity)) op = XFIXNUM (opacity);
+  if (FIXNUMP (saturation)) sat = XFIXNUM (saturation);
+
+  neomacs_display_set_stained_glass (dpyinfo->display_handle, on, op, sat);
+  return on ? Qt : Qnil;
+}
+
 DEFUN ("neomacs-set-cursor-particles",
        Fneomacs_set_cursor_particles,
        Sneomacs_set_cursor_particles, 0, 5, 0,
@@ -10921,6 +10944,7 @@ syms_of_neomacsterm (void)
   defsubr (&Sneomacs_set_typing_heatmap);
   defsubr (&Sneomacs_set_window_border_radius);
   defsubr (&Sneomacs_set_cursor_particles);
+  defsubr (&Sneomacs_set_stained_glass);
   defsubr (&Sneomacs_set_region_glow);
   defsubr (&Sneomacs_set_window_glow);
   defsubr (&Sneomacs_set_scroll_progress);

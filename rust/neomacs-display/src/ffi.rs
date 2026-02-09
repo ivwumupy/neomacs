@@ -3055,6 +3055,24 @@ pub unsafe extern "C" fn neomacs_display_set_modified_indicator(
     }
 }
 
+/// Configure inactive window stained glass effect
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_stained_glass(
+    _handle: *mut NeomacsDisplay,
+    enabled: c_int,
+    opacity: c_int,
+    saturation: c_int,
+) {
+    let cmd = RenderCommand::SetStainedGlass {
+        enabled: enabled != 0,
+        opacity: opacity as f32 / 100.0,
+        saturation: saturation as f32 / 100.0,
+    };
+    if let Some(ref state) = THREADED_STATE {
+        let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+    }
+}
+
 /// Configure cursor particle trail effect
 #[no_mangle]
 pub unsafe extern "C" fn neomacs_display_set_cursor_particles(

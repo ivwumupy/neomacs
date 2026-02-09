@@ -788,6 +788,10 @@ struct RenderApp {
     modified_indicator_color: (f32, f32, f32),
     modified_indicator_width: f32,
     modified_indicator_opacity: f32,
+    /// Inactive window stained glass effect
+    stained_glass_enabled: bool,
+    stained_glass_opacity: f32,
+    stained_glass_saturation: f32,
     /// Cursor particle trail effect
     cursor_particles_enabled: bool,
     cursor_particles_color: (f32, f32, f32),
@@ -1157,6 +1161,9 @@ impl RenderApp {
             modified_indicator_color: (1.0, 0.6, 0.2),
             modified_indicator_width: 3.0,
             modified_indicator_opacity: 0.8,
+            stained_glass_enabled: false,
+            stained_glass_opacity: 0.08,
+            stained_glass_saturation: 0.6,
             cursor_particles_enabled: false,
             cursor_particles_color: (1.0, 0.6, 0.2),
             cursor_particles_count: 6,
@@ -2320,6 +2327,15 @@ impl RenderApp {
                     self.modified_indicator_opacity = opacity;
                     if let Some(renderer) = self.renderer.as_mut() {
                         renderer.set_modified_indicator(enabled, (r, g, b), width, opacity);
+                    }
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetStainedGlass { enabled, opacity, saturation } => {
+                    self.stained_glass_enabled = enabled;
+                    self.stained_glass_opacity = opacity;
+                    self.stained_glass_saturation = saturation;
+                    if let Some(renderer) = self.renderer.as_mut() {
+                        renderer.set_stained_glass(enabled, opacity, saturation);
                     }
                     self.frame_dirty = true;
                 }

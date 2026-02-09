@@ -279,6 +279,10 @@ pub struct WgpuRenderer {
     cursor_crosshair_enabled: bool,
     cursor_crosshair_color: (f32, f32, f32),
     cursor_crosshair_opacity: f32,
+    /// Inactive window stained glass effect
+    stained_glass_enabled: bool,
+    stained_glass_opacity: f32,
+    stained_glass_saturation: f32,
     /// Cursor particle trail effect
     cursor_particles_enabled: bool,
     cursor_particles_color: (f32, f32, f32),
@@ -1071,6 +1075,9 @@ impl WgpuRenderer {
             cursor_crosshair_enabled: false,
             cursor_crosshair_color: (0.5, 0.5, 0.5),
             cursor_crosshair_opacity: 0.15,
+            stained_glass_enabled: false,
+            stained_glass_opacity: 0.08,
+            stained_glass_saturation: 0.6,
             cursor_particles_enabled: false,
             cursor_particles_color: (1.0, 0.6, 0.2),
             cursor_particles_count: 6,
@@ -1390,6 +1397,13 @@ impl WgpuRenderer {
         self.cursor_crosshair_enabled = enabled;
         self.cursor_crosshair_color = color;
         self.cursor_crosshair_opacity = opacity;
+    }
+
+    /// Update stained glass config
+    pub fn set_stained_glass(&mut self, enabled: bool, opacity: f32, saturation: f32) {
+        self.stained_glass_enabled = enabled;
+        self.stained_glass_opacity = opacity;
+        self.stained_glass_saturation = saturation;
     }
 
     /// Update cursor particle trail config
@@ -3692,7 +3706,54 @@ impl WgpuRenderer {
                 }
             }
 
-            // === Step 1h: Cursor particle trail effect ===
+            // === Step 1h: Inactive window stained glass effect ===
+            if self.stained_glass_enabled {
+                let sg_opacity = self.stained_glass_opacity;
+                let sg_sat = self.stained_glass_saturation;
+                let mut sg_verts: Vec<RectVertex> = Vec::new();
+                for win_info in &frame_glyphs.window_infos {
+                    if !win_info.selected && !win_info.is_minibuffer {
+                        let wb = &win_info.bounds;
+                        let mode_h = win_info.mode_line_height;
+                        let content_h = wb.height - mode_h;
+                        if content_h > 0.0 {
+                            // Derive hue from buffer_id hash
+                            let hash = (win_info.buffer_id as u64).wrapping_mul(2654435761) >> 16;
+                            let hue = (hash % 360) as f32;
+                            // HSL to RGB (simplified, lightness=0.5)
+                            let c = sg_sat;
+                            let h_prime = hue / 60.0;
+                            let x = c * (1.0 - (h_prime % 2.0 - 1.0).abs());
+                            let (r1, g1, b1) = match h_prime as u32 {
+                                0 => (c, x, 0.0),
+                                1 => (x, c, 0.0),
+                                2 => (0.0, c, x),
+                                3 => (0.0, x, c),
+                                4 => (x, 0.0, c),
+                                _ => (c, 0.0, x),
+                            };
+                            let m = 0.5 - c / 2.0;
+                            let color = Color::new(r1 + m, g1 + m, b1 + m, sg_opacity);
+                            self.add_rect(&mut sg_verts, wb.x, wb.y, wb.width, content_h, &color);
+                        }
+                    }
+                }
+                if !sg_verts.is_empty() {
+                    let sg_buf = self.device.create_buffer_init(
+                        &wgpu::util::BufferInitDescriptor {
+                            label: Some("Stained Glass Buffer"),
+                            contents: bytemuck::cast_slice(&sg_verts),
+                            usage: wgpu::BufferUsages::VERTEX,
+                        },
+                    );
+                    render_pass.set_pipeline(&self.rect_pipeline);
+                    render_pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    render_pass.set_vertex_buffer(0, sg_buf.slice(..));
+                    render_pass.draw(0..sg_verts.len() as u32, 0..1);
+                }
+            }
+
+            // === Step 1i: Cursor particle trail effect ===
             if self.cursor_particles_enabled {
                 let now = std::time::Instant::now();
                 let lifetime = std::time::Duration::from_millis(self.cursor_particles_lifetime_ms as u64);

@@ -2240,6 +2240,52 @@ whose buffers have unsaved modifications."
                 neomacs-modified-indicator-width nil)
             val))))
 
+;; --- Inactive window stained glass effect ---
+(declare-function neomacs-set-stained-glass "neomacsterm.c"
+  (&optional enabled opacity saturation))
+
+(defcustom neomacs-stained-glass nil
+  "Enable inactive window stained glass effect.
+Non-nil tints inactive windows with a unique color derived from each
+buffer's identity, creating a stained-glass appearance."
+  :type 'boolean
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (fboundp 'neomacs-set-stained-glass)
+           (neomacs-set-stained-glass val
+            (if (boundp 'neomacs-stained-glass-opacity)
+                neomacs-stained-glass-opacity nil)
+            (if (boundp 'neomacs-stained-glass-saturation)
+                neomacs-stained-glass-saturation nil)))))
+
+(defcustom neomacs-stained-glass-opacity 8
+  "Stained glass tint opacity (0-100)."
+  :type '(integer :tag "Opacity (%)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-stained-glass)
+                    (boundp 'neomacs-stained-glass)
+                    neomacs-stained-glass)
+           (neomacs-set-stained-glass t val
+            (if (boundp 'neomacs-stained-glass-saturation)
+                neomacs-stained-glass-saturation nil)))))
+
+(defcustom neomacs-stained-glass-saturation 60
+  "Stained glass color saturation (0-100)."
+  :type '(integer :tag "Saturation (%)")
+  :group 'frames
+  :set (lambda (sym val)
+         (set-default sym val)
+         (when (and (fboundp 'neomacs-set-stained-glass)
+                    (boundp 'neomacs-stained-glass)
+                    neomacs-stained-glass)
+           (neomacs-set-stained-glass t
+            (if (boundp 'neomacs-stained-glass-opacity)
+                neomacs-stained-glass-opacity nil)
+            val))))
+
 ;; --- Cursor particle trail effect ---
 (declare-function neomacs-set-cursor-particles "neomacsterm.c"
   (&optional enabled color count lifetime-ms gravity))
