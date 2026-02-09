@@ -122,7 +122,7 @@ static bool neomacs_bitmap_icon (struct frame *f, Lisp_Object file);
 static uint32_t neomacs_get_or_load_image (struct neomacs_display_info *dpyinfo,
                                            struct image *img);
 
-/* Event queue for buffering input events from GTK callbacks */
+/* Event queue for buffering input events from render thread callbacks */
 struct neomacs_event_queue_t
 {
   union buffered_input_event *q;
@@ -131,7 +131,7 @@ struct neomacs_event_queue_t
 
 static struct neomacs_event_queue_t neomacs_event_q;
 
-/* Enqueue an event from GTK callback to be processed by read_socket */
+/* Enqueue an event from render thread callback to be processed by read_socket */
 void
 neomacs_evq_enqueue (union buffered_input_event *ev)
 {
@@ -6931,7 +6931,7 @@ DEFUN ("xw-display-color-p", Fxw_display_color_p, Sxw_display_color_p, 0, 1, 0,
        doc: /* Return t if the display supports color.  */)
   (Lisp_Object terminal)
 {
-  /* Neomacs always supports full color via GTK4 */
+  /* Neomacs always supports full color via wgpu */
   return Qt;
 }
 
