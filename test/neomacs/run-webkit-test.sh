@@ -4,7 +4,7 @@
 # This tests that WPE WebKit views render inline in Emacs buffers
 # using GPU acceleration.
 #
-# Usage: ./test/manual/run-webkit-test.sh
+# Usage: ./test/neomacs/run-webkit-test.sh
 
 set -e
 
@@ -41,4 +41,4 @@ if ! command -v xdg-dbus-proxy &> /dev/null; then
 fi
 
 # Run the test
-exec ./src/emacs -Q -l test/manual/neomacs-webkit-test.el "$@"
+exec ./src/emacs -Q -l test/neomacs/neomacs-webkit-test.el "$@"

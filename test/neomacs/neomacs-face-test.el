@@ -1,7 +1,7 @@
 ;;; neomacs-face-test.el --- Comprehensive face attribute rendering test -*- lexical-binding: t -*-
 
 ;; Test ALL Emacs face attributes to verify neomacs GPU renderer handles them.
-;; Usage: emacs -Q -l test/manual/neomacs-face-test.el
+;; Usage: emacs -Q -l test/neomacs/neomacs-face-test.el
 
 ;;; Commentary:
 

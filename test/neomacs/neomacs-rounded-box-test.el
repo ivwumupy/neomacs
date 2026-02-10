@@ -1,7 +1,7 @@
 ;;; neomacs-rounded-box-test.el --- Test rounded corner box rendering -*- lexical-binding: t -*-
 
 ;; Test the :corner-radius box attribute for neomacs GPU renderer.
-;; Usage: ./src/emacs -Q -l test/manual/neomacs-rounded-box-test.el
+;; Usage: ./src/emacs -Q -l test/neomacs/neomacs-rounded-box-test.el
 
 ;;; Commentary:
 

@@ -4,8 +4,8 @@
 ;; using WPE WebKit with GPU acceleration.
 
 ;;; Commentary:
-;; Run with: ./test/manual/run-webkit-test.sh
-;; Or manually: DISPLAY=:0 ./src/emacs -Q -l test/manual/neomacs-webkit-test.el
+;; Run with: ./test/neomacs/run-webkit-test.sh
+;; Or manually: DISPLAY=:0 ./src/emacs -Q -l test/neomacs/neomacs-webkit-test.el
 ;;
 ;; Neomacs renders WebKit views inline in buffers (not as floating overlays).
 ;; This follows the standard Emacs xwidget pattern:

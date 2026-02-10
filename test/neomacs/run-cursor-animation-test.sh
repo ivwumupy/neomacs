@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Test cursor animation, buffer crossfade, and scroll slide using xdotool
-# Usage: ./test/manual/run-cursor-animation-test.sh
+# Usage: ./test/neomacs/run-cursor-animation-test.sh
 #
 # What this tests:
 # 1. Smooth cursor: moves cursor with arrow keys — cursor should glide
@@ -17,7 +17,7 @@ echo "=== Cursor Animation Test ==="
 echo "Starting Emacs..."
 
 RUST_LOG=neomacs_display=debug DISPLAY=:0 ./src/emacs -Q \
-    -l test/manual/cursor-animation-test.el 2>"$LOG" &
+    -l test/neomacs/cursor-animation-test.el 2>"$LOG" &
 EMACS_PID=$!
 
 echo "Emacs PID: $EMACS_PID"
