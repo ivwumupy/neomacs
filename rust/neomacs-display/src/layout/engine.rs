@@ -258,7 +258,7 @@ impl LayoutEngine {
                           frame_glyphs: &mut FrameGlyphBuffer) {
         let fg = Color::from_pixel(face.fg);
         let bg = Color::from_pixel(face.bg);
-        let bold = face.font_weight >= 700;
+        let font_weight = face.font_weight as u16;
         let italic = face.italic != 0;
 
         // Get font family string from C pointer
@@ -291,7 +291,7 @@ impl LayoutEngine {
             fg,
             Some(bg),
             font_family,
-            bold,
+            font_weight,
             italic,
             face.font_size as f32,
             face.underline_style as u8,
@@ -485,7 +485,7 @@ impl LayoutEngine {
             0, // DEFAULT_FACE_ID
             default_fg,
             Some(default_bg),
-            false, false,
+            400, false,
             0, None, 0, None, 0, None,
         );
 
@@ -1071,7 +1071,7 @@ impl LayoutEngine {
                             let dbg = Color::from_pixel(display_prop.display_bg);
                             frame_glyphs.set_face(
                                 0, dfg, Some(dbg),
-                                false, false, 0, None, 0, None, 0, None,
+                                400, false, 0, None, 0, None, 0, None,
                             );
                         }
                     }
@@ -1095,7 +1095,7 @@ impl LayoutEngine {
                                     let rbg = Color::from_pixel(run.bg);
                                     frame_glyphs.set_face(
                                         0, rfg, Some(rbg),
-                                        false, false, 0, None, 0, None, 0, None,
+                                        400, false, 0, None, 0, None, 0, None,
                                     );
                                 }
                                 if dcurrent_run + 1 < dface_runs.len()
@@ -1797,7 +1797,7 @@ impl LayoutEngine {
                     let escape_fg = Color::from_pixel(params.escape_glyph_fg);
                     frame_glyphs.set_face(
                         0, escape_fg, Some(face_bg),
-                        false, false, 0, None, 0, None, 0, None,
+                        400, false, 0, None, 0, None, 0, None,
                     );
 
                     let gx = content_x + x_offset;
@@ -1852,7 +1852,7 @@ impl LayoutEngine {
                         let nb_fg = Color::from_pixel(params.nobreak_char_fg);
                         frame_glyphs.set_face(
                             0, nb_fg, Some(face_bg),
-                            false, false, 0, None, 0, None, 0, None,
+                            400, false, 0, None, 0, None, 0, None,
                         );
                         let gx = content_x + x_offset;
                         let gy = row_y[row as usize];
@@ -1967,7 +1967,7 @@ impl LayoutEngine {
                             let glyph_fg = Color::from_pixel(params.glyphless_char_fg);
                             frame_glyphs.set_face(
                                 0, glyph_fg, Some(face_bg),
-                                false, false, 0, None, 0, None, 0, None,
+                                400, false, 0, None, 0, None, 0, None,
                             );
                             let gx = content_x + x_offset;
                             let gy = row_y[row as usize];
@@ -2651,7 +2651,7 @@ impl LayoutEngine {
             // Use default face for fringe rendering
             frame_glyphs.set_face(
                 0, default_fg, Some(default_bg),
-                false, false, 0, None, 0, None, 0, None,
+                400, false, 0, None, 0, None, 0, None,
             );
 
             for r in 0..actual_rows as usize {
@@ -2752,7 +2752,7 @@ impl LayoutEngine {
 
             frame_glyphs.set_face(
                 0, fci_fg, Some(default_bg),
-                false, false, 0, None, 0, None, 0, None,
+                400, false, 0, None, 0, None, 0, None,
             );
 
             // Draw indicator character at the fill column on each row

@@ -353,7 +353,7 @@ pub unsafe extern "C" fn neomacs_display_set_face(
             fg,
             bg_opt,
             &font_family_str,
-            font_weight >= 700,
+            font_weight,
             is_italic != 0,
             if font_size > 0 { font_size as f32 } else { 14.0 },
             underline_style as u8,

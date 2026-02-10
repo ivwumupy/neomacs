@@ -1728,7 +1728,7 @@ impl RenderApp {
                     width: cell_w, height: cell_h,
                     ascent, fg,
                     bg: None, face_id: 0,
-                    bold: cell.flags.contains(CellFlags::BOLD),
+                    font_weight: if cell.flags.contains(CellFlags::BOLD) { 700 } else { 400 },
                     italic: cell.flags.contains(CellFlags::ITALIC),
                     font_size,
                     underline: if cell.flags.contains(CellFlags::UNDERLINE) { 1 } else { 0 },
@@ -1874,17 +1874,16 @@ impl RenderApp {
             // be reused by Emacs for different realized faces across frames.
             for glyph in &frame.glyphs {
                 if let crate::core::frame_glyphs::FrameGlyph::Char {
-                    face_id, bold, italic, font_size, ..
+                    face_id, font_weight, italic, font_size, ..
                 } = glyph {
                     let face = self.faces.entry(*face_id).or_insert_with(|| {
                         crate::core::face::Face::new(*face_id)
                     });
                     face.font_size = *font_size;
-                    if *bold {
-                        face.font_weight = 700;
+                    face.font_weight = *font_weight;
+                    if *font_weight >= 700 {
                         face.attributes |= crate::core::face::FaceAttributes::BOLD;
                     } else {
-                        face.font_weight = 400;
                         face.attributes.remove(crate::core::face::FaceAttributes::BOLD);
                     }
                     if *italic {

@@ -59,7 +59,7 @@ pub(crate) fn apply_overlay_face_run(
         if run.fg != 0 || run.bg != 0 {
             let rfg = Color::from_pixel(run.fg);
             let rbg = Color::from_pixel(run.bg);
-            frame_glyphs.set_face(0, rfg, Some(rbg), false, false, 0, None, 0, None, 0, None);
+            frame_glyphs.set_face(0, rfg, Some(rbg), 400, false, 0, None, 0, None, 0, None);
         }
         // Pre-advance if next run starts at next byte
         if cr + 1 < runs.len() && byte_idx + 1 >= runs[cr + 1].byte_offset as usize {
@@ -196,7 +196,7 @@ impl LayoutEngine {
                         let run_bg = Color::from_pixel(run.bg);
                         frame_glyphs.set_face(
                             line_face.face_id, run_fg, Some(run_bg),
-                            false, false, 0, None, 0, None, 0, None,
+                            400, false, 0, None, 0, None, 0, None,
                         );
                     }
                 }
@@ -217,7 +217,7 @@ impl LayoutEngine {
         // Restore default mode-line face
         frame_glyphs.set_face(
             line_face.face_id, default_fg, Some(bg),
-            false, false, 0, None, 0, None, 0, None,
+            400, false, 0, None, 0, None, 0, None,
         );
 
         // Fill remaining with background

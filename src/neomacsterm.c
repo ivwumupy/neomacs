@@ -864,7 +864,7 @@ neomacs_send_face (void *handle, struct frame *f, struct face *face)
   if (!NILP (weight_attr) && SYMBOLP (weight_attr))
     {
       int w = FONT_WEIGHT_NAME_NUMERIC (weight_attr);
-      if (w > 0) font_weight = emacs_weight_to_css (w);
+      if (w >= 0) font_weight = emacs_weight_to_css (w);
     }
 
   int is_italic = 0;
@@ -2341,7 +2341,7 @@ fill_face_data (struct frame *f, struct face *face, struct FaceDataFFI *out)
   if (!NILP (weight_attr) && SYMBOLP (weight_attr))
     {
       int w = FONT_WEIGHT_NAME_NUMERIC (weight_attr);
-      if (w > 0) out->font_weight = emacs_weight_to_css (w);
+      if (w >= 0) out->font_weight = emacs_weight_to_css (w);
     }
 
   /* Italic */
@@ -2696,7 +2696,18 @@ neomacs_layout_mode_line_text (void *window_ptr, void *frame_ptr,
                       fg = ((RED_FROM_ULONG (c) << 16)
                             | (GREEN_FROM_ULONG (c) << 8)
                             | BLUE_FROM_ULONG (c));
+                      /* If sub-face has defaulted background (inherits from
+                         frame default rather than mode-line), substitute the
+                         base mode-line face's background so it matches the
+                         mode-line area instead of being white. */
                       c = rf->background;
+                      if (rf->background_defaulted_p)
+                        {
+                          struct face *base_ml
+                            = FACE_FROM_ID_OR_NULL (f, face_id);
+                          if (base_ml)
+                            c = base_ml->background;
+                        }
                       bg = ((RED_FROM_ULONG (c) << 16)
                             | (GREEN_FROM_ULONG (c) << 8)
                             | BLUE_FROM_ULONG (c));
@@ -6137,7 +6148,7 @@ neomacs_draw_glyph_string (struct glyph_string *s)
               if (!NILP (weight_attr) && SYMBOLP (weight_attr))
                 {
                   int weight_numeric = FONT_WEIGHT_NAME_NUMERIC (weight_attr);
-                  if (weight_numeric > 0)
+                  if (weight_numeric >= 0)
                     font_weight = emacs_weight_to_css (weight_numeric);
                 }
 

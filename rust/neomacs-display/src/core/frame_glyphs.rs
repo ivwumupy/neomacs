@@ -34,8 +34,8 @@ pub enum FrameGlyph {
         bg: Option<Color>,
         /// Face ID for font lookup
         face_id: u32,
-        /// Bold flag
-        bold: bool,
+        /// Font weight (CSS scale: 100=thin, 400=normal, 700=bold, 900=black)
+        font_weight: u16,
         /// Italic flag
         italic: bool,
         /// Font size in pixels
@@ -277,7 +277,7 @@ pub struct FrameGlyphBuffer {
     current_fg: Color,
     current_bg: Option<Color>,
     current_font_family: String,
-    current_bold: bool,
+    current_font_weight: u16,
     current_italic: bool,
     current_font_size: f32,
     current_underline: u8,
@@ -321,7 +321,7 @@ impl FrameGlyphBuffer {
             current_fg: Color::WHITE,
             current_bg: None,
             current_font_family: "monospace".to_string(),
-            current_bold: false,
+            current_font_weight: 400,
             current_italic: false,
             current_font_size: 14.0,
             current_underline: 0,
@@ -388,7 +388,7 @@ impl FrameGlyphBuffer {
 
     /// Set current face attributes for subsequent char glyphs (with font family)
     pub fn set_face_with_font(&mut self, face_id: u32, fg: Color, bg: Option<Color>,
-                    font_family: &str, bold: bool, italic: bool, font_size: f32,
+                    font_family: &str, font_weight: u16, italic: bool, font_size: f32,
                     underline: u8, underline_color: Option<Color>,
                     strike_through: u8, strike_through_color: Option<Color>,
                     overline: u8, overline_color: Option<Color>) {
@@ -396,7 +396,7 @@ impl FrameGlyphBuffer {
         self.current_fg = fg;
         self.current_bg = bg;
         self.current_font_family = font_family.to_string();
-        self.current_bold = bold;
+        self.current_font_weight = font_weight;
         self.current_italic = italic;
         self.current_font_size = font_size;
         self.current_underline = underline;
@@ -410,13 +410,13 @@ impl FrameGlyphBuffer {
 
     /// Set current face attributes for subsequent char glyphs
     pub fn set_face(&mut self, face_id: u32, fg: Color, bg: Option<Color>,
-                    bold: bool, italic: bool, underline: u8, underline_color: Option<Color>,
+                    font_weight: u16, italic: bool, underline: u8, underline_color: Option<Color>,
                     strike_through: u8, strike_through_color: Option<Color>,
                     overline: u8, overline_color: Option<Color>) {
         self.current_face_id = face_id;
         self.current_fg = fg;
         self.current_bg = bg;
-        self.current_bold = bold;
+        self.current_font_weight = font_weight;
         self.current_italic = italic;
         self.current_underline = underline;
         self.current_underline_color = underline_color;
@@ -464,7 +464,7 @@ impl FrameGlyphBuffer {
             fg: self.current_fg,
             bg: self.current_bg,
             face_id: self.current_face_id,
-            bold: self.current_bold,
+            font_weight: self.current_font_weight,
             italic: self.current_italic,
             font_size: self.current_font_size,
             underline: self.current_underline,
@@ -491,7 +491,7 @@ impl FrameGlyphBuffer {
             fg: self.current_fg,
             bg: self.current_bg,
             face_id: self.current_face_id,
-            bold: self.current_bold,
+            font_weight: self.current_font_weight,
             italic: self.current_italic,
             font_size: self.current_font_size,
             underline: self.current_underline,
