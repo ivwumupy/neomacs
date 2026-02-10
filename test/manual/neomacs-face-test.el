@@ -98,6 +98,10 @@
   '((t :height 2.0))
   "Huge text (200%).")
 
+(defface neomacs-test-very-huge
+  '((t :height 3.0))
+  "Very huge text (300%).")
+
 ;; --- Font family ---
 (defface neomacs-test-serif
   '((t :family "Serif"))
@@ -326,6 +330,7 @@
     (insert "The quick brown fox jumps over the lazy dog\n")
     (neomacs-face-test--insert-sample "Large (150%):" 'neomacs-test-large)
     (neomacs-face-test--insert-sample "Huge (200%):" 'neomacs-test-huge)
+    (neomacs-face-test--insert-sample "Very Huge (300%):" 'neomacs-test-very-huge)
 
     ;; === FONT FAMILY ===
     (neomacs-face-test--insert-section "FONT FAMILY")

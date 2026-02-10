@@ -515,9 +515,11 @@ impl LayoutEngine {
         let mut byte_idx = 0usize;
         // hscroll state: how many columns to skip on each line
         let mut hscroll_remaining = hscroll;
-        // Track current face's monospace status and space width
+        // Track current face's monospace status, space width, and line metrics
         let mut face_is_mono = true;
         let mut face_space_w = char_w;
+        let mut face_h: f32 = char_h;    // current face's line height
+        let mut face_ascent: f32 = ascent; // current face's font ascent
 
         // Fringe indicator tracking:
         // row_continued[row] = true if row wraps to next line (show \ in right fringe)
@@ -537,6 +539,8 @@ impl LayoutEngine {
             .map(|r| text_y + r as f32 * char_h)
             .collect();
         let mut row_extra_y: f32 = 0.0; // cumulative extra height from previous rows
+        let mut row_max_height: f32 = char_h; // max glyph height on current row
+        let mut row_max_ascent: f32 = ascent; // max ascent on current row
 
         // Trailing whitespace tracking
         let trailing_ws_bg = if params.show_trailing_whitespace {
@@ -1425,6 +1429,18 @@ impl LayoutEngine {
                         } else {
                             char_w
                         };
+                        // Compute per-face line height and ascent.
+                        // Scale proportionally from the window's default font metrics.
+                        if self.face_data.font_ascent > 0.0 && self.face_data.font_size > 0 {
+                            face_ascent = self.face_data.font_ascent;
+                            // Line height = ascent + descent, scaled similarly
+                            // Use ratio of face font_size to window font_pixel_size
+                            let scale = self.face_data.font_size as f32 / params.font_pixel_size;
+                            face_h = char_h * scale;
+                        } else {
+                            face_h = char_h;
+                            face_ascent = ascent;
+                        }
                         self.apply_face(&self.face_data, frame_glyphs);
 
                         // Start new box face region if this face has a box
@@ -1541,6 +1557,18 @@ impl LayoutEngine {
                     col = 0;
                     x_offset = 0.0;
                     row += 1;
+
+                    // Apply extra height from variable-height faces on this row
+                    if row_max_height > char_h {
+                        let extra = row_max_height - char_h;
+                        row_extra_y += extra;
+                        for ri in (row as usize)..row_y.len() {
+                            row_y[ri] = text_y + ri as f32 * char_h + row_extra_y;
+                        }
+                    }
+                    // Reset per-row tracking for the new row
+                    row_max_height = char_h;
+                    row_max_ascent = ascent;
 
                     // Check line-height / line-spacing text properties on the newline
                     {
@@ -2001,6 +2029,15 @@ impl LayoutEngine {
                                     col = 0;
                                     x_offset = 0.0;
                                     row += 1;
+                                    // Apply variable-height row adjustment
+                                    if row_max_height > char_h {
+                                        row_extra_y += row_max_height - char_h;
+                                        for ri in (row as usize)..row_y.len() {
+                                            row_y[ri] = text_y + ri as f32 * char_h + row_extra_y;
+                                        }
+                                    }
+                                    row_max_height = char_h;
+                                    row_max_ascent = ascent;
                                     current_line += 1;
                                     need_line_number = lnum_enabled;
                                     need_margin_check = has_margins;
@@ -2035,6 +2072,15 @@ impl LayoutEngine {
                             col = 0;
                             x_offset = 0.0;
                             row += 1;
+                            // Apply variable-height row adjustment
+                            if row_max_height > char_h {
+                                row_extra_y += row_max_height - char_h;
+                                for ri in (row as usize)..row_y.len() {
+                                    row_y[ri] = text_y + ri as f32 * char_h + row_extra_y;
+                                }
+                            }
+                            row_max_height = char_h;
+                            row_max_ascent = ascent;
                             if (row as usize) < row_continuation.len() {
                                 row_continuation[row as usize] = true;
                             }
@@ -2058,6 +2104,15 @@ impl LayoutEngine {
                             col = 0;
                             x_offset = 0.0;
                             row += 1;
+                            // Apply variable-height row adjustment
+                            if row_max_height > char_h {
+                                row_extra_y += row_max_height - char_h;
+                                for ri in (row as usize)..row_y.len() {
+                                    row_y[ri] = text_y + ri as f32 * char_h + row_extra_y;
+                                }
+                            }
+                            row_max_height = char_h;
+                            row_max_ascent = ascent;
                             if (row as usize) < row_continuation.len() {
                                 row_continuation[row as usize] = true;
                             }
@@ -2072,14 +2127,22 @@ impl LayoutEngine {
                     let gx = content_x + x_offset;
                     let gy = row_y[row as usize] + raise_y_offset;
 
+                    // Track per-row max height for variable-height faces
+                    if face_h > row_max_height {
+                        row_max_height = face_h;
+                    }
+                    if face_ascent > row_max_ascent {
+                        row_max_ascent = face_ascent;
+                    }
+
                     // Apply height scaling if active
                     if height_scale > 0.0 && height_scale != 1.0 {
                         let orig_size = frame_glyphs.font_size();
                         frame_glyphs.set_font_size(orig_size * height_scale);
-                        frame_glyphs.add_char(ch, gx, gy, advance, char_h, ascent, false);
+                        frame_glyphs.add_char(ch, gx, gy, advance, face_h, face_ascent, false);
                         frame_glyphs.set_font_size(orig_size);
                     } else {
-                        frame_glyphs.add_char(ch, gx, gy, advance, char_h, ascent, false);
+                        frame_glyphs.add_char(ch, gx, gy, advance, face_h, face_ascent, false);
                     }
                     col += char_cols;
                     x_offset += advance;
@@ -2834,11 +2897,13 @@ unsafe fn char_advance(
     face_char_w: f32,
     window: EmacsWindow,
 ) -> f32 {
-    if is_mono {
-        return char_cols as f32 * char_w;
-    }
-
+    // Use the face-specific character width when available (handles
+    // faces with :height attribute that use a differently-sized font).
     let face_w = if face_char_w > 0.0 { face_char_w } else { char_w };
+
+    if is_mono {
+        return char_cols as f32 * face_w;
+    }
 
     let cp = ch as u32;
     if cp < 128 {
