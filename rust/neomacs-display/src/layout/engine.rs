@@ -1443,6 +1443,16 @@ impl LayoutEngine {
                         }
                         self.apply_face(&self.face_data, frame_glyphs);
 
+                        // Debug: check all face properties
+                        if charpos < params.window_start + 5 {
+                            log::debug!("face: id={} fg=0x{:06X} bg=0x{:06X} underline_style={} underline_color=0x{:06X} strike_through={} strike_color=0x{:06X} overline={} overline_color=0x{:06X} box_type={} box_color=0x{:06X} box_lw={}",
+                                self.face_data.face_id, self.face_data.fg, self.face_data.bg,
+                                self.face_data.underline_style, self.face_data.underline_color,
+                                self.face_data.strike_through, self.face_data.strike_through_color,
+                                self.face_data.overline, self.face_data.overline_color,
+                                self.face_data.box_type, self.face_data.box_color, self.face_data.box_line_width);
+                        }
+
                         // Start new box face region if this face has a box
                         if self.face_data.box_type > 0 {
                             box_active = true;
@@ -1468,10 +1478,16 @@ impl LayoutEngine {
                 let cursor_px = content_x + x_offset;
                 let cursor_y = row_y[row as usize];
 
+                // Use face-specific dimensions so cursor matches variable-height faces
+                let cursor_face_w = if self.face_data.font_char_width > 0.0 {
+                    self.face_data.font_char_width
+                } else {
+                    char_w
+                };
                 let (cursor_w, cursor_h) = match params.cursor_type {
-                    1 => (params.cursor_bar_width.max(1) as f32, char_h), // bar
-                    2 => (char_w, 2.0),                                    // hbar
-                    _ => (char_w, char_h),                                 // box/hollow
+                    1 => (params.cursor_bar_width.max(1) as f32, face_h), // bar
+                    2 => (cursor_face_w, 2.0),                             // hbar
+                    _ => (cursor_face_w, face_h),                          // box/hollow
                 };
 
                 let cursor_style = if params.selected {
@@ -2183,10 +2199,16 @@ impl LayoutEngine {
                 let cursor_px = content_x + x_offset;
                 let cursor_y = row_y[row as usize];
 
+                // Use face-specific dimensions so cursor matches variable-height faces
+                let cursor_face_w = if self.face_data.font_char_width > 0.0 {
+                    self.face_data.font_char_width
+                } else {
+                    char_w
+                };
                 let (cursor_w, cursor_h) = match params.cursor_type {
-                    1 => (params.cursor_bar_width.max(1) as f32, char_h), // bar
-                    2 => (char_w, 2.0),                                    // hbar
-                    _ => (char_w, char_h),                                 // box/hollow
+                    1 => (params.cursor_bar_width.max(1) as f32, face_h), // bar
+                    2 => (cursor_face_w, 2.0),                             // hbar
+                    _ => (cursor_face_w, face_h),                          // box/hollow
                 };
 
                 let cursor_style = if params.selected {
@@ -2306,10 +2328,16 @@ impl LayoutEngine {
             };
 
             if cursor_style < 255 {
+                // Use face-specific dimensions so cursor matches variable-height faces
+                let cursor_face_w = if self.face_data.font_char_width > 0.0 {
+                    self.face_data.font_char_width
+                } else {
+                    char_w
+                };
                 let (cursor_w, cursor_h) = match params.cursor_type {
-                    1 => (params.cursor_bar_width.max(1) as f32, char_h), // bar
-                    2 => (char_w, 2.0),                                    // hbar
-                    _ => (char_w, char_h),                                 // box/hollow
+                    1 => (params.cursor_bar_width.max(1) as f32, face_h), // bar
+                    2 => (cursor_face_w, 2.0),                             // hbar
+                    _ => (cursor_face_w, face_h),                          // box/hollow
                 };
 
                 frame_glyphs.add_cursor(
@@ -2494,23 +2522,40 @@ impl LayoutEngine {
             };
 
             if cursor_style < 255 {
+                // Use face-specific dimensions so cursor matches variable-height faces
+                let cursor_face_w = if self.face_data.font_char_width > 0.0 {
+                    self.face_data.font_char_width
+                } else {
+                    char_w
+                };
+                let (cursor_w, cursor_h) = match params.cursor_type {
+                    1 => (params.cursor_bar_width.max(1) as f32, face_h), // bar
+                    2 => (cursor_face_w, 2.0),                             // hbar
+                    _ => (cursor_face_w, face_h),                          // box/hollow
+                };
                 frame_glyphs.add_cursor(
                     params.window_id as i32,
                     cursor_px,
                     cursor_y,
-                    char_w,
-                    char_h,
+                    cursor_w,
+                    cursor_h,
                     cursor_style,
                     face_fg,
                 );
             }
 
             if cursor_style == 0 {
+                let cursor_face_w = if self.face_data.font_char_width > 0.0 {
+                    self.face_data.font_char_width
+                } else {
+                    char_w
+                };
+                let cursor_h = face_h;
                 frame_glyphs.set_cursor_inverse(
                     cursor_px,
                     cursor_y,
-                    char_w,
-                    char_h,
+                    cursor_face_w,
+                    cursor_h,
                     face_fg,
                     face_bg,
                 );
