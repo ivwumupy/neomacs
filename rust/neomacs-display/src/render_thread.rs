@@ -3013,6 +3013,30 @@ impl RenderApp {
                     face.font_family = font_family.clone();
                 }
             }
+            // Build Face entries from per-glyph data for face_ids not already
+            // in the map. This handles the Rust layout engine path where
+            // frame.faces is empty but per-glyph font_size/bold/italic are set.
+            for glyph in &frame.glyphs {
+                if let crate::core::frame_glyphs::FrameGlyph::Char {
+                    face_id, bold, italic, font_size, ..
+                } = glyph {
+                    if !self.faces.contains_key(face_id) {
+                        let mut face = crate::core::face::Face::new(*face_id);
+                        face.font_size = *font_size;
+                        if *bold {
+                            face.font_weight = 700;
+                            face.attributes |= crate::core::face::FaceAttributes::BOLD;
+                        }
+                        if *italic {
+                            face.attributes |= crate::core::face::FaceAttributes::ITALIC;
+                        }
+                        if let Some(family) = frame.face_fonts.get(face_id) {
+                            face.font_family = family.clone();
+                        }
+                        self.faces.insert(*face_id, face);
+                    }
+                }
+            }
         }
 
         // Apply extra spacing adjustments to glyph positions
