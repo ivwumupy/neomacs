@@ -133,6 +133,11 @@
 #define VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2 1073741824
 
 /**
+ * Type for the resize callback function pointer from C
+ */
+typedef void (*ResizeCallbackFn)(void *user_data, int width, int height);
+
+/**
  * Popup menu item passed from C.
  */
 typedef struct CPopupMenuItem {
@@ -143,11 +148,6 @@ typedef struct CPopupMenuItem {
   int submenu;
   int depth;
 } CPopupMenuItem;
-
-/**
- * Type for the resize callback function pointer from C
- */
-typedef void (*ResizeCallbackFn)(void *user_data, int width, int height);
 
 /**
  * Monitor info struct for C FFI
@@ -452,6 +452,10 @@ typedef struct FaceDataFFI {
    */
   int boxLineWidth;
   /**
+   * Box corner radius (0 = sharp corners)
+   */
+  int boxCornerRadius;
+  /**
    * Extend: face bg extends to end of visual line (0=no, 1=yes)
    */
   int extend;
@@ -618,6 +622,23 @@ typedef struct DisplayPropFFI {
  * The handle must have been returned by neomacs_display_init_threaded.
  */
 void neomacs_display_shutdown(struct NeomacsDisplay *handle);
+
+/**
+ * Get backend name
+ */
+const char *neomacs_display_backend_name(struct NeomacsDisplay *handle);
+
+/**
+ * Check if backend is initialized
+ */
+int neomacs_display_is_initialized(struct NeomacsDisplay *handle);
+
+/**
+ * Set the resize callback for winit windows.
+ *
+ * The callback will be invoked when the window is resized.
+ */
+void neomacs_display_set_resize_callback(ResizeCallbackFn callback, void *userData);
 
 /**
  * Resize the display
@@ -1637,366 +1658,6 @@ void neomacs_display_set_animation_config(struct NeomacsDisplay *handle,
 int neomacs_display_has_animations(struct NeomacsDisplay *handle);
 
 /**
- * Get backend name
- */
-const char *neomacs_display_backend_name(struct NeomacsDisplay *handle);
-
-/**
- * Check if backend is initialized
- */
-int neomacs_display_is_initialized(struct NeomacsDisplay *handle);
-
-/**
- * Set the resize callback for winit windows.
- *
- * The callback will be invoked when the window is resized.
- */
-void neomacs_display_set_resize_callback(ResizeCallbackFn callback, void *userData);
-
-/**
- * Create a new terminal.
- *
- * Returns terminal ID (>0 on success, 0 on failure).
- * `mode`: 0=Window, 1=Inline, 2=Floating
- * `shell`: optional shell path (NULL for default)
- */
-uint32_t neomacs_display_terminal_create(uint16_t cols,
-                                         uint16_t rows,
-                                         uint8_t mode,
-                                         const char *shell);
-
-/**
- * Write input data to a terminal (keyboard input from user).
- */
-void neomacs_display_terminal_write(uint32_t terminalId, const uint8_t *data, uintptr_t len);
-
-/**
- * Resize a terminal.
- */
-void neomacs_display_terminal_resize(uint32_t terminalId, uint16_t cols, uint16_t rows);
-
-/**
- * Destroy a terminal.
- */
-void neomacs_display_terminal_destroy(uint32_t terminalId);
-
-/**
- * Set floating terminal position and opacity.
- */
-void neomacs_display_terminal_set_float(uint32_t terminalId, float x, float y, float opacity);
-
-/**
- * Get visible text from a terminal.
- *
- * Returns a malloc'd C string (caller must free with `free()`).
- * Returns NULL on failure.
- */
-char *neomacs_display_terminal_get_text(uint32_t terminalId);
-
-/**
- * Set callback for WebKit new window/tab requests
- */
-void neomacs_display_webkit_set_new_window_callback(bool (*callback)(uint32_t,
-                                                                     const char*,
-                                                                     const char*));
-
-/**
- * Set callback for WebKit page load events
- */
-void neomacs_display_webkit_set_load_callback(void (*callback)(uint32_t, int, const char*));
-
-/**
- * Initialize WebKit subsystem with EGL display
- */
-int neomacs_display_webkit_init(struct NeomacsDisplay *handle, void *eglDisplay);
-
-/**
- * Create a new WebKit view (threaded mode only)
- */
-uint32_t neomacs_display_webkit_create(struct NeomacsDisplay *handle, int width, int height);
-
-/**
- * Destroy a WebKit view (threaded mode only)
- */
-int neomacs_display_webkit_destroy(struct NeomacsDisplay *handle, uint32_t viewId);
-
-/**
- * Load a URI in a WebKit view (threaded mode only)
- */
-int neomacs_display_webkit_load_uri(struct NeomacsDisplay *handle,
-                                    uint32_t viewId,
-                                    const char *uri);
-
-/**
- * Go back in a WebKit view (threaded mode only)
- */
-int neomacs_display_webkit_go_back(struct NeomacsDisplay *handle, uint32_t viewId);
-
-/**
- * Go forward in a WebKit view (threaded mode only)
- */
-int neomacs_display_webkit_go_forward(struct NeomacsDisplay *handle, uint32_t viewId);
-
-/**
- * Reload a WebKit view (threaded mode only)
- */
-int neomacs_display_webkit_reload(struct NeomacsDisplay *handle, uint32_t viewId);
-
-/**
- * Resize a WebKit view (threaded mode only)
- */
-int neomacs_display_webkit_resize(struct NeomacsDisplay *handle,
-                                  uint32_t viewId,
-                                  int width,
-                                  int height);
-
-/**
- * Execute JavaScript in a WebKit view (threaded mode only)
- */
-int neomacs_display_webkit_execute_js(struct NeomacsDisplay *handle,
-                                      uint32_t viewId,
-                                      const char *script);
-
-/**
- * Set a floating WebKit view position and size
- */
-void neomacs_display_set_floating_webkit(struct NeomacsDisplay *handle,
-                                         uint32_t webkitId,
-                                         int x,
-                                         int y,
-                                         int width,
-                                         int height);
-
-/**
- * Hide a floating WebKit view
- */
-void neomacs_display_hide_floating_webkit(struct NeomacsDisplay *handle, uint32_t webkitId);
-
-/**
- * Find which webkit view (floating or inline) is at the given coordinates
- */
-int neomacs_display_webkit_at_position(struct NeomacsDisplay *handle,
-                                       int x,
-                                       int y,
-                                       uint32_t *outWebkitId,
-                                       int *outRelX,
-                                       int *outRelY);
-
-/**
- * Send keyboard event to WebKit view (threaded mode only)
- */
-void neomacs_display_webkit_send_key(struct NeomacsDisplay *handle,
-                                     uint32_t webkitId,
-                                     uint32_t keyCode,
-                                     uint32_t hardwareKeyCode,
-                                     int pressed,
-                                     uint32_t modifiers);
-
-/**
- * Send pointer/mouse event to WebKit view (threaded mode only)
- */
-void neomacs_display_webkit_send_pointer(struct NeomacsDisplay *handle,
-                                         uint32_t webkitId,
-                                         uint32_t eventType,
-                                         int x,
-                                         int y,
-                                         uint32_t button,
-                                         uint32_t state,
-                                         uint32_t modifiers);
-
-/**
- * Send scroll event to WebKit view (threaded mode only)
- */
-void neomacs_display_webkit_send_scroll(struct NeomacsDisplay *handle,
-                                        uint32_t webkitId,
-                                        int x,
-                                        int y,
-                                        int deltaX,
-                                        int deltaY);
-
-/**
- * Click in WebKit view (threaded mode only)
- */
-void neomacs_display_webkit_click(struct NeomacsDisplay *handle,
-                                  uint32_t webkitId,
-                                  int x,
-                                  int y,
-                                  uint32_t button);
-
-/**
- * Scroll blit pixels in the pixel buffer (threaded mode only)
- *
- * This performs a GPU blit operation within the pixel buffer, copying pixels
- * from one vertical position to another. Used to implement Emacs's scroll_run_hook.
- *
- * Parameters:
- * - x, y: top-left corner of the region to scroll
- * - width, height: size of the region
- * - from_y, to_y: source and destination Y positions for the scroll
- * - bg_r, bg_g, bg_b: background color (0.0-1.0) to fill exposed region
- */
-void neomacs_display_scroll_blit(struct NeomacsDisplay *handle,
-                                 int x,
-                                 int y,
-                                 int width,
-                                 int height,
-                                 int fromY,
-                                 int toY,
-                                 float bgR,
-                                 float bgG,
-                                 float bgB);
-
-/**
- * Get WebKit view title
- * NOTE: In threaded mode, title changes are delivered via InputEvent::WebKitTitleChanged.
- * This function returns null - use the callback-based API instead.
- */
-char *neomacs_display_webkit_get_title(struct NeomacsDisplay *handle, uint32_t webkitId);
-
-/**
- * Get WebKit view URL
- * NOTE: In threaded mode, URL changes are delivered via InputEvent::WebKitUrlChanged.
- * This function returns null - use the callback-based API instead.
- */
-char *neomacs_display_webkit_get_url(struct NeomacsDisplay *handle, uint32_t webkitId);
-
-/**
- * Get WebKit view loading progress
- * NOTE: In threaded mode, progress changes are delivered via InputEvent::WebKitProgressChanged.
- * This function returns -1.0 - use the callback-based API instead.
- */
-double neomacs_display_webkit_get_progress(struct NeomacsDisplay *handle, uint32_t webkitId);
-
-/**
- * Check if WebKit view is loading
- * NOTE: In threaded mode, loading state is inferred from progress events.
- * This function returns -1 (unknown) - use progress callbacks instead.
- */
-int neomacs_display_webkit_is_loading(struct NeomacsDisplay *handle, uint32_t webkitId);
-
-/**
- * Free a string returned by webkit_get_title or webkit_get_url
- */
-void neomacs_display_webkit_free_string(char *s);
-
-/**
- * Update WebKit view - no-op in threaded mode
- * In threaded mode, GLib main context is pumped automatically on the render thread.
- */
-int neomacs_display_webkit_update(struct NeomacsDisplay *handle, uint32_t webkitId);
-
-/**
- * Update all WebKit views - no-op in threaded mode
- * In threaded mode, GLib main context is pumped automatically on the render thread.
- */
-int neomacs_display_webkit_update_all(struct NeomacsDisplay *handle);
-
-/**
- * Add a WPE glyph to the current row
- */
-void neomacs_display_add_wpe_glyph(struct NeomacsDisplay *handle,
-                                   uint32_t viewId,
-                                   int pixelWidth,
-                                   int pixelHeight);
-
-/**
- * Create a new window with the specified dimensions and title.
- *
- * Returns the window ID. The window will be created during the next poll_events call.
- * Returns 0 if the backend is not available.
- */
-uint32_t neomacs_display_create_window(struct NeomacsDisplay *handle,
-                                       int32_t width,
-                                       int32_t height,
-                                       const char *title);
-
-/**
- * Destroy a window by its ID.
- */
-void neomacs_display_destroy_window(struct NeomacsDisplay *handle, uint32_t windowId);
-
-/**
- * Show or hide a window.
- */
-void neomacs_display_show_window(struct NeomacsDisplay *handle, uint32_t windowId, bool visible);
-
-/**
- * Set the title of a window.
- */
-void neomacs_display_set_window_title(struct NeomacsDisplay *handle,
-                                      uint32_t windowId,
-                                      const char *title);
-
-/**
- * Set the size of a window.
- */
-void neomacs_display_set_window_size(struct NeomacsDisplay *handle,
-                                     uint32_t windowId,
-                                     int32_t width,
-                                     int32_t height);
-
-/**
- * Begin a frame for a specific window.
- *
- * Clears the window's scene to prepare for new content.
- */
-void neomacs_display_begin_frame_window(struct NeomacsDisplay *handle,
-                                        uint32_t windowId,
-                                        float charWidth,
-                                        float charHeight,
-                                        float fontPixelSize);
-
-/**
- * End a frame for a specific window and present it.
- *
- * Renders the window's scene to its surface and presents it.
- */
-void neomacs_display_end_frame_window(struct NeomacsDisplay *handle, uint32_t windowId);
-
-/**
- * Called from C when `neomacs-use-rust-display` is enabled.
- * The Rust layout engine reads buffer data via FFI helpers and produces
- * a FrameGlyphBuffer, bypassing the C matrix extraction.
- *
- * # Safety
- * Must be called on the Emacs thread. All pointers must be valid.
- */
-void neomacs_rust_layout_frame(struct NeomacsDisplay *handle,
-                               void *framePtr,
-                               float width,
-                               float height,
-                               float charWidth,
-                               float charHeight,
-                               float fontPixelSize,
-                               uint32_t background,
-                               uint32_t verticalBorderFg,
-                               int32_t rightDividerWidth,
-                               int32_t bottomDividerWidth,
-                               uint32_t dividerFg,
-                               uint32_t dividerFirstFg,
-                               uint32_t dividerLastFg);
-
-/**
- * Query buffer character position at given frame-relative pixel coordinates.
- * Used by mouse interaction (note_mouse_highlight, mouse clicks).
- * Returns charpos, or -1 if not found.
- *
- * # Safety
- * Must be called on the Emacs thread.
- */
-int64_t neomacs_layout_charpos_at_pixel(float px, float py);
-
-/**
- * Query buffer character position for a specific window at
- * window-relative pixel coordinates.
- * Returns charpos, or -1 if not found.
- *
- * # Safety
- * Must be called on the Emacs thread.
- */
-int64_t neomacs_layout_window_charpos(int64_t windowId, float wx, float wy);
-
-/**
  * Set an animation configuration option (stub)
  */
 int neomacs_display_set_animation_option(struct NeomacsDisplay *handle,
@@ -2044,80 +1705,6 @@ int neomacs_display_trigger_buffer_transition(struct NeomacsDisplay *handle);
  * Check if buffer transition is ready (stub)
  */
 int neomacs_display_has_transition_snapshot(struct NeomacsDisplay *handle);
-
-/**
- * Initialize display in threaded mode
- *
- * Returns the wakeup pipe fd that Emacs should select() on,
- * or -1 on error.
- */
-int neomacs_display_init_threaded(uint32_t width, uint32_t height, const char *title);
-
-/**
- * Wait for monitor info to be available (with timeout).
- * Call after neomacs_display_init_threaded().
- * Returns number of monitors, or 0 on timeout.
- */
-int neomacs_display_wait_for_monitors(void);
-
-/**
- * Get the number of monitors available.
- * Must be called after neomacs_display_init_threaded().
- */
-int neomacs_display_get_monitor_count(void);
-
-/**
- * Get info about a specific monitor by index.
- * Returns 1 on success, 0 on failure.
- */
-int neomacs_display_get_monitor_info(int index, struct NeomacsMonitorInfo *info);
-
-/**
- * Get the name of a monitor by index.
- * Returns a pointer to a static string (valid until next call), or NULL.
- */
-const char *neomacs_display_get_monitor_name(int index);
-
-/**
- * Drain input events from render thread
- *
- * Returns number of events written to buffer.
- */
-int neomacs_display_drain_input(struct NeomacsInputEvent *events, int maxEvents);
-
-/**
- * Get the next batch of dropped file paths.
- * Returns the number of paths written.  Each path is a null-terminated
- * C string that must be freed with `neomacs_clipboard_free_text`.
- * Call repeatedly until it returns 0 to drain all pending drops.
- */
-int neomacs_display_get_dropped_files(char **outPaths, int maxPaths);
-
-/**
- * Free a string returned by `neomacs_display_get_dropped_files`.
- */
-void neomacs_display_free_dropped_path(char *path);
-
-/**
- * Get the terminal title from the most recent title change event.
- * Returns a C string that must be freed with
- * `neomacs_display_free_dropped_path` (same allocator), or NULL.
- */
-char *neomacs_display_get_terminal_title(uint32_t terminalId);
-
-/**
- * Send frame glyphs to render thread
- */
-void neomacs_display_send_frame(struct NeomacsDisplay *handle);
-
-/**
- * Send command to render thread
- */
-void neomacs_display_send_command(int cmdType,
-                                  uint32_t id,
-                                  uint32_t param1,
-                                  uint32_t param2,
-                                  const char *strParam);
 
 void neomacs_display_set_matrix_rain(struct NeomacsDisplay *handle,
                                      int enabled,
@@ -2852,6 +2439,404 @@ void neomacs_display_set_cursor_bubble(struct NeomacsDisplay *handle,
                                        int count,
                                        int riseSpeed,
                                        int opacity);
+
+/**
+ * Create a new terminal.
+ *
+ * Returns terminal ID (>0 on success, 0 on failure).
+ * `mode`: 0=Window, 1=Inline, 2=Floating
+ * `shell`: optional shell path (NULL for default)
+ */
+uint32_t neomacs_display_terminal_create(uint16_t cols,
+                                         uint16_t rows,
+                                         uint8_t mode,
+                                         const char *shell);
+
+/**
+ * Write input data to a terminal (keyboard input from user).
+ */
+void neomacs_display_terminal_write(uint32_t terminalId, const uint8_t *data, uintptr_t len);
+
+/**
+ * Resize a terminal.
+ */
+void neomacs_display_terminal_resize(uint32_t terminalId, uint16_t cols, uint16_t rows);
+
+/**
+ * Destroy a terminal.
+ */
+void neomacs_display_terminal_destroy(uint32_t terminalId);
+
+/**
+ * Set floating terminal position and opacity.
+ */
+void neomacs_display_terminal_set_float(uint32_t terminalId, float x, float y, float opacity);
+
+/**
+ * Get visible text from a terminal.
+ *
+ * Returns a malloc'd C string (caller must free with `free()`).
+ * Returns NULL on failure.
+ */
+char *neomacs_display_terminal_get_text(uint32_t terminalId);
+
+/**
+ * Set callback for WebKit new window/tab requests
+ */
+void neomacs_display_webkit_set_new_window_callback(bool (*callback)(uint32_t,
+                                                                     const char*,
+                                                                     const char*));
+
+/**
+ * Set callback for WebKit page load events
+ */
+void neomacs_display_webkit_set_load_callback(void (*callback)(uint32_t, int, const char*));
+
+/**
+ * Initialize WebKit subsystem with EGL display
+ */
+int neomacs_display_webkit_init(struct NeomacsDisplay *handle, void *eglDisplay);
+
+/**
+ * Create a new WebKit view (threaded mode only)
+ */
+uint32_t neomacs_display_webkit_create(struct NeomacsDisplay *handle, int width, int height);
+
+/**
+ * Destroy a WebKit view (threaded mode only)
+ */
+int neomacs_display_webkit_destroy(struct NeomacsDisplay *handle, uint32_t viewId);
+
+/**
+ * Load a URI in a WebKit view (threaded mode only)
+ */
+int neomacs_display_webkit_load_uri(struct NeomacsDisplay *handle,
+                                    uint32_t viewId,
+                                    const char *uri);
+
+/**
+ * Go back in a WebKit view (threaded mode only)
+ */
+int neomacs_display_webkit_go_back(struct NeomacsDisplay *handle, uint32_t viewId);
+
+/**
+ * Go forward in a WebKit view (threaded mode only)
+ */
+int neomacs_display_webkit_go_forward(struct NeomacsDisplay *handle, uint32_t viewId);
+
+/**
+ * Reload a WebKit view (threaded mode only)
+ */
+int neomacs_display_webkit_reload(struct NeomacsDisplay *handle, uint32_t viewId);
+
+/**
+ * Resize a WebKit view (threaded mode only)
+ */
+int neomacs_display_webkit_resize(struct NeomacsDisplay *handle,
+                                  uint32_t viewId,
+                                  int width,
+                                  int height);
+
+/**
+ * Execute JavaScript in a WebKit view (threaded mode only)
+ */
+int neomacs_display_webkit_execute_js(struct NeomacsDisplay *handle,
+                                      uint32_t viewId,
+                                      const char *script);
+
+/**
+ * Set a floating WebKit view position and size
+ */
+void neomacs_display_set_floating_webkit(struct NeomacsDisplay *handle,
+                                         uint32_t webkitId,
+                                         int x,
+                                         int y,
+                                         int width,
+                                         int height);
+
+/**
+ * Hide a floating WebKit view
+ */
+void neomacs_display_hide_floating_webkit(struct NeomacsDisplay *handle, uint32_t webkitId);
+
+/**
+ * Find which webkit view (floating or inline) is at the given coordinates
+ */
+int neomacs_display_webkit_at_position(struct NeomacsDisplay *handle,
+                                       int x,
+                                       int y,
+                                       uint32_t *outWebkitId,
+                                       int *outRelX,
+                                       int *outRelY);
+
+/**
+ * Send keyboard event to WebKit view (threaded mode only)
+ */
+void neomacs_display_webkit_send_key(struct NeomacsDisplay *handle,
+                                     uint32_t webkitId,
+                                     uint32_t keyCode,
+                                     uint32_t hardwareKeyCode,
+                                     int pressed,
+                                     uint32_t modifiers);
+
+/**
+ * Send pointer/mouse event to WebKit view (threaded mode only)
+ */
+void neomacs_display_webkit_send_pointer(struct NeomacsDisplay *handle,
+                                         uint32_t webkitId,
+                                         uint32_t eventType,
+                                         int x,
+                                         int y,
+                                         uint32_t button,
+                                         uint32_t state,
+                                         uint32_t modifiers);
+
+/**
+ * Send scroll event to WebKit view (threaded mode only)
+ */
+void neomacs_display_webkit_send_scroll(struct NeomacsDisplay *handle,
+                                        uint32_t webkitId,
+                                        int x,
+                                        int y,
+                                        int deltaX,
+                                        int deltaY);
+
+/**
+ * Click in WebKit view (threaded mode only)
+ */
+void neomacs_display_webkit_click(struct NeomacsDisplay *handle,
+                                  uint32_t webkitId,
+                                  int x,
+                                  int y,
+                                  uint32_t button);
+
+/**
+ * Scroll blit pixels in the pixel buffer (threaded mode only)
+ */
+void neomacs_display_scroll_blit(struct NeomacsDisplay *handle,
+                                 int x,
+                                 int y,
+                                 int width,
+                                 int height,
+                                 int fromY,
+                                 int toY,
+                                 float bgR,
+                                 float bgG,
+                                 float bgB);
+
+/**
+ * Get WebKit view title
+ */
+char *neomacs_display_webkit_get_title(struct NeomacsDisplay *handle, uint32_t webkitId);
+
+/**
+ * Get WebKit view URL
+ */
+char *neomacs_display_webkit_get_url(struct NeomacsDisplay *handle, uint32_t webkitId);
+
+/**
+ * Get WebKit view loading progress
+ */
+double neomacs_display_webkit_get_progress(struct NeomacsDisplay *handle, uint32_t webkitId);
+
+/**
+ * Check if WebKit view is loading
+ */
+int neomacs_display_webkit_is_loading(struct NeomacsDisplay *handle, uint32_t webkitId);
+
+/**
+ * Free a string returned by webkit_get_title or webkit_get_url
+ */
+void neomacs_display_webkit_free_string(char *s);
+
+/**
+ * Update WebKit view - no-op in threaded mode
+ */
+int neomacs_display_webkit_update(struct NeomacsDisplay *handle, uint32_t webkitId);
+
+/**
+ * Update all WebKit views - no-op in threaded mode
+ */
+int neomacs_display_webkit_update_all(struct NeomacsDisplay *handle);
+
+/**
+ * Add a WPE glyph to the current row
+ */
+void neomacs_display_add_wpe_glyph(struct NeomacsDisplay *handle,
+                                   uint32_t viewId,
+                                   int pixelWidth,
+                                   int pixelHeight);
+
+/**
+ * Create a new window with the specified dimensions and title.
+ *
+ * Returns the window ID. The window will be created during the next poll_events call.
+ * Returns 0 if the backend is not available.
+ */
+uint32_t neomacs_display_create_window(struct NeomacsDisplay *handle,
+                                       int32_t width,
+                                       int32_t height,
+                                       const char *title);
+
+/**
+ * Destroy a window by its ID.
+ */
+void neomacs_display_destroy_window(struct NeomacsDisplay *handle, uint32_t windowId);
+
+/**
+ * Show or hide a window.
+ */
+void neomacs_display_show_window(struct NeomacsDisplay *handle, uint32_t windowId, bool visible);
+
+/**
+ * Set the title of a window.
+ */
+void neomacs_display_set_window_title(struct NeomacsDisplay *handle,
+                                      uint32_t windowId,
+                                      const char *title);
+
+/**
+ * Set the size of a window.
+ */
+void neomacs_display_set_window_size(struct NeomacsDisplay *handle,
+                                     uint32_t windowId,
+                                     int32_t width,
+                                     int32_t height);
+
+/**
+ * Begin a frame for a specific window.
+ *
+ * Clears the window's scene to prepare for new content.
+ */
+void neomacs_display_begin_frame_window(struct NeomacsDisplay *handle,
+                                        uint32_t windowId,
+                                        float charWidth,
+                                        float charHeight,
+                                        float fontPixelSize);
+
+/**
+ * End a frame for a specific window and present it.
+ *
+ * Renders the window's scene to its surface and presents it.
+ */
+void neomacs_display_end_frame_window(struct NeomacsDisplay *handle, uint32_t windowId);
+
+/**
+ * Called from C when `neomacs-use-rust-display` is enabled.
+ * The Rust layout engine reads buffer data via FFI helpers and produces
+ * a FrameGlyphBuffer, bypassing the C matrix extraction.
+ *
+ * # Safety
+ * Must be called on the Emacs thread. All pointers must be valid.
+ */
+void neomacs_rust_layout_frame(struct NeomacsDisplay *handle,
+                               void *framePtr,
+                               float width,
+                               float height,
+                               float charWidth,
+                               float charHeight,
+                               float fontPixelSize,
+                               uint32_t background,
+                               uint32_t verticalBorderFg,
+                               int32_t rightDividerWidth,
+                               int32_t bottomDividerWidth,
+                               uint32_t dividerFg,
+                               uint32_t dividerFirstFg,
+                               uint32_t dividerLastFg);
+
+/**
+ * Query buffer character position at given frame-relative pixel coordinates.
+ * Used by mouse interaction (note_mouse_highlight, mouse clicks).
+ * Returns charpos, or -1 if not found.
+ *
+ * # Safety
+ * Must be called on the Emacs thread.
+ */
+int64_t neomacs_layout_charpos_at_pixel(float px, float py);
+
+/**
+ * Query buffer character position for a specific window at
+ * window-relative pixel coordinates.
+ * Returns charpos, or -1 if not found.
+ *
+ * # Safety
+ * Must be called on the Emacs thread.
+ */
+int64_t neomacs_layout_window_charpos(int64_t windowId, float wx, float wy);
+
+/**
+ * Initialize display in threaded mode
+ *
+ * Returns the wakeup pipe fd that Emacs should select() on,
+ * or -1 on error.
+ */
+int neomacs_display_init_threaded(uint32_t width, uint32_t height, const char *title);
+
+/**
+ * Wait for monitor info to be available (with timeout).
+ * Call after neomacs_display_init_threaded().
+ * Returns number of monitors, or 0 on timeout.
+ */
+int neomacs_display_wait_for_monitors(void);
+
+/**
+ * Get the number of monitors available.
+ * Must be called after neomacs_display_init_threaded().
+ */
+int neomacs_display_get_monitor_count(void);
+
+/**
+ * Get info about a specific monitor by index.
+ * Returns 1 on success, 0 on failure.
+ */
+int neomacs_display_get_monitor_info(int index, struct NeomacsMonitorInfo *info);
+
+/**
+ * Get the name of a monitor by index.
+ * Returns a pointer to a static string (valid until next call), or NULL.
+ */
+const char *neomacs_display_get_monitor_name(int index);
+
+/**
+ * Drain input events from render thread
+ *
+ * Returns number of events written to buffer.
+ */
+int neomacs_display_drain_input(struct NeomacsInputEvent *events, int maxEvents);
+
+/**
+ * Get the next batch of dropped file paths.
+ * Returns the number of paths written.  Each path is a null-terminated
+ * C string that must be freed with `neomacs_clipboard_free_text`.
+ * Call repeatedly until it returns 0 to drain all pending drops.
+ */
+int neomacs_display_get_dropped_files(char **outPaths, int maxPaths);
+
+/**
+ * Free a string returned by `neomacs_display_get_dropped_files`.
+ */
+void neomacs_display_free_dropped_path(char *path);
+
+/**
+ * Get the terminal title from the most recent title change event.
+ * Returns a C string that must be freed with
+ * `neomacs_display_free_dropped_path` (same allocator), or NULL.
+ */
+char *neomacs_display_get_terminal_title(uint32_t terminalId);
+
+/**
+ * Send frame glyphs to render thread
+ */
+void neomacs_display_send_frame(struct NeomacsDisplay *handle);
+
+/**
+ * Send command to render thread
+ */
+void neomacs_display_send_command(int cmdType,
+                                  uint32_t id,
+                                  uint32_t param1,
+                                  uint32_t param2,
+                                  const char *strParam);
 
 /**
  * Shutdown threaded display
