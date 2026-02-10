@@ -1108,6 +1108,16 @@ void neomacs_display_visual_bell(struct NeomacsDisplay *handle);
 void neomacs_display_remove_child_frame(struct NeomacsDisplay *handle, uint64_t frameId);
 
 /**
+ * Configure child frame visual style (drop shadow, rounded corners).
+ */
+void neomacs_display_set_child_frame_style(struct NeomacsDisplay *handle,
+                                           float cornerRadius,
+                                           int shadowEnabled,
+                                           int shadowLayers,
+                                           float shadowOffset,
+                                           float shadowOpacity);
+
+/**
  * Request window attention (urgency hint / taskbar flash).
  * If urgent is non-zero, uses Critical attention type; otherwise Informational.
  */

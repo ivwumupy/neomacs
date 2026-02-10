@@ -15632,6 +15632,38 @@ neomacs_display_shutdown_threaded_mode (void)
 }
 
 
+DEFUN ("neomacs-set-child-frame-style",
+       Fneomacs_set_child_frame_style,
+       Sneomacs_set_child_frame_style, 0, 5, 0,
+       doc: /* Configure child frame visual style.
+CORNER-RADIUS is pixels for rounded corners (default 8, 0 = square).
+SHADOW-ENABLED non-nil renders a drop shadow behind child frames.
+SHADOW-LAYERS is the number of shadow layers (default 4).
+SHADOW-OFFSET is pixels per shadow layer (default 2).
+SHADOW-OPACITY is a percentage 0-100 (default 30).  */)
+  (Lisp_Object corner_radius, Lisp_Object shadow_enabled,
+   Lisp_Object shadow_layers, Lisp_Object shadow_offset,
+   Lisp_Object shadow_opacity)
+{
+  struct neomacs_display_info *dpyinfo = neomacs_display_list;
+  if (!dpyinfo || !dpyinfo->display_handle)
+    return Qnil;
+
+  float cr = 8.0f;
+  int se = 1, sl = 4, so = 2, sop = 30;
+  if (FIXNUMP (corner_radius)) cr = (float) XFIXNUM (corner_radius);
+  if (!NILP (shadow_enabled)) se = !NILP (shadow_enabled);
+  if (FIXNUMP (shadow_layers)) sl = XFIXNUM (shadow_layers);
+  if (FIXNUMP (shadow_offset)) so = XFIXNUM (shadow_offset);
+  if (FIXNUMP (shadow_opacity)) sop = XFIXNUM (shadow_opacity);
+
+  neomacs_display_set_child_frame_style (
+    dpyinfo->display_handle, cr, se, sl,
+    (float) so, (float) sop / 100.0f);
+  return Qt;
+}
+
+
 /* ============================================================================
  * Initialization
  * ============================================================================ */
@@ -15877,6 +15909,7 @@ syms_of_neomacsterm (void)
   defsubr (&Sneomacs_terminal_destroy);
   defsubr (&Sneomacs_terminal_set_float);
   defsubr (&Sneomacs_terminal_get_text);
+  defsubr (&Sneomacs_set_child_frame_style);
 
   DEFSYM (Qneomacs, "neomacs");
   /* Qvideo and Qwebkit are defined in xdisp.c for use in VIDEOP/WEBKITP */

@@ -29,6 +29,11 @@ impl WgpuRenderer {
         surface_height: u32,
         cursor_visible: bool,
         animated_cursor: Option<AnimatedCursor>,
+        corner_radius: f32,
+        shadow_enabled: bool,
+        shadow_layers: u32,
+        shadow_offset: f32,
+        shadow_opacity: f32,
     ) {
         let logical_w = surface_width as f32 / self.scale_factor;
         let logical_h = surface_height as f32 / self.scale_factor;
@@ -44,30 +49,61 @@ impl WgpuRenderer {
         let frame_h = child.height;
         let bg_alpha = child.background_alpha;
 
-        // --- Pass 1: Background + border as rectangles ---
+        // --- Pass 0: Drop shadow (layered semi-transparent rectangles) ---
+        if shadow_enabled && shadow_layers > 0 {
+            let mut shadow_verts: Vec<RectVertex> = Vec::new();
+            let total_w = frame_w + 2.0 * bw;
+            let total_h = frame_h + 2.0 * bw;
+            let sx = offset_x - bw;
+            let sy = offset_y - bw;
+            for layer in (1..=shadow_layers).rev() {
+                let off = layer as f32 * shadow_offset;
+                let alpha = shadow_opacity
+                    * (1.0 - (layer - 1) as f32 / shadow_layers as f32);
+                let c = Color::new(0.0, 0.0, 0.0, alpha).srgb_to_linear();
+                // Bottom shadow
+                self.add_rect(&mut shadow_verts, sx + off, sy + total_h, total_w, off, &c);
+                // Right shadow
+                self.add_rect(&mut shadow_verts, sx + total_w, sy + off, off, total_h, &c);
+                // Bottom-right corner
+                self.add_rect(&mut shadow_verts, sx + total_w, sy + total_h, off, off, &c);
+            }
+            if !shadow_verts.is_empty() {
+                let buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Child Frame Shadow Buffer"),
+                    contents: bytemuck::cast_slice(&shadow_verts),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+                let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("Child Frame Shadow Encoder"),
+                });
+                {
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("Child Frame Shadow Pass"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Load,
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                    });
+                    pass.set_pipeline(&self.rect_pipeline);
+                    pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                    pass.set_vertex_buffer(0, buffer.slice(..));
+                    pass.draw(0..shadow_verts.len() as u32, 0..1);
+                }
+                self.queue.submit(std::iter::once(encoder.finish()));
+            }
+        }
+
+        // --- Pass 1: Background fill + border ---
         {
             let mut rect_verts: Vec<RectVertex> = Vec::new();
-
-            // Border rectangle (slightly larger than the child frame)
-            if bw > 0.0 {
-                let bc = child.border_color.srgb_to_linear();
-                // Top border
-                self.add_rect(&mut rect_verts,
-                    offset_x - bw, offset_y - bw,
-                    frame_w + 2.0 * bw, bw, &bc);
-                // Bottom border
-                self.add_rect(&mut rect_verts,
-                    offset_x - bw, offset_y + frame_h,
-                    frame_w + 2.0 * bw, bw, &bc);
-                // Left border
-                self.add_rect(&mut rect_verts,
-                    offset_x - bw, offset_y,
-                    bw, frame_h, &bc);
-                // Right border
-                self.add_rect(&mut rect_verts,
-                    offset_x + frame_w, offset_y,
-                    bw, frame_h, &bc);
-            }
 
             // Background fill
             let bg = Color::new(
@@ -84,7 +120,6 @@ impl WgpuRenderer {
                     contents: bytemuck::cast_slice(&rect_verts),
                     usage: wgpu::BufferUsages::VERTEX,
                 });
-
                 let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label: Some("Child Frame Rect Encoder"),
                 });
@@ -109,6 +144,55 @@ impl WgpuRenderer {
                     pass.draw(0..rect_verts.len() as u32, 0..1);
                 }
                 self.queue.submit(std::iter::once(encoder.finish()));
+            }
+
+            // Rounded border using SDF shader (replaces plain rect border)
+            if bw > 0.0 || corner_radius > 0.0 {
+                use super::super::vertex::RoundedRectVertex;
+                let mut border_verts: Vec<RoundedRectVertex> = Vec::new();
+                let bc = if bw > 0.0 {
+                    child.border_color.srgb_to_linear()
+                } else {
+                    Color::new(0.5, 0.5, 0.5, 0.3).srgb_to_linear()
+                };
+                let effective_bw = if bw > 0.0 { bw } else { 1.0 };
+                self.add_rounded_rect(
+                    &mut border_verts,
+                    offset_x - effective_bw, offset_y - effective_bw,
+                    frame_w + 2.0 * effective_bw, frame_h + 2.0 * effective_bw,
+                    effective_bw, corner_radius, &bc,
+                );
+                if !border_verts.is_empty() {
+                    let buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                        label: Some("Child Frame Border Buffer"),
+                        contents: bytemuck::cast_slice(&border_verts),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    });
+                    let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("Child Frame Border Encoder"),
+                    });
+                    {
+                        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                            label: Some("Child Frame Border Pass"),
+                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                view,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Load,
+                                    store: wgpu::StoreOp::Store,
+                                },
+                            })],
+                            depth_stencil_attachment: None,
+                            timestamp_writes: None,
+                            occlusion_query_set: None,
+                        });
+                        pass.set_pipeline(&self.rounded_rect_pipeline);
+                        pass.set_bind_group(0, &self.uniform_bind_group, &[]);
+                        pass.set_vertex_buffer(0, buffer.slice(..));
+                        pass.draw(0..border_verts.len() as u32, 0..1);
+                    }
+                    self.queue.submit(std::iter::once(encoder.finish()));
+                }
             }
         }
 

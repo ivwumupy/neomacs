@@ -291,6 +291,14 @@ pub enum RenderCommand {
     },
     /// Remove a child frame (sent when frame is deleted or unparented)
     RemoveChildFrame { frame_id: u64 },
+    /// Configure child frame visual style (drop shadow, rounded corners)
+    SetChildFrameStyle {
+        corner_radius: f32,
+        shadow_enabled: bool,
+        shadow_layers: u32,
+        shadow_offset: f32,
+        shadow_opacity: f32,
+    },
 }
 
 /// Wakeup pipe for signaling Emacs from render thread

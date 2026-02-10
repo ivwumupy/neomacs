@@ -244,6 +244,28 @@ pub unsafe extern "C" fn neomacs_display_remove_child_frame(
     }
 }
 
+/// Configure child frame visual style (drop shadow, rounded corners).
+#[no_mangle]
+pub unsafe extern "C" fn neomacs_display_set_child_frame_style(
+    _handle: *mut NeomacsDisplay,
+    corner_radius: f32,
+    shadow_enabled: c_int,
+    shadow_layers: c_int,
+    shadow_offset: f32,
+    shadow_opacity: f32,
+) {
+    let cmd = RenderCommand::SetChildFrameStyle {
+        corner_radius,
+        shadow_enabled: shadow_enabled != 0,
+        shadow_layers: shadow_layers.max(0) as u32,
+        shadow_offset,
+        shadow_opacity,
+    };
+    if let Some(ref state) = THREADED_STATE {
+        let _ = state.emacs_comms.cmd_tx.try_send(cmd);
+    }
+}
+
 /// Request window attention (urgency hint / taskbar flash).
 /// If urgent is non-zero, uses Critical attention type; otherwise Informational.
 #[no_mangle]

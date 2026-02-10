@@ -274,6 +274,12 @@ struct RenderApp {
 
     // Child frames (posframe, which-key-posframe, etc.)
     child_frames: child_frames::ChildFrameManager,
+    // Child frame visual style
+    child_frame_corner_radius: f32,
+    child_frame_shadow_enabled: bool,
+    child_frame_shadow_layers: u32,
+    child_frame_shadow_offset: f32,
+    child_frame_shadow_opacity: f32,
 
     // Active popup menu (shown by x-popup-menu)
     popup_menu: Option<PopupMenuState>,
@@ -365,6 +371,11 @@ impl RenderApp {
             #[cfg(feature = "neo-term")]
             shared_terminals,
             child_frames: child_frames::ChildFrameManager::new(),
+            child_frame_corner_radius: 8.0,
+            child_frame_shadow_enabled: true,
+            child_frame_shadow_layers: 4,
+            child_frame_shadow_offset: 2.0,
+            child_frame_shadow_opacity: 0.3,
             popup_menu: None,
             tooltip: None,
             visual_bell_start: None,
@@ -1121,6 +1132,17 @@ impl RenderApp {
                 RenderCommand::RemoveChildFrame { frame_id } => {
                     log::info!("Removing child frame 0x{:x}", frame_id);
                     self.child_frames.remove_frame(frame_id);
+                    self.frame_dirty = true;
+                }
+                RenderCommand::SetChildFrameStyle {
+                    corner_radius, shadow_enabled, shadow_layers,
+                    shadow_offset, shadow_opacity,
+                } => {
+                    self.child_frame_corner_radius = corner_radius;
+                    self.child_frame_shadow_enabled = shadow_enabled;
+                    self.child_frame_shadow_layers = shadow_layers;
+                    self.child_frame_shadow_offset = shadow_offset;
+                    self.child_frame_shadow_opacity = shadow_opacity;
                     self.frame_dirty = true;
                 }
             }
@@ -2174,6 +2196,11 @@ impl RenderApp {
                             self.height,
                             self.cursor.blink_on,
                             child_anim,
+                            self.child_frame_corner_radius,
+                            self.child_frame_shadow_enabled,
+                            self.child_frame_shadow_layers,
+                            self.child_frame_shadow_offset,
+                            self.child_frame_shadow_opacity,
                         );
                     }
                 }
