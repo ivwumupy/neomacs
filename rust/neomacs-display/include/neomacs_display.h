@@ -628,6 +628,12 @@ typedef struct DisplayPropFFI {
    * WebKit view ID (type=10)
    */
   uint32_t webkitId;
+  /**
+   * Number of face runs in display string (type=1).
+   * Runs stored after string text in str_buf, 10 bytes each:
+   * u16 byte_offset + u32 fg + u32 bg.
+   */
+  int displayNruns;
 } DisplayPropFFI;
 
 #define VA_STATUS_SUCCESS 0
@@ -3213,5 +3219,17 @@ extern int neomacs_layout_check_line_prefix(EmacsBuffer buffer,
                                             int64_t charpos,
                                             int prefixType,
                                             float *widthOut);
+
+/**
+ * Get fringe bitmap data for a given bitmap ID.
+ * Writes row data (one uint16_t per row) into bitsOut.
+ * Returns number of rows written, 0 if bitmap not found.
+ */
+extern int neomacs_layout_get_fringe_bitmap(int bitmapId,
+                                            uint16_t *bitsOut,
+                                            int bitsBufLen,
+                                            int *widthOut,
+                                            int *heightOut,
+                                            int *alignOut);
 
 #endif  /* NEOMACS_DISPLAY_H */

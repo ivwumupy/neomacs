@@ -341,6 +341,18 @@ extern "C" {
         prefix_type: c_int,
         width_out: *mut f32,
     ) -> c_int;
+
+    /// Get fringe bitmap data for a given bitmap ID.
+    /// Writes row data (one u16 per row) into bits_out.
+    /// Returns number of rows written, 0 if bitmap not found.
+    pub fn neomacs_layout_get_fringe_bitmap(
+        bitmap_id: c_int,
+        bits_out: *mut u16,
+        bits_buf_len: c_int,
+        width_out: *mut c_int,
+        height_out: *mut c_int,
+        align_out: *mut c_int,
+    ) -> c_int;
 }
 
 /// FFI-safe line number configuration struct.
@@ -411,6 +423,8 @@ pub struct DisplayPropFFI {
     pub video_id: u32,
     /// WebKit view ID (type=10)
     pub webkit_id: u32,
+    /// Number of face runs in display string (type=1)
+    pub display_nruns: c_int,
 }
 
 /// FFI-safe window parameters struct.

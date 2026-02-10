@@ -2934,6 +2934,7 @@ struct DisplayPropFFI {
   float height_factor;    /* font height multiplier (0.0=default, >0=scale) */
   uint32_t video_id;      /* video ID (type=9) */
   uint32_t webkit_id;     /* webkit view ID (type=10) */
+  int display_nruns;      /* number of face runs in display string (type=1) */
 };
 
 /* Check for a 'display text property at charpos.
@@ -2972,6 +2973,7 @@ neomacs_layout_check_display_prop (void *buffer_ptr, void *window_ptr,
   out->height_factor = 0;
   out->video_id = 0;
   out->webkit_id = 0;
+  out->display_nruns = 0;
 
   if (!buf)
     return -1;
@@ -3017,9 +3019,104 @@ neomacs_layout_check_display_prop (void *buffer_ptr, void *window_ptr,
       out->type = 1;
       out->str_len = (int) copy_len;
 
-      /* Extract face from display string text properties. */
-      if (SCHARS (display_prop) > 0)
+      /* Extract per-character face runs from display string text
+         properties.  Face runs are stored after the string text in
+         str_buf, 10 bytes each: u16 byte_offset + u32 fg + u32 bg.
+         This enables propertized display strings like
+         #("text" 0 2 (face bold) 2 4 (face italic)).  */
+      if (SCHARS (display_prop) > 0
+          && string_intervals (display_prop)
+          && copy_len + 10 <= str_buf_len)
         {
+          struct window *sw = window_ptr
+            ? (struct window *) window_ptr : NULL;
+          struct frame *sf = sw ? XFRAME (sw->frame) : NULL;
+          if (sf)
+            {
+              ptrdiff_t fcharpos = 0;
+              ptrdiff_t nchars = SCHARS (display_prop);
+              ptrdiff_t run_offset = copy_len;
+              int nruns = 0;
+              int max_runs = (int) ((str_buf_len - copy_len) / 10);
+              uint32_t prev_fg = 0xFFFFFFFF;
+              uint32_t prev_bg = 0xFFFFFFFF;
+
+              while (fcharpos < nchars && nruns < max_runs)
+                {
+                  Lisp_Object face_prop
+                    = Fget_text_property (make_fixnum (fcharpos),
+                                          Qface, display_prop);
+                  Lisp_Object next_change
+                    = Fnext_single_property_change (
+                        make_fixnum (fcharpos), Qface,
+                        display_prop, Qnil);
+                  ptrdiff_t next_pos = NILP (next_change)
+                    ? nchars : XFIXNUM (next_change);
+
+                  uint32_t fg = 0, bg = 0;
+                  if (!NILP (face_prop))
+                    {
+                      int rid = lookup_named_face (
+                          sw, sf,
+                          SYMBOLP (face_prop) ? face_prop : Qdefault,
+                          false);
+                      if (rid >= 0)
+                        {
+                          struct face *rf
+                            = FACE_FROM_ID_OR_NULL (sf, rid);
+                          if (rf)
+                            {
+                              unsigned long c = rf->foreground;
+                              if (rf->foreground_defaulted_p)
+                                c = FRAME_FOREGROUND_PIXEL (sf);
+                              fg = ((RED_FROM_ULONG (c) << 16)
+                                    | (GREEN_FROM_ULONG (c) << 8)
+                                    | BLUE_FROM_ULONG (c));
+                              c = rf->background;
+                              if (rf->background_defaulted_p)
+                                c = FRAME_BACKGROUND_PIXEL (sf);
+                              bg = ((RED_FROM_ULONG (c) << 16)
+                                    | (GREEN_FROM_ULONG (c) << 8)
+                                    | BLUE_FROM_ULONG (c));
+                            }
+                        }
+                    }
+
+                  if (fg != prev_fg || bg != prev_bg)
+                    {
+                      ptrdiff_t byte_off
+                        = string_char_to_byte (display_prop,
+                                                fcharpos);
+                      uint16_t boff = (uint16_t) byte_off;
+                      memcpy (str_buf + run_offset, &boff, 2);
+                      memcpy (str_buf + run_offset + 2, &fg, 4);
+                      memcpy (str_buf + run_offset + 6, &bg, 4);
+                      run_offset += 10;
+                      nruns++;
+                      prev_fg = fg;
+                      prev_bg = bg;
+                    }
+                  fcharpos = next_pos;
+                }
+              out->display_nruns = nruns;
+
+              /* Also set display_fg/bg from first face for backward
+                 compat (single-face fallback).  */
+              if (nruns > 0)
+                {
+                  uint32_t first_fg, first_bg;
+                  memcpy (&first_fg, str_buf + copy_len + 2, 4);
+                  memcpy (&first_bg, str_buf + copy_len + 6, 4);
+                  if (first_fg != 0)
+                    out->display_fg = first_fg;
+                  if (first_bg != 0)
+                    out->display_bg = first_bg;
+                }
+            }
+        }
+      else if (SCHARS (display_prop) > 0)
+        {
+          /* No intervals — check single face at position 0.  */
           Lisp_Object face_prop = Fget_text_property (
               make_fixnum (0), Qface, display_prop);
           if (!NILP (face_prop) && SYMBOLP (face_prop))
@@ -3029,8 +3126,10 @@ neomacs_layout_check_display_prop (void *buffer_ptr, void *window_ptr,
               struct frame *sf = sw ? XFRAME (sw->frame) : NULL;
               if (sf)
                 {
-                  int face_id = lookup_named_face (sw, sf, face_prop, false);
-                  struct face *face = FACE_FROM_ID_OR_NULL (sf, face_id);
+                  int face_id
+                    = lookup_named_face (sw, sf, face_prop, false);
+                  struct face *face
+                    = FACE_FROM_ID_OR_NULL (sf, face_id);
                   if (face)
                     {
                       unsigned long fg = face->foreground;
@@ -3039,12 +3138,14 @@ neomacs_layout_check_display_prop (void *buffer_ptr, void *window_ptr,
                         fg = FRAME_FOREGROUND_PIXEL (sf);
                       if (face->background_defaulted_p)
                         bg = FRAME_BACKGROUND_PIXEL (sf);
-                      out->display_fg = ((RED_FROM_ULONG (fg) << 16) |
-                                         (GREEN_FROM_ULONG (fg) << 8) |
-                                         BLUE_FROM_ULONG (fg));
-                      out->display_bg = ((RED_FROM_ULONG (bg) << 16) |
-                                         (GREEN_FROM_ULONG (bg) << 8) |
-                                         BLUE_FROM_ULONG (bg));
+                      out->display_fg
+                        = ((RED_FROM_ULONG (fg) << 16)
+                           | (GREEN_FROM_ULONG (fg) << 8)
+                           | BLUE_FROM_ULONG (fg));
+                      out->display_bg
+                        = ((RED_FROM_ULONG (bg) << 16)
+                           | (GREEN_FROM_ULONG (bg) << 8)
+                           | BLUE_FROM_ULONG (bg));
                     }
                 }
             }

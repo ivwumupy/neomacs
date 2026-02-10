@@ -916,22 +916,73 @@ impl LayoutEngine {
                         next_face_check = if next_check > charpos { next_check } else { charpos + 1 };
                     }
 
-                    // Apply display string face if the replacement string has one
-                    let has_display_face = display_prop.display_fg != 0
-                        || display_prop.display_bg != 0;
-                    if has_display_face {
-                        let dfg = Color::from_pixel(display_prop.display_fg);
-                        let dbg = Color::from_pixel(display_prop.display_bg);
-                        frame_glyphs.set_face(
-                            0, dfg, Some(dbg),
-                            false, false, 0, None, 0, None, 0, None,
-                        );
+                    // Parse face runs for display string (if present)
+                    struct DFaceRun { byte_offset: u16, fg: u32, bg: u32 }
+                    let mut dface_runs: Vec<DFaceRun> = Vec::new();
+                    let has_face_runs = display_prop.display_nruns > 0;
+                    if has_face_runs {
+                        let runs_start = display_prop.str_len as usize;
+                        for ri in 0..display_prop.display_nruns as usize {
+                            let off = runs_start + ri * 10;
+                            if off + 10 <= display_str_buf.len() {
+                                let byte_offset = u16::from_ne_bytes([
+                                    display_str_buf[off], display_str_buf[off + 1],
+                                ]);
+                                let fg = u32::from_ne_bytes([
+                                    display_str_buf[off + 2], display_str_buf[off + 3],
+                                    display_str_buf[off + 4], display_str_buf[off + 5],
+                                ]);
+                                let bg = u32::from_ne_bytes([
+                                    display_str_buf[off + 6], display_str_buf[off + 7],
+                                    display_str_buf[off + 8], display_str_buf[off + 9],
+                                ]);
+                                dface_runs.push(DFaceRun { byte_offset, fg, bg });
+                            }
+                        }
+                    } else {
+                        // Single-face fallback (backward compat)
+                        let has_display_face = display_prop.display_fg != 0
+                            || display_prop.display_bg != 0;
+                        if has_display_face {
+                            let dfg = Color::from_pixel(display_prop.display_fg);
+                            let dbg = Color::from_pixel(display_prop.display_bg);
+                            frame_glyphs.set_face(
+                                0, dfg, Some(dbg),
+                                false, false, 0, None, 0, None, 0, None,
+                            );
+                        }
                     }
 
-                    // Render display string characters
+                    // Render display string characters with face runs
                     let dstr = &display_str_buf[..display_prop.str_len as usize];
                     let mut di = 0usize;
+                    let mut dcurrent_run = 0usize;
                     while di < dstr.len() && row < max_rows {
+                        // Apply face run if needed
+                        if has_face_runs && dcurrent_run < dface_runs.len() {
+                            while dcurrent_run + 1 < dface_runs.len()
+                                && di >= dface_runs[dcurrent_run + 1].byte_offset as usize
+                            {
+                                dcurrent_run += 1;
+                            }
+                            if di >= dface_runs[dcurrent_run].byte_offset as usize {
+                                let run = &dface_runs[dcurrent_run];
+                                if run.fg != 0 || run.bg != 0 {
+                                    let rfg = Color::from_pixel(run.fg);
+                                    let rbg = Color::from_pixel(run.bg);
+                                    frame_glyphs.set_face(
+                                        0, rfg, Some(rbg),
+                                        false, false, 0, None, 0, None, 0, None,
+                                    );
+                                }
+                                if dcurrent_run + 1 < dface_runs.len()
+                                    && di + 1 >= dface_runs[dcurrent_run + 1].byte_offset as usize
+                                {
+                                    dcurrent_run += 1;
+                                }
+                            }
+                        }
+
                         let (dch, dlen) = decode_utf8(&dstr[di..]);
                         di += dlen;
 
@@ -958,9 +1009,11 @@ impl LayoutEngine {
                         x_offset += d_advance;
                     }
 
-                    // Restore text face if we overrode it for display string
-                    if has_display_face {
-                        self.apply_face(&self.face_data, frame_glyphs);
+                    // Restore text face after display string
+                    if has_face_runs || display_prop.display_fg != 0 || display_prop.display_bg != 0 {
+                        if current_face_id >= 0 {
+                            self.apply_face(&self.face_data, frame_glyphs);
+                        }
                     }
 
                     // Skip original buffer text covered by this display prop
@@ -2198,93 +2251,86 @@ impl LayoutEngine {
                 let gy = row_y[r];
 
                 // Right fringe: continuation indicator for wrapped lines
-                if right_fringe_width >= char_w && row_continued.get(r).copied().unwrap_or(false) {
-                    let fx = right_fringe_x + (right_fringe_width - char_w) / 2.0;
-                    // Curving arrow: line continues on next row
-                    frame_glyphs.add_char('\u{21B5}', fx, gy, char_w, char_h, ascent, false);
+                if right_fringe_width > 0.0 && row_continued.get(r).copied().unwrap_or(false) {
+                    // Bitmap 7: left-curly-arrow (continuation)
+                    render_fringe_bitmap(
+                        7, right_fringe_x, gy,
+                        right_fringe_width, char_h, default_fg,
+                        frame_glyphs,
+                    );
                 }
 
                 // Right fringe: truncation indicator
-                if right_fringe_width >= char_w && row_truncated.get(r).copied().unwrap_or(false) {
-                    let fx = right_fringe_x + (right_fringe_width - char_w) / 2.0;
-                    // Right arrow: line truncated
-                    frame_glyphs.add_char('\u{2192}', fx, gy, char_w, char_h, ascent, false);
+                if right_fringe_width > 0.0 && row_truncated.get(r).copied().unwrap_or(false) {
+                    // Bitmap 4: right-arrow (truncation)
+                    render_fringe_bitmap(
+                        4, right_fringe_x, gy,
+                        right_fringe_width, char_h, default_fg,
+                        frame_glyphs,
+                    );
                 }
 
                 // Left fringe: continuation indicator for continued lines
-                if left_fringe_width >= char_w && row_continuation.get(r).copied().unwrap_or(false) {
-                    let fx = left_fringe_x + (left_fringe_width - char_w) / 2.0;
-                    // Curving arrow: continuation from previous row
-                    frame_glyphs.add_char('\u{21B3}', fx, gy, char_w, char_h, ascent, false);
+                if left_fringe_width > 0.0 && row_continuation.get(r).copied().unwrap_or(false) {
+                    // Bitmap 8: right-curly-arrow (continuation from prev)
+                    render_fringe_bitmap(
+                        8, left_fringe_x, gy,
+                        left_fringe_width, char_h, default_fg,
+                        frame_glyphs,
+                    );
                 }
 
                 // User-specified left-fringe display property bitmap
-                if left_fringe_width >= char_w {
+                if left_fringe_width > 0.0 {
                     if let Some(&(bid, fg, bg)) = row_left_fringe.get(r) {
                         if bid > 0 {
-                            let ch = fringe_bitmap_to_char(bid);
-                            if fg != 0 || bg != 0 {
-                                let ffg = if fg != 0 { Color::from_pixel(fg) } else { default_fg };
-                                let fbg = if bg != 0 { Color::from_pixel(bg) } else { default_bg };
-                                frame_glyphs.set_face(
-                                    0, ffg, Some(fbg),
-                                    false, false, 0, None, 0, None, 0, None,
-                                );
-                            }
-                            let fx = left_fringe_x + (left_fringe_width - char_w) / 2.0;
-                            frame_glyphs.add_char(ch, fx, gy, char_w, char_h, ascent, false);
-                            if fg != 0 || bg != 0 {
-                                frame_glyphs.set_face(
-                                    0, default_fg, Some(default_bg),
-                                    false, false, 0, None, 0, None, 0, None,
-                                );
-                            }
+                            let ffg = if fg != 0 { Color::from_pixel(fg) } else { default_fg };
+                            render_fringe_bitmap(
+                                bid, left_fringe_x, gy,
+                                left_fringe_width, char_h, ffg,
+                                frame_glyphs,
+                            );
                         }
                     }
                 }
 
                 // User-specified right-fringe display property bitmap
-                if right_fringe_width >= char_w {
+                if right_fringe_width > 0.0 {
                     if let Some(&(bid, fg, bg)) = row_right_fringe.get(r) {
                         if bid > 0 {
-                            let ch = fringe_bitmap_to_char(bid);
-                            if fg != 0 || bg != 0 {
-                                let ffg = if fg != 0 { Color::from_pixel(fg) } else { default_fg };
-                                let fbg = if bg != 0 { Color::from_pixel(bg) } else { default_bg };
-                                frame_glyphs.set_face(
-                                    0, ffg, Some(fbg),
-                                    false, false, 0, None, 0, None, 0, None,
-                                );
-                            }
-                            let fx = right_fringe_x + (right_fringe_width - char_w) / 2.0;
-                            frame_glyphs.add_char(ch, fx, gy, char_w, char_h, ascent, false);
-                            if fg != 0 || bg != 0 {
-                                frame_glyphs.set_face(
-                                    0, default_fg, Some(default_bg),
-                                    false, false, 0, None, 0, None, 0, None,
-                                );
-                            }
+                            let ffg = if fg != 0 { Color::from_pixel(fg) } else { default_fg };
+                            render_fringe_bitmap(
+                                bid, right_fringe_x, gy,
+                                right_fringe_width, char_h, ffg,
+                                frame_glyphs,
+                            );
                         }
                     }
                 }
             }
 
-            // EOB empty line indicators (tilde in fringe for lines past buffer end)
+            // EOB empty line indicators (bitmap 24 = empty_line)
             if params.indicate_empty_lines > 0 {
                 let eob_start = actual_rows;
                 for r in eob_start as usize..max_rows as usize {
                     let gy = row_y[r];
                     if params.indicate_empty_lines == 2 {
                         // Right fringe
-                        if right_fringe_width >= char_w {
-                            let fx = right_fringe_x + (right_fringe_width - char_w) / 2.0;
-                            frame_glyphs.add_char('~', fx, gy, char_w, char_h, ascent, false);
+                        if right_fringe_width > 0.0 {
+                            render_fringe_bitmap(
+                                24, right_fringe_x, gy,
+                                right_fringe_width, char_h, default_fg,
+                                frame_glyphs,
+                            );
                         }
                     } else {
                         // Left fringe (default)
-                        if left_fringe_width >= char_w {
-                            let fx = left_fringe_x + (left_fringe_width - char_w) / 2.0;
-                            frame_glyphs.add_char('~', fx, gy, char_w, char_h, ascent, false);
+                        if left_fringe_width > 0.0 {
+                            render_fringe_bitmap(
+                                24, left_fringe_x, gy,
+                                left_fringe_width, char_h, default_fg,
+                                frame_glyphs,
+                            );
                         }
                     }
                 }
@@ -2836,32 +2882,83 @@ fn is_potentially_glyphless(ch: char) -> bool {
 }
 
 /// Map Emacs standard fringe bitmap IDs to Unicode characters.
-fn fringe_bitmap_to_char(bitmap_id: i32) -> char {
-    match bitmap_id {
-        1 => '?',                // question-mark
-        2 => '!',                // exclamation-mark
-        3 => '\u{2190}',         // left-arrow ←
-        4 => '\u{2192}',         // right-arrow →
-        5 => '\u{2191}',         // up-arrow ↑
-        6 => '\u{2193}',         // down-arrow ↓
-        7 => '\u{21B5}',         // left-curly-arrow ↵
-        8 => '\u{21B3}',         // right-curly-arrow ↳
-        9 => '\u{25CF}',         // large-circle ●
-        10 => '\u{25C0}',        // left-triangle ◀
-        11 => '\u{25B6}',        // right-triangle ▶
-        12 => '\u{250C}',        // top-left-angle ┌
-        13 => '\u{2510}',        // top-right-angle ┐
-        14 => '\u{2514}',        // bottom-left-angle └
-        15 => '\u{2518}',        // bottom-right-angle ┘
-        16 => '[',               // left-bracket
-        17 => ']',               // right-bracket
-        18 => '\u{25A0}',        // filled-rectangle ■
-        19 => '\u{25A1}',        // hollow-rectangle □
-        20 => '\u{25AA}',        // filled-square ▪
-        21 => '\u{25AB}',        // hollow-square ▫
-        22 => '\u{2502}',        // vertical-bar │
-        23 => '\u{2500}',        // horizontal-bar ─
-        24 => '~',               // empty-line
-        _ => '\u{25CF}',         // fallback: filled circle ●
+/// Render a fringe bitmap at the given position using Border rects.
+/// Queries the actual bitmap data from Emacs via FFI and draws
+/// each set bit as a filled pixel rectangle.
+unsafe fn render_fringe_bitmap(
+    bitmap_id: i32,
+    fringe_x: f32,
+    row_y: f32,
+    fringe_width: f32,
+    row_height: f32,
+    fg: Color,
+    frame_glyphs: &mut FrameGlyphBuffer,
+) {
+    let mut bits = [0u16; 64]; // max 64 rows
+    let mut bm_width: c_int = 0;
+    let mut bm_height: c_int = 0;
+    let mut bm_align: c_int = 0;
+
+    let rows = neomacs_layout_get_fringe_bitmap(
+        bitmap_id,
+        bits.as_mut_ptr(),
+        64,
+        &mut bm_width,
+        &mut bm_height,
+        &mut bm_align,
+    );
+
+    if rows <= 0 || bm_width <= 0 {
+        return;
+    }
+
+    let bm_w = bm_width as f32;
+    let bm_h = rows as f32;
+
+    // Calculate pixel scale: map bitmap pixels to screen pixels
+    // Scale to fit within fringe width while maintaining aspect ratio
+    let scale = (fringe_width / bm_w).min(row_height / bm_h).max(1.0);
+    let pixel_w = scale;
+    let pixel_h = scale;
+
+    let scaled_w = bm_w * scale;
+    let scaled_h = bm_h * scale;
+
+    // Center horizontally in fringe
+    let x_start = fringe_x + (fringe_width - scaled_w) / 2.0;
+
+    // Vertical alignment within the row
+    let y_start = match bm_align {
+        1 => row_y,                                  // top
+        2 => row_y + row_height - scaled_h,          // bottom
+        _ => row_y + (row_height - scaled_h) / 2.0,  // center (default)
+    };
+
+    // Render each row of the bitmap
+    for r in 0..rows as usize {
+        let row_bits = bits[r];
+        if row_bits == 0 { continue; }
+
+        let py = y_start + r as f32 * pixel_h;
+        if py + pixel_h < row_y || py > row_y + row_height {
+            continue; // skip rows outside visible area
+        }
+
+        // Scan for horizontal runs of consecutive set bits
+        let mut bit = bm_width - 1; // MSB = leftmost pixel
+        while bit >= 0 {
+            if row_bits & (1 << bit) != 0 {
+                // Start of a run
+                let run_start = bit;
+                while bit > 0 && row_bits & (1 << (bit - 1)) != 0 {
+                    bit -= 1;
+                }
+                let run_end = bit;
+                let run_len = (run_start - run_end + 1) as f32;
+                let px = x_start + (bm_width - 1 - run_start) as f32 * pixel_w;
+                frame_glyphs.add_border(px, py, run_len * pixel_w, pixel_h, fg);
+            }
+            bit -= 1;
+        }
     }
 }

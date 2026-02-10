@@ -1749,6 +1749,49 @@ Return nil if POS is not visible in WINDOW.  */)
 
 
 /***********************************************************************
+		    Neomacs Layout Engine FFI
+ ***********************************************************************/
+
+/* Get fringe bitmap data for a given bitmap ID.
+   Writes the bitmap row data into bits_out (one unsigned short per row).
+   Returns the number of rows written, or 0 if bitmap not found.
+   width_out receives the bitmap width in pixels.
+   height_out receives the bitmap height in pixels.
+   align_out receives alignment: 0=center, 1=top, 2=bottom.  */
+int
+neomacs_layout_get_fringe_bitmap (int bitmap_id,
+                                  unsigned short *bits_out,
+                                  int bits_buf_len,
+                                  int *width_out,
+                                  int *height_out,
+                                  int *align_out)
+{
+  if (bitmap_id <= 0 || bitmap_id >= max_used_fringe_bitmap)
+    return 0;
+
+  struct fringe_bitmap *fb;
+  if (bitmap_id < MAX_STANDARD_FRINGE_BITMAPS)
+    fb = &standard_bitmaps[bitmap_id];
+  else
+    {
+      fb = fringe_bitmaps[bitmap_id];
+      if (!fb)
+        return 0;
+    }
+
+  int h = fb->height;
+  int copy_h = h < bits_buf_len ? h : bits_buf_len;
+
+  for (int i = 0; i < copy_h; i++)
+    bits_out[i] = fb->bits[i];
+
+  *width_out = fb->width;
+  *height_out = h;
+  *align_out = fb->align;
+  return copy_h;
+}
+
+/***********************************************************************
 			    Initialization
  ***********************************************************************/
 
