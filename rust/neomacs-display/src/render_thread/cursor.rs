@@ -12,6 +12,8 @@ pub(super) struct CursorTarget {
     pub(super) height: f32,
     pub(super) style: u8,
     pub(super) color: Color,
+    /// Which frame owns this cursor (0 = root frame, non-zero = child frame_id)
+    pub(super) frame_id: u64,
 }
 
 /// Per-corner spring state for the 4-corner cursor trail animation.

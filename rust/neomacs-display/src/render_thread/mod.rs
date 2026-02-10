@@ -1150,18 +1150,45 @@ impl RenderApp {
         self.child_frames.prune_stale(60);
 
         // Extract active cursor target for animation
-        if let Some(ref frame) = self.current_frame {
-            let active_cursor = frame.glyphs.iter().find_map(|g| match g {
-                FrameGlyph::Cursor { window_id, x, y, width, height, style, color }
-                    if *style != 3 => Some(CursorTarget {
-                        window_id: *window_id,
-                        x: *x, y: *y,
-                        width: *width, height: *height,
-                        style: *style,
-                        color: *color,
-                    }),
-                _ => None,
-            });
+        // Scan root frame first, then child frames (only one active cursor exists)
+        {
+            let mut active_cursor: Option<CursorTarget> = None;
+
+            if let Some(ref frame) = self.current_frame {
+                active_cursor = frame.glyphs.iter().find_map(|g| match g {
+                    FrameGlyph::Cursor { window_id, x, y, width, height, style, color }
+                        if *style != 3 => Some(CursorTarget {
+                            window_id: *window_id,
+                            x: *x, y: *y,
+                            width: *width, height: *height,
+                            style: *style,
+                            color: *color,
+                            frame_id: 0,
+                        }),
+                    _ => None,
+                });
+            }
+
+            // If no active cursor in root frame, check child frames
+            if active_cursor.is_none() {
+                for (_, entry) in &self.child_frames.frames {
+                    if let Some(ct) = entry.frame.glyphs.iter().find_map(|g| match g {
+                        FrameGlyph::Cursor { window_id, x, y, width, height, style, color }
+                            if *style != 3 => Some(CursorTarget {
+                                window_id: *window_id,
+                                x: *x, y: *y,
+                                width: *width, height: *height,
+                                style: *style,
+                                color: *color,
+                                frame_id: entry.frame_id,
+                            }),
+                        _ => None,
+                    }) {
+                        active_cursor = Some(ct);
+                        break;
+                    }
+                }
+            }
 
             if let Some(new_target) = active_cursor {
                 let had_target = self.cursor.target.is_some();
@@ -1277,8 +1304,16 @@ impl RenderApp {
 
                 // Update IME cursor area so candidate window follows text cursor
                 if let Some(ref window) = self.window {
-                    let x = (new_target.x as f64) * self.scale_factor;
-                    let y = (new_target.y as f64 + new_target.height as f64) * self.scale_factor;
+                    // If cursor is in a child frame, offset by the child's abs position
+                    let (ime_off_x, ime_off_y) = if new_target.frame_id != 0 {
+                        self.child_frames.frames.get(&new_target.frame_id)
+                            .map(|e| (e.abs_x as f64, e.abs_y as f64))
+                            .unwrap_or((0.0, 0.0))
+                    } else {
+                        (0.0, 0.0)
+                    };
+                    let x = (new_target.x as f64 + ime_off_x) * self.scale_factor;
+                    let y = (new_target.y as f64 + new_target.height as f64 + ime_off_y) * self.scale_factor;
                     let w = new_target.width as f64 * self.scale_factor;
                     let h = new_target.height as f64 * self.scale_factor;
                     window.set_ime_cursor_area(
@@ -2033,6 +2068,7 @@ impl RenderApp {
                 width: self.cursor.current_w,
                 height: self.cursor.current_h,
                 corners,
+                frame_id: target.frame_id,
             })
         } else {
             None
@@ -2125,6 +2161,8 @@ impl RenderApp {
                     if let (Some(ref renderer), Some(ref mut glyph_atlas)) =
                         (&self.renderer, &mut self.glyph_atlas)
                     {
+                        // Pass animated cursor only if it belongs to this child frame
+                        let child_anim = animated_cursor.filter(|ac| ac.frame_id == child_id);
                         renderer.render_child_frame(
                             &surface_view,
                             &child_entry.frame,
@@ -2135,6 +2173,7 @@ impl RenderApp {
                             self.width,
                             self.height,
                             self.cursor.blink_on,
+                            child_anim,
                         );
                     }
                 }

@@ -4,7 +4,7 @@ use super::WgpuRenderer;
 use super::TitleFadeEntry;
 use wgpu::util::DeviceExt;
 use super::super::vertex::{GlyphVertex, RectVertex, RoundedRectVertex, Uniforms};
-use crate::core::types::{Color, Rect};
+use crate::core::types::{AnimatedCursor, Color, Rect};
 use crate::core::frame_glyphs::{FrameGlyph, FrameGlyphBuffer};
 use super::super::glyph_atlas::{GlyphKey, WgpuGlyphAtlas};
 use crate::core::face::Face;
@@ -28,6 +28,7 @@ impl WgpuRenderer {
         surface_width: u32,
         surface_height: u32,
         cursor_visible: bool,
+        animated_cursor: Option<AnimatedCursor>,
     ) {
         let logical_w = surface_width as f32 / self.scale_factor;
         let logical_h = surface_height as f32 / self.scale_factor;
@@ -169,32 +170,44 @@ impl WgpuRenderer {
                         self.add_rect(&mut rect_verts,
                             *x + offset_x, *y + offset_y, *width, *height, &c);
                     }
-                    FrameGlyph::Cursor { x, y, width, height, style, color, .. } => {
+                    FrameGlyph::Cursor { x, y, width, height, style, color, window_id } => {
                         if !cursor_visible {
                             continue;
                         }
                         let c = color.srgb_to_linear();
-                        let gx = *x + offset_x;
-                        let gy = *y + offset_y;
+                        // Use animated position if this cursor matches the animated cursor
+                        let (gx, gy, gw, gh) = if *style != 3 {
+                            if let Some(ref ac) = animated_cursor {
+                                if ac.window_id == *window_id {
+                                    (ac.x + offset_x, ac.y + offset_y, ac.width, ac.height)
+                                } else {
+                                    (*x + offset_x, *y + offset_y, *width, *height)
+                                }
+                            } else {
+                                (*x + offset_x, *y + offset_y, *width, *height)
+                            }
+                        } else {
+                            (*x + offset_x, *y + offset_y, *width, *height)
+                        };
                         match style {
                             0 => {
                                 // Filled box
-                                self.add_rect(&mut cursor_rects, gx, gy, *width, *height, &c);
+                                self.add_rect(&mut cursor_rects, gx, gy, gw, gh, &c);
                             }
                             1 => {
                                 // Bar
-                                self.add_rect(&mut cursor_rects, gx, gy, 2.0, *height, &c);
+                                self.add_rect(&mut cursor_rects, gx, gy, 2.0, gh, &c);
                             }
                             2 => {
                                 // Underline/hbar
-                                self.add_rect(&mut cursor_rects, gx, gy + height - 2.0, *width, 2.0, &c);
+                                self.add_rect(&mut cursor_rects, gx, gy + gh - 2.0, gw, 2.0, &c);
                             }
                             3 => {
                                 // Hollow box
-                                self.add_rect(&mut cursor_rects, gx, gy, *width, 1.0, &c);
-                                self.add_rect(&mut cursor_rects, gx, gy + height - 1.0, *width, 1.0, &c);
-                                self.add_rect(&mut cursor_rects, gx, gy, 1.0, *height, &c);
-                                self.add_rect(&mut cursor_rects, gx + width - 1.0, gy, 1.0, *height, &c);
+                                self.add_rect(&mut cursor_rects, gx, gy, gw, 1.0, &c);
+                                self.add_rect(&mut cursor_rects, gx, gy + gh - 1.0, gw, 1.0, &c);
+                                self.add_rect(&mut cursor_rects, gx, gy, 1.0, gh, &c);
+                                self.add_rect(&mut cursor_rects, gx + gw - 1.0, gy, 1.0, gh, &c);
                             }
                             _ => {}
                         }

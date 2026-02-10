@@ -192,6 +192,8 @@ pub struct AnimatedCursor {
     /// When Some, draw cursor as a quad from these 4 corner positions (spring trail).
     /// Order: [top-left, top-right, bottom-right, bottom-left].
     pub corners: Option<[(f32, f32); 4]>,
+    /// Which frame owns this cursor (0 = root frame, non-zero = child frame_id)
+    pub frame_id: u64,
 }
 
 /// Cursor animation style.
