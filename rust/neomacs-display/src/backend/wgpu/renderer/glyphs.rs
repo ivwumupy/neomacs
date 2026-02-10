@@ -10,7 +10,7 @@ use wgpu::util::DeviceExt;
 use std::collections::HashMap;
 use super::super::vertex::{GlyphVertex, RectVertex, RoundedRectVertex, Uniforms};
 use crate::core::types::{Color, Rect, AnimatedCursor};
-use crate::core::frame_glyphs::{FrameGlyph, FrameGlyphBuffer};
+use crate::core::frame_glyphs::{FrameGlyph, FrameGlyphBuffer, StipplePattern};
 use crate::core::face::{BoxType, Face, FaceAttributes};
 use super::super::glyph_atlas::{ComposedGlyphKey, GlyphKey, WgpuGlyphAtlas};
 
@@ -248,7 +248,7 @@ impl WgpuRenderer {
                 FrameGlyph::Char { x, y, width, height, face_id, is_overlay, bg, .. } => {
                     (*x, *y, *width, *height, *face_id, *is_overlay, *bg)
                 }
-                FrameGlyph::Stretch { x, y, width, height, face_id, is_overlay, bg } => {
+                FrameGlyph::Stretch { x, y, width, height, face_id, is_overlay, bg, .. } => {
                     (*x, *y, *width, *height, *face_id, *is_overlay, Some(*bg))
                 }
                 _ => continue,
@@ -360,10 +360,17 @@ impl WgpuRenderer {
         // Non-overlay stretches (skip those inside a box span)
         let has_line_anims = !self.active_line_anims.is_empty() || !self.active_scroll_spacings.is_empty();
         for glyph in &frame_glyphs.glyphs {
-            if let FrameGlyph::Stretch { x, y, width, height, bg, is_overlay, .. } = glyph {
+            if let FrameGlyph::Stretch { x, y, width, height, bg, is_overlay, stipple_id, stipple_fg, .. } = glyph {
                 if !*is_overlay && !overlaps_rounded_box_span(*x, *y, false, &box_spans) {
                     let ya = if has_line_anims { *y + self.line_y_offset(*x, *y) } else { *y };
+                    // Draw background color first
                     self.add_rect(&mut non_overlay_rect_vertices, *x, ya, *width, *height, bg);
+                    // Overlay stipple pattern if present
+                    if *stipple_id > 0 {
+                        if let (Some(fg), Some(pat)) = (stipple_fg, frame_glyphs.stipple_patterns.get(stipple_id)) {
+                            self.render_stipple_pattern(&mut non_overlay_rect_vertices, *x, ya, *width, *height, fg, pat);
+                        }
+                    }
                 }
             }
         }
@@ -546,9 +553,14 @@ impl WgpuRenderer {
 
         // Overlay stretches (skip those inside a box span)
         for glyph in &frame_glyphs.glyphs {
-            if let FrameGlyph::Stretch { x, y, width, height, bg, is_overlay, .. } = glyph {
+            if let FrameGlyph::Stretch { x, y, width, height, bg, is_overlay, stipple_id, stipple_fg, .. } = glyph {
                 if *is_overlay && !overlaps_rounded_box_span(*x, *y, true, &box_spans) {
                     self.add_rect(&mut overlay_rect_vertices, *x, *y, *width, *height, bg);
+                    if *stipple_id > 0 {
+                        if let (Some(fg), Some(pat)) = (stipple_fg, frame_glyphs.stipple_patterns.get(stipple_id)) {
+                            self.render_stipple_pattern(&mut overlay_rect_vertices, *x, *y, *width, *height, fg, pat);
+                        }
+                    }
                 }
             }
         }

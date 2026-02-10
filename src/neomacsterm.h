@@ -52,6 +52,7 @@ struct neomacs_bitmap_record
   int refcount;
   int height, width, depth;
   cairo_pattern_t *pattern;
+  char *stipple_bits;  /* Raw XBM bitmap data for stipple patterns */
 };
 
 /* Scroll bar structure - one per scroll bar widget */

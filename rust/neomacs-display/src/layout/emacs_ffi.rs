@@ -7,7 +7,7 @@
 //! redisplay_internal(), so they are thread-safe (Emacs is single-threaded).
 //! The pointers are valid for the duration of the layout computation.
 
-use std::ffi::c_int;
+use std::ffi::{c_int, c_void};
 use std::os::raw::c_char;
 
 /// Opaque pointer to an Emacs frame (struct frame *)
@@ -106,6 +106,17 @@ extern "C" {
     pub fn neomacs_layout_default_face(
         frame: EmacsFrame,
         face_out: *mut FaceDataFFI,
+    ) -> c_int;
+
+    /// Get stipple bitmap data for a given bitmap ID.
+    /// Returns 0 on success, -1 on failure.
+    pub fn neomacs_layout_get_stipple_bitmap(
+        frame: *mut c_void,
+        bitmap_id: c_int,
+        bits_out: *mut u8,
+        bits_buf_len: c_int,
+        width_out: *mut c_int,
+        height_out: *mut c_int,
     ) -> c_int;
 
     /// Get the advance width of a single character in a specific face's font.
@@ -606,4 +617,6 @@ pub struct FaceDataFFI {
     pub font_space_width: f32,
     /// Whether the face's font is monospace (1=monospace, 0=proportional)
     pub font_is_monospace: c_int,
+    /// Stipple bitmap ID (0 = none, positive = 1-based bitmap index)
+    pub stipple: c_int,
 }

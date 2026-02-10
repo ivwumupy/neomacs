@@ -2297,6 +2297,7 @@ struct FaceDataFFI {
   float font_ascent;
   float font_space_width;
   int font_is_monospace;
+  int stipple;  /* Bitmap ID for stipple pattern (0 = none) */
 };
 
 static void
@@ -2409,6 +2410,9 @@ fill_face_data (struct frame *f, struct face *face, struct FaceDataFFI *out)
   /* Extend: face background extends to end of visual line */
   out->extend = FACE_EXTENSIBLE_P (face) ? 1 : 0;
 
+  /* Stipple pattern bitmap ID */
+  out->stipple = (int) face->stipple;
+
   /* Per-face font metrics for mixed-font rendering */
   if (face->font)
     {
@@ -2426,6 +2430,38 @@ fill_face_data (struct frame *f, struct face *face, struct FaceDataFFI *out)
       out->font_space_width = 0.0f;
       out->font_is_monospace = 1;
     }
+}
+
+/* Get stipple bitmap data for a given bitmap ID.
+   Returns the XBM bits, width, and height.
+   bitmap_id is 1-based (from face->stipple).
+   Returns 0 on success, -1 on failure. */
+int
+neomacs_layout_get_stipple_bitmap (void *frame_ptr, int bitmap_id,
+                                   unsigned char *bits_out, int bits_buf_len,
+                                   int *width_out, int *height_out)
+{
+  struct frame *f = (struct frame *) frame_ptr;
+  if (!f || bitmap_id <= 0)
+    return -1;
+
+  struct neomacs_display_info *dpyinfo = FRAME_DISPLAY_INFO (f);
+  if (!dpyinfo || bitmap_id > dpyinfo->bitmaps_last)
+    return -1;
+
+  struct neomacs_bitmap_record *bm = &dpyinfo->bitmaps[bitmap_id - 1];
+  if (bm->refcount <= 0 || !bm->stipple_bits)
+    return -1;
+
+  int bytes_per_row = (bm->width + 7) / 8;
+  int nbytes = bytes_per_row * bm->height;
+  if (nbytes > bits_buf_len)
+    return -1;
+
+  memcpy (bits_out, bm->stipple_bits, nbytes);
+  *width_out = bm->width;
+  *height_out = bm->height;
+  return 0;
 }
 
 /* Get the advance width of a single character in a specific face's font.

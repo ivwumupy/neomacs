@@ -688,6 +688,17 @@ image_create_bitmap_from_data (struct frame *f, char *bits,
   dpyinfo->bitmaps[id - 1].pattern = pattern;
 #endif
 
+#ifdef HAVE_NEOMACS
+  {
+    int bytes_per_row = (width + 7) / 8;
+    int nbytes = bytes_per_row * height;
+    dpyinfo->bitmaps[id - 1].depth = 1;
+    dpyinfo->bitmaps[id - 1].pattern = NULL;
+    dpyinfo->bitmaps[id - 1].stipple_bits = xmalloc (nbytes);
+    memcpy (dpyinfo->bitmaps[id - 1].stipple_bits, bits, nbytes);
+  }
+#endif
+
 #ifdef HAVE_HAIKU
   dpyinfo->bitmaps[id - 1].img = bitmap;
   dpyinfo->bitmaps[id - 1].depth = 1;
@@ -735,7 +746,7 @@ typedef int image_fd;
 #endif /* defined HAVE_ANDROID && !defined ANDROID_STUBIFY */
 
 #if defined HAVE_HAIKU || defined HAVE_NS || defined HAVE_PGTK	\
-  || defined HAVE_ANDROID || defined HAVE_NTGUI
+  || defined HAVE_ANDROID || defined HAVE_NTGUI || defined HAVE_NEOMACS
 static char *slurp_file (image_fd, ptrdiff_t *);
 static Lisp_Object image_find_image_fd (Lisp_Object, image_fd *);
 static bool xbm_read_bitmap_data (struct frame *, char *, char *,
@@ -871,6 +882,47 @@ image_create_bitmap_from_file (struct frame *f, Lisp_Object file)
   dpyinfo->bitmaps[id - 1].width = height;
   dpyinfo->bitmaps[id - 1].pattern
     = image_bitmap_to_cr_pattern (data, width, height);
+  xfree (contents);
+  xfree (data);
+  return id;
+#endif
+
+#ifdef HAVE_NEOMACS
+  ptrdiff_t id, size;
+  int fd, width, height, rc;
+  char *contents, *data;
+
+  if (!STRINGP (image_find_image_fd (file, &fd)))
+    return -1;
+
+  contents = slurp_file (fd, &size);
+
+  if (!contents)
+    return -1;
+
+  rc = xbm_read_bitmap_data (f, contents, contents + size,
+			     &width, &height, &data, 0);
+
+  if (!rc)
+    {
+      xfree (contents);
+      return -1;
+    }
+
+  id = image_allocate_bitmap_record (f);
+
+  {
+    int bytes_per_row = (width + 7) / 8;
+    int nbytes = bytes_per_row * height;
+    dpyinfo->bitmaps[id - 1].stipple_bits = xmalloc (nbytes);
+    memcpy (dpyinfo->bitmaps[id - 1].stipple_bits, data, nbytes);
+  }
+  dpyinfo->bitmaps[id - 1].refcount = 1;
+  dpyinfo->bitmaps[id - 1].file = xlispstrdup (file);
+  dpyinfo->bitmaps[id - 1].height = height;
+  dpyinfo->bitmaps[id - 1].width = width;
+  dpyinfo->bitmaps[id - 1].depth = 1;
+  dpyinfo->bitmaps[id - 1].pattern = NULL;
   xfree (contents);
   xfree (data);
   return id;
@@ -1133,6 +1185,14 @@ free_bitmap_record (Display_Info *dpyinfo, Bitmap_Record *bm)
 
   if (bm->stipple_bits)
     xfree (bm->stipple_bits);
+#endif
+
+#ifdef HAVE_NEOMACS
+  if (bm->stipple_bits)
+    {
+      xfree (bm->stipple_bits);
+      bm->stipple_bits = NULL;
+    }
 #endif
 
   if (bm->file)

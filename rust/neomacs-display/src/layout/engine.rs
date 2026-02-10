@@ -6,8 +6,9 @@
 
 use std::ffi::CStr;
 use std::ffi::c_int;
+use std::ffi::c_void;
 
-use crate::core::frame_glyphs::FrameGlyphBuffer;
+use crate::core::frame_glyphs::{FrameGlyphBuffer, StipplePattern};
 use crate::core::types::{Color, Rect};
 use super::types::*;
 use super::emacs_ffi::*;
@@ -388,7 +389,8 @@ impl LayoutEngine {
     }
 
     /// Apply face data from FFI to the FrameGlyphBuffer's current face state.
-    unsafe fn apply_face(&self, face: &FaceDataFFI, frame_glyphs: &mut FrameGlyphBuffer) {
+    unsafe fn apply_face(&self, face: &FaceDataFFI, frame: EmacsFrame,
+                          frame_glyphs: &mut FrameGlyphBuffer) {
         let fg = Color::from_pixel(face.fg);
         let bg = Color::from_pixel(face.bg);
         let bold = face.font_weight >= 700;
@@ -434,6 +436,45 @@ impl LayoutEngine {
             face.overline as u8,
             overline_color,
         );
+
+        // Fetch stipple pattern data if present and not yet cached
+        if face.stipple > 0 && !frame_glyphs.stipple_patterns.contains_key(&face.stipple) {
+            let mut bits_buf = [0u8; 1024]; // max 1024 bytes for stipple bitmap
+            let mut w: c_int = 0;
+            let mut h: c_int = 0;
+            let rc = neomacs_layout_get_stipple_bitmap(
+                frame as *mut c_void,
+                face.stipple,
+                bits_buf.as_mut_ptr(),
+                bits_buf.len() as c_int,
+                &mut w,
+                &mut h,
+            );
+            if rc == 0 && w > 0 && h > 0 {
+                let bytes_per_row = ((w + 7) / 8) as usize;
+                let nbytes = bytes_per_row * h as usize;
+                frame_glyphs.stipple_patterns.insert(face.stipple, StipplePattern {
+                    width: w as u32,
+                    height: h as u32,
+                    bits: bits_buf[..nbytes].to_vec(),
+                });
+            }
+        }
+    }
+
+    /// Add a stretch glyph, automatically using stipple if the given face has one.
+    fn add_stretch_for_face(
+        face: &FaceDataFFI,
+        frame_glyphs: &mut FrameGlyphBuffer,
+        x: f32, y: f32, width: f32, height: f32,
+        bg: Color, face_id: u32, is_overlay: bool,
+    ) {
+        if face.stipple > 0 {
+            let fg = Color::from_pixel(face.fg);
+            frame_glyphs.add_stretch_stipple(x, y, width, height, bg, fg, face_id, is_overlay, face.stipple);
+        } else {
+            frame_glyphs.add_stretch(x, y, width, height, bg, face_id, is_overlay);
+        }
     }
 
     /// Layout a single window's buffer content.
@@ -752,7 +793,7 @@ impl LayoutEngine {
                 );
 
                 // Apply line number face and render digits
-                self.apply_face(&lnum_face, frame_glyphs);
+                self.apply_face(&lnum_face, frame, frame_glyphs);
                 let lnum_bg = Color::from_pixel(lnum_face.bg);
 
                 // Format the number right-aligned
@@ -787,7 +828,7 @@ impl LayoutEngine {
 
                 // Restore text face
                 if current_face_id >= 0 {
-                    self.apply_face(&self.face_data, frame_glyphs);
+                    self.apply_face(&self.face_data, frame, frame_glyphs);
                 }
 
                 need_line_number = false;
@@ -1024,7 +1065,7 @@ impl LayoutEngine {
                     // Use per-char face runs, overlay face, or resolve face for position
                     if !before_has_runs {
                         if overlay_before_face.face_id != 0 {
-                            self.apply_face(&overlay_before_face, frame_glyphs);
+                            self.apply_face(&overlay_before_face, frame, frame_glyphs);
                         } else if charpos >= next_face_check || current_face_id < 0 {
                             let mut next_check: i64 = 0;
                             let fid = neomacs_layout_face_at_pos(
@@ -1036,7 +1077,7 @@ impl LayoutEngine {
                                 current_face_id = fid;
                                 face_fg = Color::from_pixel(self.face_data.fg);
                                 face_bg = Color::from_pixel(self.face_data.bg);
-                                self.apply_face(&self.face_data, frame_glyphs);
+                                self.apply_face(&self.face_data, frame, frame_glyphs);
                             }
                             next_face_check = if next_check > charpos { next_check } else { charpos + 1 };
                         }
@@ -1082,7 +1123,7 @@ impl LayoutEngine {
 
                     // Restore text face after overlay face was used
                     if (before_has_runs || overlay_before_face.face_id != 0) && current_face_id >= 0 {
-                        self.apply_face(&self.face_data, frame_glyphs);
+                        self.apply_face(&self.face_data, frame, frame_glyphs);
                     }
                 }
 
@@ -1119,7 +1160,7 @@ impl LayoutEngine {
                             current_face_id = fid;
                             face_fg = Color::from_pixel(self.face_data.fg);
                             face_bg = Color::from_pixel(self.face_data.bg);
-                            self.apply_face(&self.face_data, frame_glyphs);
+                            self.apply_face(&self.face_data, frame, frame_glyphs);
                         }
                         next_face_check = if next_check > charpos { next_check } else { charpos + 1 };
                     }
@@ -1220,7 +1261,7 @@ impl LayoutEngine {
                     // Restore text face after display string
                     if has_face_runs || display_prop.display_fg != 0 || display_prop.display_bg != 0 {
                         if current_face_id >= 0 {
-                            self.apply_face(&self.face_data, frame_glyphs);
+                            self.apply_face(&self.face_data, frame, frame_glyphs);
                         }
                     }
 
@@ -1251,7 +1292,7 @@ impl LayoutEngine {
                             current_face_id = fid;
                             face_fg = Color::from_pixel(self.face_data.fg);
                             face_bg = Color::from_pixel(self.face_data.bg);
-                            self.apply_face(&self.face_data, frame_glyphs);
+                            self.apply_face(&self.face_data, frame, frame_glyphs);
                         }
                         next_face_check = if next_check > charpos { next_check } else { charpos + 1 };
                     }
@@ -1267,7 +1308,8 @@ impl LayoutEngine {
                     if x_offset + space_pixel_w <= avail_width && row < max_rows {
                         let gx = content_x + x_offset;
                         let gy = row_y[row as usize];
-                        frame_glyphs.add_stretch(
+                        Self::add_stretch_for_face(
+                            &self.face_data, frame_glyphs,
                             gx, gy, space_pixel_w, space_h,
                             face_bg, self.face_data.face_id, false,
                         );
@@ -1302,7 +1344,7 @@ impl LayoutEngine {
                             current_face_id = fid;
                             face_fg = Color::from_pixel(self.face_data.fg);
                             face_bg = Color::from_pixel(self.face_data.bg);
-                            self.apply_face(&self.face_data, frame_glyphs);
+                            self.apply_face(&self.face_data, frame, frame_glyphs);
                         }
                         next_face_check = if next_check > charpos { next_check } else { charpos + 1 };
                     }
@@ -1313,7 +1355,8 @@ impl LayoutEngine {
                         let gx = content_x + x_offset;
                         let gy = row_y[row as usize];
                         let stretch_w = target_x - x_offset;
-                        frame_glyphs.add_stretch(
+                        Self::add_stretch_for_face(
+                            &self.face_data, frame_glyphs,
                             gx, gy, stretch_w, char_h,
                             face_bg, self.face_data.face_id, false,
                         );
@@ -1570,7 +1613,7 @@ impl LayoutEngine {
                             face_h = char_h;
                             face_ascent = ascent;
                         }
-                        self.apply_face(&self.face_data, frame_glyphs);
+                        self.apply_face(&self.face_data, frame, frame_glyphs);
 
                         // Debug: check all face properties
                         if charpos < window_start + 5 {
@@ -1682,7 +1725,11 @@ impl LayoutEngine {
                         let gy = row_y[row as usize];
                         let fill_bg = if self.face_data.extend != 0 { face_bg } else { default_bg };
                         let fill_face = if self.face_data.extend != 0 { self.face_data.face_id } else { 0 };
-                        frame_glyphs.add_stretch(gx, gy, remaining, char_h, fill_bg, fill_face, false);
+                        if self.face_data.extend != 0 {
+                            Self::add_stretch_for_face(&self.face_data, frame_glyphs, gx, gy, remaining, char_h, fill_bg, fill_face, false);
+                        } else {
+                            frame_glyphs.add_stretch(gx, gy, remaining, char_h, fill_bg, fill_face, false);
+                        }
                     }
 
                     // Close box face at end of line (box continues on next line)
@@ -1807,7 +1854,7 @@ impl LayoutEngine {
                     // Render tab as stretch glyph (use face bg)
                     let gx = content_x + x_offset;
                     let gy = row_y[row as usize];
-                    frame_glyphs.add_stretch(gx, gy, tab_pixel_w, char_h, face_bg, self.face_data.face_id, false);
+                    Self::add_stretch_for_face(&self.face_data, frame_glyphs, gx, gy, tab_pixel_w, char_h, face_bg, self.face_data.face_id, false);
 
                     col += spaces;
                     x_offset += tab_pixel_w;
@@ -1941,7 +1988,7 @@ impl LayoutEngine {
                     }
                     // Restore text face after escape-glyph
                     if current_face_id >= 0 {
-                        self.apply_face(&self.face_data, frame_glyphs);
+                        self.apply_face(&self.face_data, frame, frame_glyphs);
                     }
                 }
                 _ => {
@@ -1962,7 +2009,7 @@ impl LayoutEngine {
                         }
                         // Restore text face
                         if current_face_id >= 0 {
-                            self.apply_face(&self.face_data, frame_glyphs);
+                            self.apply_face(&self.face_data, frame, frame_glyphs);
                         }
                         window_end_charpos = charpos;
                         continue;
@@ -2142,7 +2189,7 @@ impl LayoutEngine {
                             }
                             // Restore face
                             if current_face_id >= 0 {
-                                self.apply_face(&self.face_data, frame_glyphs);
+                                self.apply_face(&self.face_data, frame, frame_glyphs);
                             }
                             window_end_charpos = charpos;
                             continue;
@@ -2211,9 +2258,9 @@ impl LayoutEngine {
                             if fill_w > 0.0 {
                                 let gx = content_x + wrap_break_x;
                                 let gy = row_y[row as usize];
-                                frame_glyphs.add_stretch(
-                                    gx, gy,
-                                    fill_w, char_h,
+                                Self::add_stretch_for_face(
+                                    &self.face_data, frame_glyphs,
+                                    gx, gy, fill_w, char_h,
                                     face_bg, self.face_data.face_id, false,
                                 );
                             }
@@ -2262,7 +2309,7 @@ impl LayoutEngine {
                             if remaining > 0.0 {
                                 let gx = content_x + x_offset;
                                 let gy = row_y[row as usize];
-                                frame_glyphs.add_stretch(gx, gy, remaining, char_h, face_bg, self.face_data.face_id, false);
+                                Self::add_stretch_for_face(&self.face_data, frame_glyphs, gx, gy, remaining, char_h, face_bg, self.face_data.face_id, false);
                             }
                             if (row as usize) < row_continued.len() {
                                 row_continued[row as usize] = true;
@@ -2416,7 +2463,7 @@ impl LayoutEngine {
 
                 // Apply overlay face for after-string if no per-char runs
                 if !after_has_runs && overlay_after_face.face_id != 0 {
-                    self.apply_face(&overlay_after_face, frame_glyphs);
+                    self.apply_face(&overlay_after_face, frame, frame_glyphs);
                 }
 
                 let astr = &overlay_after_buf[..overlay_after_len as usize];
@@ -2459,7 +2506,7 @@ impl LayoutEngine {
 
                 // Restore text face after overlay after-string
                 if (after_has_runs || overlay_after_face.face_id != 0) && current_face_id >= 0 {
-                    self.apply_face(&self.face_data, frame_glyphs);
+                    self.apply_face(&self.face_data, frame, frame_glyphs);
                 }
             }
 
@@ -2558,7 +2605,7 @@ impl LayoutEngine {
                 };
 
                 if !eob_before_has_runs && eob_before_face.face_id != 0 {
-                    self.apply_face(&eob_before_face, frame_glyphs);
+                    self.apply_face(&eob_before_face, frame, frame_glyphs);
                 }
                 let bstr = &overlay_before_buf[..eob_before_len as usize];
                 let mut bi = 0usize;
@@ -2596,7 +2643,7 @@ impl LayoutEngine {
                     x_offset += b_advance;
                 }
                 if (eob_before_has_runs || eob_before_face.face_id != 0) && current_face_id >= 0 {
-                    self.apply_face(&self.face_data, frame_glyphs);
+                    self.apply_face(&self.face_data, frame, frame_glyphs);
                 }
             }
 
@@ -2610,7 +2657,7 @@ impl LayoutEngine {
                 };
 
                 if !eob_after_has_runs && overlay_after_face.face_id != 0 {
-                    self.apply_face(&overlay_after_face, frame_glyphs);
+                    self.apply_face(&overlay_after_face, frame, frame_glyphs);
                 }
                 let astr = &overlay_after_buf[..overlay_after_len as usize];
                 let mut ai = 0usize;
@@ -2648,7 +2695,7 @@ impl LayoutEngine {
                     x_offset += a_advance;
                 }
                 if (eob_after_has_runs || overlay_after_face.face_id != 0) && current_face_id >= 0 {
-                    self.apply_face(&self.face_data, frame_glyphs);
+                    self.apply_face(&self.face_data, frame, frame_glyphs);
                 }
             }
         }
@@ -2662,7 +2709,11 @@ impl LayoutEngine {
                 let gy = row_y[row as usize];
                 let fill_bg = if self.face_data.extend != 0 { face_bg } else { default_bg };
                 let fill_face = if self.face_data.extend != 0 { self.face_data.face_id } else { 0 };
-                frame_glyphs.add_stretch(gx, gy, remaining, char_h, fill_bg, fill_face, false);
+                if self.face_data.extend != 0 {
+                    Self::add_stretch_for_face(&self.face_data, frame_glyphs, gx, gy, remaining, char_h, fill_bg, fill_face, false);
+                } else {
+                    frame_glyphs.add_stretch(gx, gy, remaining, char_h, fill_bg, fill_face, false);
+                }
             }
         }
 
@@ -2875,6 +2926,7 @@ impl LayoutEngine {
                 params.char_width,
                 params.font_ascent,
                 wp,
+                frame,
                 frame_glyphs,
                 StatusLineKind::TabLine,
             );
@@ -2890,6 +2942,7 @@ impl LayoutEngine {
                 params.char_width,
                 params.font_ascent,
                 wp,
+                frame,
                 frame_glyphs,
                 StatusLineKind::HeaderLine,
             );
@@ -2905,6 +2958,7 @@ impl LayoutEngine {
                 params.char_width,
                 params.font_ascent,
                 wp,
+                frame,
                 frame_glyphs,
                 StatusLineKind::ModeLine,
             );
@@ -2955,6 +3009,7 @@ impl LayoutEngine {
         char_w: f32,
         ascent: f32,
         wp: &WindowParamsFFI,
+        frame: EmacsFrame,
         frame_glyphs: &mut FrameGlyphBuffer,
         kind: StatusLineKind,
     ) {
@@ -2987,12 +3042,12 @@ impl LayoutEngine {
         };
 
         // Apply face
-        self.apply_face(&line_face, frame_glyphs);
+        self.apply_face(&line_face, frame, frame_glyphs);
         let bg = Color::from_pixel(line_face.bg);
         let default_fg = Color::from_pixel(line_face.fg);
 
         // Draw background
-        frame_glyphs.add_stretch(x, y, width, height, bg, line_face.face_id, true);
+        Self::add_stretch_for_face(&line_face, frame_glyphs, x, y, width, height, bg, line_face.face_id, true);
 
         if bytes <= 0 {
             return;
@@ -3098,7 +3153,7 @@ impl LayoutEngine {
         if sl_x_offset < width {
             let gx = x + sl_x_offset;
             let remaining = width - sl_x_offset;
-            frame_glyphs.add_stretch(gx, y, remaining, height, bg, line_face.face_id, true);
+            Self::add_stretch_for_face(&line_face, frame_glyphs, gx, y, remaining, height, bg, line_face.face_id, true);
         }
 
         // Draw box borders if the face has box type

@@ -2748,6 +2748,7 @@ impl RenderApp {
                             extra_glyphs.push(FrameGlyph::Stretch {
                                 x: *x, y: *y, width: *width, height: *height,
                                 bg: content.default_bg, face_id: 0, is_overlay: false,
+                                stipple_id: 0, stipple_fg: None,
                             });
 
                             Self::expand_terminal_cells(
@@ -2783,6 +2784,7 @@ impl RenderApp {
                         win_glyphs.push(FrameGlyph::Stretch {
                             x, y, width, height,
                             bg: content.default_bg, face_id: 0, is_overlay: true,
+                            stipple_id: 0, stipple_fg: None,
                         });
 
                         Self::expand_terminal_cells(
@@ -2817,6 +2819,7 @@ impl RenderApp {
                         bg.a = view.float_opacity;
                         float_glyphs.push(FrameGlyph::Stretch {
                             x, y, width, height, bg, face_id: 0, is_overlay: true,
+                            stipple_id: 0, stipple_fg: None,
                         });
 
                         Self::expand_terminal_cells(
@@ -2860,6 +2863,7 @@ impl RenderApp {
                 out.push(FrameGlyph::Stretch {
                     x: cx, y: cy, width: cell_w, height: cell_h,
                     bg, face_id: 0, is_overlay,
+                    stipple_id: 0, stipple_fg: None,
                 });
             }
 

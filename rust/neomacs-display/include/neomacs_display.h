@@ -471,6 +471,10 @@ typedef struct FaceDataFFI {
    * Whether the face's font is monospace (1=monospace, 0=proportional)
    */
   int fontIsMonospace;
+  /**
+   * Stipple bitmap ID (0 = none, positive = 1-based bitmap index)
+   */
+  int stipple;
 } FaceDataFFI;
 
 /**
@@ -2976,6 +2980,17 @@ extern int neomacs_layout_face_at_pos(EmacsWindow window,
  * Get the default face for a frame.
  */
 extern int neomacs_layout_default_face(EmacsFrame frame, struct FaceDataFFI *faceOut);
+
+/**
+ * Get stipple bitmap data for a given bitmap ID.
+ * Returns 0 on success, -1 on failure.
+ */
+extern int neomacs_layout_get_stipple_bitmap(void *frame,
+                                             int bitmapId,
+                                             uint8_t *bitsOut,
+                                             int bitsBufLen,
+                                             int *widthOut,
+                                             int *heightOut);
 
 /**
  * Get the advance width of a single character in a specific face's font.

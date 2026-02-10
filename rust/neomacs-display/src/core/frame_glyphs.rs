@@ -66,6 +66,10 @@ pub enum FrameGlyph {
         face_id: u32,
         /// True if this is mode-line/echo area (renders on top)
         is_overlay: bool,
+        /// Stipple pattern ID (0 = none, references stipple_patterns in FrameGlyphBuffer)
+        stipple_id: i32,
+        /// Foreground color for stipple pattern (stipple bits use fg, gaps use bg)
+        stipple_fg: Option<Color>,
     },
 
     /// Image glyph
@@ -178,6 +182,17 @@ pub struct CursorInverseInfo {
     pub cursor_fg: Color,
 }
 
+/// Stipple pattern: XBM bitmap data for tiled background patterns
+#[derive(Debug, Clone)]
+pub struct StipplePattern {
+    /// Pattern width in pixels
+    pub width: u32,
+    /// Pattern height in pixels
+    pub height: u32,
+    /// Raw XBM bits: row-by-row, each row is (width+7)/8 bytes, LSB-first
+    pub bits: Vec<u8>,
+}
+
 /// Per-window metadata for animation transition detection
 #[derive(Debug, Clone, PartialEq)]
 pub struct WindowInfo {
@@ -264,6 +279,9 @@ pub struct FrameGlyphBuffer {
 
     /// Full face data: face_id -> Face (includes box, underline, etc.)
     pub faces: HashMap<u32, Face>,
+
+    /// Stipple patterns: bitmap_id -> StipplePattern
+    pub stipple_patterns: HashMap<i32, StipplePattern>,
 }
 
 impl FrameGlyphBuffer {
@@ -296,6 +314,7 @@ impl FrameGlyphBuffer {
             current_overline_color: None,
             face_fonts: HashMap::new(),
             faces: HashMap::new(),
+            stipple_patterns: HashMap::new(),
         }
     }
 
@@ -315,6 +334,7 @@ impl FrameGlyphBuffer {
         self.window_regions.clear();
         self.window_infos.clear();
         self.cursor_inverse = None;
+        self.stipple_patterns.clear();
     }
 
     /// Start new frame - prepare for new content (compatibility shim)
@@ -342,6 +362,7 @@ impl FrameGlyphBuffer {
         self.background = background;
         self.glyphs.clear();
         self.cursor_inverse = None;
+        self.stipple_patterns.clear();
     }
 
     /// Set current face attributes for subsequent char glyphs (with font family)
@@ -490,7 +511,17 @@ impl FrameGlyphBuffer {
 
     /// Add a stretch (whitespace) glyph. No overlap removal needed.
     pub fn add_stretch(&mut self, x: f32, y: f32, width: f32, height: f32, bg: Color, face_id: u32, is_overlay: bool) {
-        self.glyphs.push(FrameGlyph::Stretch { x, y, width, height, bg, face_id, is_overlay });
+        self.glyphs.push(FrameGlyph::Stretch { x, y, width, height, bg, face_id, is_overlay, stipple_id: 0, stipple_fg: None });
+    }
+
+    /// Add a stretch glyph with a stipple pattern
+    pub fn add_stretch_stipple(&mut self, x: f32, y: f32, width: f32, height: f32,
+                               bg: Color, fg: Color, face_id: u32, is_overlay: bool,
+                               stipple_id: i32) {
+        self.glyphs.push(FrameGlyph::Stretch {
+            x, y, width, height, bg, face_id, is_overlay,
+            stipple_id, stipple_fg: Some(fg),
+        });
     }
 
     /// Add an image glyph

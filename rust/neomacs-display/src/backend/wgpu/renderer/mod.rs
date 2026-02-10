@@ -6,7 +6,7 @@ use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
 use crate::core::face::{BoxType, Face, FaceAttributes};
-use crate::core::frame_glyphs::{FrameGlyph, FrameGlyphBuffer};
+use crate::core::frame_glyphs::{FrameGlyph, FrameGlyphBuffer, StipplePattern};
 use crate::core::scene::{CursorStyle, Scene};
 use crate::core::types::{AnimatedCursor, Color, Rect};
 
@@ -1231,6 +1231,59 @@ impl WgpuRenderer {
             position: [x0, y1],
             color: color_arr,
         });
+    }
+
+    /// Render a stipple pattern (XBM bitmap) tiled over a rectangular area.
+    /// Uses run-length encoding: consecutive set bits in each row are merged
+    /// into a single wider rect to reduce vertex count.
+    fn render_stipple_pattern(
+        &self,
+        vertices: &mut Vec<RectVertex>,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        fg: &Color,
+        pattern: &StipplePattern,
+    ) {
+        if pattern.width == 0 || pattern.height == 0 {
+            return;
+        }
+        let bytes_per_row = ((pattern.width + 7) / 8) as usize;
+        let w_pixels = width as u32;
+        let h_pixels = height as u32;
+
+        // Tile the pattern over the area, merging horizontal runs
+        for py in 0..h_pixels {
+            let pat_y = py % pattern.height;
+            let mut px = 0u32;
+            while px < w_pixels {
+                let pat_x = px % pattern.width;
+                let byte_idx = pat_y as usize * bytes_per_row + (pat_x / 8) as usize;
+                let bit_idx = pat_x % 8;
+                let bit_set = byte_idx < pattern.bits.len()
+                    && (pattern.bits[byte_idx] >> bit_idx) & 1 != 0;
+                if !bit_set {
+                    px += 1;
+                    continue;
+                }
+                // Start of a run — find how far it extends
+                let run_start = px;
+                px += 1;
+                while px < w_pixels {
+                    let pat_x2 = px % pattern.width;
+                    let bi2 = pat_y as usize * bytes_per_row + (pat_x2 / 8) as usize;
+                    let bit2 = pat_x2 % 8;
+                    let set2 = bi2 < pattern.bits.len()
+                        && (pattern.bits[bi2] >> bit2) & 1 != 0;
+                    if !set2 { break; }
+                    px += 1;
+                }
+                let run_len = px - run_start;
+                self.add_rect(vertices, x + run_start as f32, y + py as f32,
+                              run_len as f32, 1.0, fg);
+            }
+        }
     }
 
     /// Emit a single rounded-rectangle border as 6 vertices (one oversized quad).
