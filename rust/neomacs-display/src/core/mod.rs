@@ -17,6 +17,11 @@ pub mod bidi;
 pub mod undo;
 pub mod char_utils;
 pub mod syntax_table;
+pub mod marker;
+pub mod casetab;
+pub mod category;
+pub mod chartab;
+pub mod search;
 
 pub use types::*;
 pub use scene::*;
