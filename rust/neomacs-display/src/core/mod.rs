@@ -22,6 +22,11 @@ pub mod casetab;
 pub mod category;
 pub mod chartab;
 pub mod search;
+pub mod region_cache;
+pub mod casefiddle;
+pub mod composite;
+pub mod profiler;
+pub mod textprop;
 
 pub use types::*;
 pub use scene::*;

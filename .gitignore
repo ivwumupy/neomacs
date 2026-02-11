@@ -394,6 +394,7 @@ exec/*.s.s
 
 # Rust build artifacts
 rust/neomacs-display/target/
+*.rlib
 
 # Neomacs exceptions
 !rust/neomacs-display/Makefile
