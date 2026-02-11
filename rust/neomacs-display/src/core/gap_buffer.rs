@@ -361,7 +361,10 @@ impl GapBuffer {
         // Save deleted text
         let mut deleted = Vec::with_capacity(nbytes);
         for i in 0..nbytes {
-            deleted.push(self.byte_at(from + i).unwrap());
+            deleted.push(
+                self.byte_at(from + i)
+                    .ok_or(GapError::InvalidPosition)?,
+            );
         }
 
         // Move gap to encompass the deleted region
