@@ -33,8 +33,8 @@ pub extern "C" fn neomacs_display_create_window(
 
 /// Destroy a window by its ID.
 #[no_mangle]
-pub extern "C" fn neomacs_display_destroy_window(handle: *mut NeomacsDisplay, window_id: u32) {
-    let display = unsafe { &mut *handle };
+pub unsafe extern "C" fn neomacs_display_destroy_window(handle: *mut NeomacsDisplay, window_id: u32) {
+    let display = &mut *handle;
 
     #[cfg(feature = "winit-backend")]
     if let Some(ref mut backend) = display.winit_backend {
@@ -44,12 +44,12 @@ pub extern "C" fn neomacs_display_destroy_window(handle: *mut NeomacsDisplay, wi
 
 /// Show or hide a window.
 #[no_mangle]
-pub extern "C" fn neomacs_display_show_window(
+pub unsafe extern "C" fn neomacs_display_show_window(
     handle: *mut NeomacsDisplay,
     window_id: u32,
     visible: bool,
 ) {
-    let display = unsafe { &mut *handle };
+    let display = &mut *handle;
 
     #[cfg(feature = "winit-backend")]
     if let Some(ref backend) = display.winit_backend {
@@ -61,12 +61,12 @@ pub extern "C" fn neomacs_display_show_window(
 
 /// Set the title of a window.
 #[no_mangle]
-pub extern "C" fn neomacs_display_set_window_title(
+pub unsafe extern "C" fn neomacs_display_set_window_title(
     handle: *mut NeomacsDisplay,
     window_id: u32,
     title: *const c_char,
 ) {
-    let display = unsafe { &mut *handle };
+    let display = &mut *handle;
 
     #[cfg(feature = "winit-backend")]
     if let Some(ref backend) = display.winit_backend {
@@ -74,7 +74,7 @@ pub extern "C" fn neomacs_display_set_window_title(
             let title_str = if title.is_null() {
                 "Emacs"
             } else {
-                unsafe { std::ffi::CStr::from_ptr(title).to_str().unwrap_or("Emacs") }
+                std::ffi::CStr::from_ptr(title).to_str().unwrap_or("Emacs")
             };
             state.window.set_title(title_str);
         }
@@ -83,13 +83,13 @@ pub extern "C" fn neomacs_display_set_window_title(
 
 /// Set the size of a window.
 #[no_mangle]
-pub extern "C" fn neomacs_display_set_window_size(
+pub unsafe extern "C" fn neomacs_display_set_window_size(
     handle: *mut NeomacsDisplay,
     window_id: u32,
     width: i32,
     height: i32,
 ) {
-    let display = unsafe { &mut *handle };
+    let display = &mut *handle;
 
     #[cfg(feature = "winit-backend")]
     if let Some(ref mut backend) = display.winit_backend {

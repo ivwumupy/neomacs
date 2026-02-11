@@ -172,8 +172,14 @@ pub unsafe extern "C" fn rust_itree_node_begin(
     tree: *mut RustItreeTree,
     node: RustItreeNodeHandle,
 ) -> i64 {
+    if tree.is_null() {
+        return 0;
+    }
     let tree = &mut *(tree as *mut ItreeTree);
-    let id = node_id_from_handle(node).unwrap();
+    let id = match node_id_from_handle(node) {
+        Some(id) => id,
+        None => return 0,
+    };
     tree.node_begin(id)
 }
 
@@ -186,8 +192,14 @@ pub unsafe extern "C" fn rust_itree_node_end(
     tree: *mut RustItreeTree,
     node: RustItreeNodeHandle,
 ) -> i64 {
+    if tree.is_null() {
+        return 0;
+    }
     let tree = &mut *(tree as *mut ItreeTree);
-    let id = node_id_from_handle(node).unwrap();
+    let id = match node_id_from_handle(node) {
+        Some(id) => id,
+        None => return 0,
+    };
     tree.node_end(id)
 }
 
@@ -200,8 +212,14 @@ pub unsafe extern "C" fn rust_itree_node_data(
     tree: *mut RustItreeTree,
     node: RustItreeNodeHandle,
 ) -> u64 {
+    if tree.is_null() {
+        return 0;
+    }
     let tree = &*(tree as *const ItreeTree);
-    let id = node_id_from_handle(node).unwrap();
+    let id = match node_id_from_handle(node) {
+        Some(id) => id,
+        None => return 0,
+    };
     tree.node(id).data
 }
 
@@ -214,8 +232,14 @@ pub unsafe extern "C" fn rust_itree_node_front_advance(
     tree: *mut RustItreeTree,
     node: RustItreeNodeHandle,
 ) -> c_int {
+    if tree.is_null() {
+        return 0;
+    }
     let tree = &*(tree as *const ItreeTree);
-    let id = node_id_from_handle(node).unwrap();
+    let id = match node_id_from_handle(node) {
+        Some(id) => id,
+        None => return 0,
+    };
     tree.node(id).front_advance as c_int
 }
 
@@ -228,8 +252,14 @@ pub unsafe extern "C" fn rust_itree_node_rear_advance(
     tree: *mut RustItreeTree,
     node: RustItreeNodeHandle,
 ) -> c_int {
+    if tree.is_null() {
+        return 0;
+    }
     let tree = &*(tree as *const ItreeTree);
-    let id = node_id_from_handle(node).unwrap();
+    let id = match node_id_from_handle(node) {
+        Some(id) => id,
+        None => return 0,
+    };
     tree.node(id).rear_advance as c_int
 }
 
@@ -248,8 +278,14 @@ pub unsafe extern "C" fn rust_itree_insert(
     begin: i64,
     end: i64,
 ) {
+    if tree.is_null() {
+        return;
+    }
     let tree = &mut *(tree as *mut ItreeTree);
-    let id = node_id_from_handle(node).unwrap();
+    let id = match node_id_from_handle(node) {
+        Some(id) => id,
+        None => return,
+    };
     tree.insert(id, begin, end);
 }
 
@@ -262,8 +298,14 @@ pub unsafe extern "C" fn rust_itree_remove(
     tree: *mut RustItreeTree,
     node: RustItreeNodeHandle,
 ) -> RustItreeNodeHandle {
+    if tree.is_null() {
+        return INVALID_HANDLE;
+    }
     let tree = &mut *(tree as *mut ItreeTree);
-    let id = node_id_from_handle(node).unwrap();
+    let id = match node_id_from_handle(node) {
+        Some(id) => id,
+        None => return INVALID_HANDLE,
+    };
     let removed = tree.remove(id);
     handle_from_node_id(removed)
 }
@@ -279,8 +321,14 @@ pub unsafe extern "C" fn rust_itree_node_set_region(
     begin: i64,
     end: i64,
 ) {
+    if tree.is_null() {
+        return;
+    }
     let tree = &mut *(tree as *mut ItreeTree);
-    let id = node_id_from_handle(node).unwrap();
+    let id = match node_id_from_handle(node) {
+        Some(id) => id,
+        None => return,
+    };
     tree.node_set_region(id, begin, end);
 }
 

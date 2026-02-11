@@ -8,7 +8,6 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
     // Allow the wpe_platform_available cfg flag
@@ -19,7 +18,10 @@ fn main() {
 
     // Generate WPE bindings with bindgen (if feature enabled)
     #[cfg(feature = "wpe-webkit")]
-    generate_wpe_bindings(&out_dir);
+    {
+        let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+        generate_wpe_bindings(&out_dir);
+    }
 }
 
 fn generate_c_headers(crate_dir: &str) {

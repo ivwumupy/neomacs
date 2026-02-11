@@ -171,18 +171,6 @@ impl LayoutEngine {
         while byte_idx < text.len() && sl_x_offset < width {
             // Check if we need to switch face for this byte position
             if current_run < face_runs.len() {
-                let next_run = if current_run + 1 < face_runs.len() {
-                    current_run + 1
-                } else {
-                    face_runs.len()
-                };
-                // Move to the correct run for this byte position
-                while next_run < face_runs.len()
-                    && byte_idx >= face_runs[next_run].byte_offset as usize
-                {
-                    // Already past this run, skip
-                    break;
-                }
                 if byte_idx >= face_runs[current_run].byte_offset as usize {
                     // Check if next run starts here or we're in current run
                     if current_run + 1 < face_runs.len()

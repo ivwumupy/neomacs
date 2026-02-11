@@ -1899,7 +1899,7 @@ pub(super) fn emit_cursor_stardust(ctx: &EffectCtx) -> Vec<RectVertex> {
     let opacity = ctx.effects.cursor_stardust.opacity;
     let mut verts = Vec::new();
     for i in 0..count {
-        let phase = i as f32 * 2.71828;
+        let phase = i as f32 * std::f32::consts::E;
         let t = (now * fall + phase).rem_euclid(2.0);
         let spread = (phase * 1.618).sin() * 15.0;
         let x = cx + spread + (now * 0.3 + phase).sin() * 3.0;

@@ -359,7 +359,7 @@ impl CursorAnimator {
         for i in 0..self.particle_count {
             // Random direction
             let angle = (i as f32 * 2.39996) % (2.0 * std::f32::consts::PI); // Golden angle
-            let speed = self.particle_speed * (0.3 + (i as f32 * 3.14).sin().abs() * 0.7);
+            let speed = self.particle_speed * (0.3 + (i as f32 * std::f32::consts::PI).sin().abs() * 0.7);
             
             self.particles.push(Particle {
                 x: self.current_x + self.current_width / 2.0,

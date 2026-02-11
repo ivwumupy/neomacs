@@ -681,7 +681,7 @@ impl Compiler {
             i += 1;
 
             // Limit exactn to 255 bytes
-            if count >= 255 {
+            if count == 255 {
                 break;
             }
         }
