@@ -144,7 +144,7 @@ mod tests {
             image_dimensions,
             shared_monitors,
             #[cfg(feature = "neo-term")]
-            Arc::new(parking_lot::Mutex::new(HashMap::new())),
+            Arc::new(Mutex::new(HashMap::new())),
         );
         app.scale_factor = scale_factor;
         app
