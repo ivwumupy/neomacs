@@ -2215,8 +2215,10 @@ neomacs_layout_set_cursor (void *window_ptr, int x, int y, int hpos, int vpos)
   w->cursor.vpos = vpos;
 }
 
-/* Trigger fontification at a range (calls fontification-functions).
-   Returns 1 if fontification happened, 0 if already fontified. */
+/* Trigger fontification for the entire range [FROM, TO).
+   Walks through the range checking the 'fontified text property,
+   and calls fontification-functions at each unfontified gap.
+   Returns 1 if any fontification happened, 0 if all was fontified. */
 int
 neomacs_layout_ensure_fontified (void *buffer_ptr, int64_t from, int64_t to)
 {
@@ -2224,26 +2226,38 @@ neomacs_layout_ensure_fontified (void *buffer_ptr, int64_t from, int64_t to)
   if (!buf)
     return 0;
 
+  if (NILP (Vfontification_functions))
+    return 0;
+
   struct buffer *old = current_buffer;
   set_buffer_internal_1 (buf);
 
-  /* Check if text is already fontified */
-  Lisp_Object fontified = Fget_text_property (make_fixnum (from),
-                                              Qfontified, Qnil);
-  if (!NILP (fontified))
-    {
-      set_buffer_internal_1 (old);
-      return 0;
-    }
+  int did_fontify = 0;
+  ptrdiff_t pos = (ptrdiff_t) from;
+  ptrdiff_t limit = (ptrdiff_t) to;
+  Lisp_Object limit_obj = make_fixnum (limit);
 
-  /* Run fontification-functions */
-  if (!NILP (Vfontification_functions))
+  while (pos < limit)
     {
-      safe_calln (XCAR (Vfontification_functions), make_fixnum (from));
+      Lisp_Object fontified = Fget_text_property (make_fixnum (pos),
+                                                  Qfontified, Qnil);
+      if (NILP (fontified))
+        {
+          safe_calln (XCAR (Vfontification_functions), make_fixnum (pos));
+          did_fontify = 1;
+        }
+
+      /* Jump to next boundary where 'fontified property changes. */
+      Lisp_Object next = Fnext_single_char_property_change (
+          make_fixnum (pos), Qfontified, Qnil, limit_obj);
+      ptrdiff_t next_pos = FIXNUMP (next) ? XFIXNUM (next) : limit;
+      if (next_pos <= pos)
+        break;  /* Safety: avoid infinite loop */
+      pos = next_pos;
     }
 
   set_buffer_internal_1 (old);
-  return 1;
+  return did_fontify;
 }
 
 /* Check if text at charpos is invisible.
