@@ -71,6 +71,7 @@ Implemented now:
   - worker-pool execution loop
   - bounded channels and timeout-aware `select`
   - runtime metrics for queue pressure and completion/cancellation counters
+- `rust/neovm-worker/examples/scheduler_bench.rs`: quick throughput benchmark for task scheduling and channel round-trips
 
 Not implemented yet:
 
