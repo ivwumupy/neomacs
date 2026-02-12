@@ -59,6 +59,29 @@ Concurrency
   - Message passing between isolates
 ```
 
+## Implementation Snapshot (February 12, 2026)
+
+Implemented now:
+
+- `rust/neovm-host-abi`: typed VM/host boundary (`HostAbi`, `Affinity`, `EffectClass`, snapshots, patches, task/select types)
+- `rust/neovm-core`: `Vm<H, S>` shell with explicit `TaskScheduler` trait to keep core decoupled from host/editor internals
+- `rust/neovm-worker`: first worker runtime scaffold with:
+  - bounded priority task queues (`Interactive`, `Default`, `Background`)
+  - cancellation-aware task lifecycle (`Queued/Running/Completed/Cancelled`)
+  - worker-pool execution loop
+  - bounded channels and timeout-aware `select`
+  - runtime metrics for queue pressure and completion/cancellation counters
+
+Not implemented yet:
+
+- Elisp reader/bytecode/interpreter pipeline
+- Per-isolate Lisp heaps and snapshot/patch transfer semantics
+- Tiered JIT pipeline and deoptimization metadata
+- Incremental/concurrent GC engine
+- Full GNU Emacs behavior compatibility layer
+
+This confirms the module split and isolate-first scheduler direction in code, while performance-critical VM internals remain planned work.
+
 ## 0. VM/Editor Decoupling Contract
 
 Neo-Elisp VM and the editor host must be explicitly decoupled. This is a hard architecture rule, not a style preference.

@@ -53,6 +53,20 @@ Execution layout:
 - Worker isolates: parallel compute tasks with explicit data transfer/snapshots.
 - Background runtime threads: JIT compilation, GC sweep tasks, telemetry aggregation.
 
+## 4.1 Current Code Status (February 12, 2026)
+
+The initial scaffolding is now implemented in Rust:
+
+- `rust/neovm-host-abi`: host boundary and metadata model.
+- `rust/neovm-core`: VM shell with scheduler trait boundary (`TaskScheduler`) and default noop scheduler.
+- `rust/neovm-worker`: multi-thread worker runtime scaffold with:
+  - bounded priority queues
+  - cancellation state and task status tracking
+  - bounded channels and timeout-aware `select`
+  - runtime counters for enqueue/dequeue/rejection/cancel/complete
+
+This is still pre-evaluator scaffolding. Bytecode execution, JIT, GC, and full compatibility behavior remain future phases.
+
 ## 5. Dependency Rules
 
 Dependency direction is one-way:
