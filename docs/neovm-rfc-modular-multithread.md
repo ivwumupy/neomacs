@@ -65,6 +65,7 @@ The initial scaffolding is now implemented in Rust:
   - pluggable task executor and awaitable result/error propagation
   - bounded channels and timeout-aware `select`
   - condvar-based wait/wakeup for task completion and channel readiness
+  - finished-task reaping hook for long-running process memory hygiene
   - runtime counters for enqueue/dequeue/rejection/cancel/complete
 
 This is still pre-evaluator scaffolding. Bytecode execution, JIT, GC, and full compatibility behavior remain future phases.

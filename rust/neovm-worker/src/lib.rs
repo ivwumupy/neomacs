@@ -424,6 +424,7 @@ pub struct WorkerRuntime {
     select_cursor: AtomicU64,
     queue: Arc<SharedQueue>,
     tasks: Arc<RwLock<HashMap<u64, Arc<TaskEntry>>>>,
+    finished: Arc<Mutex<VecDeque<u64>>>,
     channels: Arc<RwLock<HashMap<u64, Arc<Channel>>>>,
     channel_events: Arc<ChannelEvents>,
     metrics: Arc<RuntimeMetrics>,
@@ -449,6 +450,7 @@ impl WorkerRuntime {
             select_cursor: AtomicU64::new(0),
             queue: Arc::new(SharedQueue::default()),
             tasks: Arc::new(RwLock::new(HashMap::new())),
+            finished: Arc::new(Mutex::new(VecDeque::new())),
             channels: Arc::new(RwLock::new(HashMap::new())),
             channel_events: Arc::new(ChannelEvents::default()),
             metrics: Arc::new(RuntimeMetrics::default()),
@@ -462,6 +464,52 @@ impl WorkerRuntime {
 
     pub fn stats(&self) -> RuntimeStats {
         self.metrics.snapshot()
+    }
+
+    fn enqueue_finished(&self, handle: TaskHandle) {
+        let mut finished = self
+            .finished
+            .lock()
+            .expect("finished queue mutex poisoned");
+        finished.push_back(handle.0);
+    }
+
+    pub fn reap_finished(&self, limit: usize) -> usize {
+        if limit == 0 {
+            return 0;
+        }
+
+        let mut to_reap = Vec::with_capacity(limit);
+        {
+            let mut finished = self
+                .finished
+                .lock()
+                .expect("finished queue mutex poisoned");
+            for _ in 0..limit {
+                let Some(handle) = finished.pop_front() else {
+                    break;
+                };
+                to_reap.push(handle);
+            }
+        }
+
+        if to_reap.is_empty() {
+            return 0;
+        }
+
+        let mut reaped = 0;
+        let mut tasks = self.tasks.write().expect("tasks map rwlock poisoned");
+        for handle in to_reap {
+            let should_remove = tasks
+                .get(&handle)
+                .map(|task| matches!(task.status(), TaskStatus::Completed | TaskStatus::Cancelled))
+                .unwrap_or(false);
+            if should_remove {
+                tasks.remove(&handle);
+                reaped += 1;
+            }
+        }
+        reaped
     }
 
     pub fn make_channel(&self, capacity: usize) -> ChannelId {
@@ -571,6 +619,7 @@ impl WorkerRuntime {
         task.context.cancel();
         if task.mark_cancelled() {
             self.metrics.cancelled.fetch_add(1, Ordering::Relaxed);
+            self.enqueue_finished(handle);
         }
         true
     }
@@ -592,6 +641,7 @@ impl WorkerRuntime {
         for _ in 0..self.config.threads {
             let queue = Arc::clone(&self.queue);
             let tasks = Arc::clone(&self.tasks);
+            let finished = Arc::clone(&self.finished);
             let metrics = Arc::clone(&self.metrics);
             let executor = Arc::clone(&self.executor);
             joins.push(thread::spawn(move || loop {
@@ -628,6 +678,8 @@ impl WorkerRuntime {
                 if task.context.is_cancelled() {
                     if task.mark_cancelled() {
                         metrics.cancelled.fetch_add(1, Ordering::Relaxed);
+                        let mut done = finished.lock().expect("finished queue mutex poisoned");
+                        done.push_back(handle.0);
                     }
                     continue;
                 }
@@ -642,6 +694,8 @@ impl WorkerRuntime {
                 if task.context.is_cancelled() {
                     if task.mark_cancelled() {
                         metrics.cancelled.fetch_add(1, Ordering::Relaxed);
+                        let mut done = finished.lock().expect("finished queue mutex poisoned");
+                        done.push_back(handle.0);
                     }
                 } else if task.mark_completed_with(execution) {
                     if was_cancelled {
@@ -649,6 +703,8 @@ impl WorkerRuntime {
                     } else {
                         metrics.completed.fetch_add(1, Ordering::Relaxed);
                     }
+                    let mut done = finished.lock().expect("finished queue mutex poisoned");
+                    done.push_back(handle.0);
                 }
             }));
         }
@@ -1172,5 +1228,53 @@ mod tests {
         assert_eq!(stats.rejected_affinity, 1);
         assert_eq!(stats.rejected_closed, 1);
         assert_eq!(stats.cancelled, 1);
+    }
+
+    #[test]
+    fn reap_finished_removes_completed_task_entries() {
+        let rt = WorkerRuntime::new(WorkerConfig {
+            threads: 1,
+            queue_capacity: 16,
+        });
+        let workers = rt.start_dummy_workers();
+
+        let task = rt
+            .spawn(
+                LispValue {
+                    bytes: vec![3, 1, 4],
+                },
+                TaskOptions::default(),
+            )
+            .expect("task should enqueue");
+
+        let _ = TaskScheduler::task_await(&rt, task, Some(Duration::from_millis(50)))
+            .expect("task should complete");
+        assert_eq!(rt.task_status(task), Some(TaskStatus::Completed));
+
+        let reaped = rt.reap_finished(8);
+        rt.close();
+        for worker in workers {
+            worker.join().expect("worker thread should join");
+        }
+
+        assert_eq!(reaped, 1);
+        assert_eq!(rt.task_status(task), None);
+    }
+
+    #[test]
+    fn reap_finished_removes_cancelled_task_entries() {
+        let rt = WorkerRuntime::new(WorkerConfig {
+            threads: 0,
+            queue_capacity: 16,
+        });
+        let task = rt
+            .spawn(LispValue::default(), TaskOptions::default())
+            .expect("task should enqueue");
+        assert!(rt.cancel(task));
+        assert_eq!(rt.task_status(task), Some(TaskStatus::Cancelled));
+
+        let reaped = rt.reap_finished(8);
+        assert_eq!(reaped, 1);
+        assert_eq!(rt.task_status(task), None);
     }
 }

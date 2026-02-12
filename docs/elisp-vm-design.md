@@ -94,6 +94,7 @@ Implemented now:
   - pluggable task executor closure and result/error propagation through `task_await`
   - bounded channels and timeout-aware `select`
   - condition-variable wakeups for `task_await` and channel readiness (no default busy-spin waits)
+  - finished-task reaping API to prevent task registry growth
   - runtime metrics for queue pressure and completion/cancellation counters
 - `rust/neovm-worker/examples/scheduler_bench.rs`: quick throughput benchmark for task scheduling and channel round-trips
 
