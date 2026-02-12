@@ -15171,8 +15171,15 @@ neomacs_display_wakeup_handler (int fd, void *data)
         case NEOMACS_EVENT_KEY_PRESS:
           if (ev->keysym < 0x100)
             inev.ie.kind = ASCII_KEYSTROKE_EVENT;
-          else
+          else if (ev->keysym >= 0xFF00)
+            /* X11 function/special keysyms (F1=0xFFBE, etc.) */
             inev.ie.kind = NON_ASCII_KEYSTROKE_EVENT;
+          else
+            /* Unicode characters from IME commit (CJK, emoji, etc.)
+               or non-Latin keyboard input.  The keysym IS the Unicode
+               code point, so use MULTIBYTE_CHAR_KEYSTROKE_EVENT which
+               inserts the character directly.  */
+            inev.ie.kind = MULTIBYTE_CHAR_KEYSTROKE_EVENT;
           inev.ie.code = ev->keysym;
           inev.ie.modifiers = 0;
           if (ev->modifiers & NEOMACS_SHIFT_MASK) inev.ie.modifiers |= shift_modifier;

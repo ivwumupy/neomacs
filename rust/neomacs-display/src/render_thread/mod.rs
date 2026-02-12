@@ -2630,10 +2630,14 @@ impl ApplicationHandler for RenderApp {
             WindowEvent::KeyboardInput {
                 event:
                     KeyEvent {
-                        logical_key, state, ..
+                        logical_key, state, text, ..
                     },
                 ..
             } => {
+                if state == ElementState::Pressed {
+                    log::debug!("KeyboardInput: logical_key={:?} text={:?} ime_preedit_active={}",
+                               logical_key, text, self.ime_preedit_active);
+                }
                 // If popup menu is active, handle keyboard navigation
                 if self.popup_menu.is_some() && state == ElementState::Pressed {
                     match logical_key.as_ref() {
@@ -2716,29 +2720,59 @@ impl ApplicationHandler for RenderApp {
                     // When IME preedit is active, suppress character
                     // keys to avoid double input.  The committed text
                     // will arrive via Ime::Commit instead.
+                    log::debug!("IME preedit active, suppressing KeyboardInput: {:?}", logical_key);
                 } else {
-                    let keysym = Self::translate_key(&logical_key);
-                    if keysym != 0 {
-                        // Hide mouse cursor on keyboard input
-                        if state == ElementState::Pressed && !self.mouse_hidden_for_typing {
-                            if let Some(ref window) = self.window {
-                                window.set_cursor_visible(false);
-                                self.mouse_hidden_for_typing = true;
+                    // On X11, some IME backends (e.g. fcitx5 with certain XIM
+                    // styles) deliver committed text via KeyboardInput's `text`
+                    // field instead of Ime::Commit.  Check `text` first for
+                    // multi-char or non-ASCII content that translate_key would
+                    // miss (e.g. CJK characters from shuangpin input).
+                    let mut handled_via_text = false;
+                    if state == ElementState::Pressed {
+                        if let Some(ref txt) = text {
+                            let s = txt.as_str();
+                            // If text contains non-ASCII or multiple chars,
+                            // it's likely IME-committed text
+                            if !s.is_empty() && (s.len() > 1 || s.as_bytes()[0] > 0x7f) {
+                                log::info!("KeyboardInput text field (IME fallback): '{}'", s);
+                                for ch in s.chars() {
+                                    let keysym = ch as u32;
+                                    if keysym != 0 {
+                                        self.comms.send_input(InputEvent::Key {
+                                            keysym,
+                                            modifiers: 0,
+                                            pressed: true,
+                                        });
+                                    }
+                                }
+                                handled_via_text = true;
                             }
                         }
-                        // Track key presses for typing speed indicator
-                        if self.effects.typing_speed.enabled && state == ElementState::Pressed {
-                            self.key_press_times.push(std::time::Instant::now());
+                    }
+                    if !handled_via_text {
+                        let keysym = Self::translate_key(&logical_key);
+                        if keysym != 0 {
+                            // Hide mouse cursor on keyboard input
+                            if state == ElementState::Pressed && !self.mouse_hidden_for_typing {
+                                if let Some(ref window) = self.window {
+                                    window.set_cursor_visible(false);
+                                    self.mouse_hidden_for_typing = true;
+                                }
+                            }
+                            // Track key presses for typing speed indicator
+                            if self.effects.typing_speed.enabled && state == ElementState::Pressed {
+                                self.key_press_times.push(std::time::Instant::now());
+                            }
+                            // Track activity for idle dimming
+                            if self.effects.idle_dim.enabled {
+                                self.last_activity_time = std::time::Instant::now();
+                            }
+                            self.comms.send_input(InputEvent::Key {
+                                keysym,
+                                modifiers: self.modifiers,
+                                pressed: state == ElementState::Pressed,
+                            });
                         }
-                        // Track activity for idle dimming
-                        if self.effects.idle_dim.enabled {
-                            self.last_activity_time = std::time::Instant::now();
-                        }
-                        self.comms.send_input(InputEvent::Key {
-                            keysym,
-                            modifiers: self.modifiers,
-                            pressed: state == ElementState::Pressed,
-                        });
                     }
                 }
             }
@@ -3031,13 +3065,19 @@ impl ApplicationHandler for RenderApp {
                 match ime_event {
                     winit::event::Ime::Enabled => {
                         self.ime_enabled = true;
-                        log::debug!("IME enabled");
+                        log::info!("IME enabled");
                     }
                     winit::event::Ime::Disabled => {
                         self.ime_enabled = false;
-                        log::debug!("IME disabled");
+                        self.ime_preedit_active = false;
+                        self.ime_preedit_text.clear();
+                        log::info!("IME disabled");
                     }
                     winit::event::Ime::Commit(text) => {
+                        log::debug!("IME Commit: '{}'", text);
+                        self.ime_preedit_active = false;
+                        self.ime_preedit_text.clear();
+                        self.frame_dirty = true;
                         // Send each committed character as an individual
                         // key event to Emacs (no modifiers — IME already
                         // composed the final characters)
@@ -3053,6 +3093,7 @@ impl ApplicationHandler for RenderApp {
                         }
                     }
                     winit::event::Ime::Preedit(text, cursor_range) => {
+                        log::debug!("IME Preedit: '{}' cursor: {:?}", text, cursor_range);
                         // Track whether preedit is active to suppress
                         // raw KeyboardInput during IME composition
                         self.ime_preedit_active = !text.is_empty();
@@ -3071,9 +3112,6 @@ impl ApplicationHandler for RenderApp {
                                     winit::dpi::PhysicalSize::new(w, h),
                                 );
                             }
-                        }
-                        if !text.is_empty() {
-                            log::trace!("IME preedit: '{}' cursor: {:?}", text, cursor_range);
                         }
                         self.frame_dirty = true;
                     }
