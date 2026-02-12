@@ -777,7 +777,7 @@ neomacs_update_begin (struct frame *f)
       neomacs_display_clear_all_cursors (dpyinfo->display_handle);
 
       /* No need to clear borders here — begin_frame calls clear_all()
-         which clears everything, and neomacs_extract_full_frame()
+         which clears everything, and the Rust layout engine
          re-adds borders for all leaf windows each frame. */
 
       /* Use window-targeted begin_frame if we have a winit window */
@@ -1669,7 +1669,7 @@ neomacs_layout_frame_window_count (void *frame_ptr)
   if (!f)
     return 0;
 
-  /* Count leaf windows using same traversal as neomacs_extract_full_frame */
+  /* Count leaf windows using stack-based window tree traversal */
   int count = 0;
   struct window *stack[64];
   int sp = 0;
@@ -4812,189 +4812,6 @@ neomacs_layout_check_line_prefix (void *buffer_ptr, void *window_ptr,
   set_buffer_internal_1 (old_buf);
   return 0;
 }
-
-/* neomacs_extract_full_frame — REMOVED.
-   The Rust layout engine is the only rendering path.  Legacy matrix
-   extraction is no longer needed.  Menu/tool bars are still extracted
-   from current_matrix in neomacs_update_end().  */
-
-#if 0  /* Legacy full-frame matrix extraction — removed in favor of Rust layout. */
-static void
-neomacs_extract_full_frame_REMOVED (struct frame *f)
-{
-  struct neomacs_display_info *dpyinfo = FRAME_NEOMACS_DISPLAY_INFO (f);
-  struct neomacs_output *output = FRAME_NEOMACS_OUTPUT (f);
-
-  if (!dpyinfo || !dpyinfo->display_handle)
-    return;
-
-  /* Only for GPU widget mode */
-  if (!output || !output->use_gpu_widget)
-    return;
-
-  /* Sync the frame background color from the default face.  When themes
-     change (e.g. load-theme wombat), the default face background updates
-     but FRAME_BACKGROUND_PIXEL and the renderer's clear color don't.
-     Update them here so LoadOp::Clear uses the correct color.  */
-  {
-    struct face *default_face = FACE_FROM_ID_OR_NULL (f, DEFAULT_FACE_ID);
-    if (default_face && !default_face->background_defaulted_p)
-      {
-        unsigned long new_bg = default_face->background;
-        if (new_bg != FRAME_BACKGROUND_PIXEL (f))
-          {
-            FRAME_BACKGROUND_PIXEL (f) = new_bg;
-            uint32_t bg_rgb = ((RED_FROM_ULONG (new_bg) << 16) |
-                               (GREEN_FROM_ULONG (new_bg) << 8) |
-                               BLUE_FROM_ULONG (new_bg));
-            neomacs_display_set_background (dpyinfo->display_handle, bg_rgb);
-          }
-      }
-  }
-
-  /* Walk all leaf windows and extract their glyphs from current_matrix.
-     We can't use foreach_window (it's static in window.c), so traverse
-     the window tree ourselves. */
-  {
-    /* Simple iterative tree walk using Emacs window tree structure */
-    Lisp_Object root_window = FRAME_ROOT_WINDOW (f);
-    if (!WINDOWP (root_window))
-      return;
-    struct window *root = XWINDOW (root_window);
-    /* Stack-based traversal: find all leaf windows */
-#define WINDOW_STACK_SIZE 128
-    struct window *stack[WINDOW_STACK_SIZE];
-    int sp = 0;
-    stack[sp++] = root;
-
-    while (sp > 0)
-      {
-        struct window *w = stack[--sp];
-        if (WINDOWP (w->contents))
-          {
-            /* Internal window - push children */
-            struct window *child = XWINDOW (w->contents);
-            while (child)
-              {
-                if (sp < WINDOW_STACK_SIZE)
-                  stack[sp++] = child;
-                child = NILP (child->next) ? NULL : XWINDOW (child->next);
-              }
-          }
-        else
-          {
-            /* Leaf window - extract glyphs */
-            neomacs_extract_window_glyphs (w, NULL);
-          }
-      }
-  }
-
-  /* The menu-bar, tool-bar, and tab-bar windows are pseudo-windows NOT
-     part of the root window tree.  Extract them separately so their
-     content (menu items, tool bar buttons, tab-bar items) is rendered. */
-  if (WINDOWP (f->menu_bar_window))
-    {
-      struct window *mbw = XWINDOW (f->menu_bar_window);
-      if (mbw->current_matrix)
-        neomacs_extract_window_glyphs (mbw, NULL);
-    }
-
-  if (WINDOWP (f->tool_bar_window))
-    {
-      struct window *tbw = XWINDOW (f->tool_bar_window);
-      if (tbw->current_matrix)
-        neomacs_extract_window_glyphs (tbw, NULL);
-    }
-
-  if (WINDOWP (f->tab_bar_window))
-    {
-      struct window *tw = XWINDOW (f->tab_bar_window);
-      if (tw->current_matrix)
-        neomacs_extract_window_glyphs (tw, NULL);
-    }
-
-  /* The minibuffer/echo area window is NOT part of the root window tree.
-     Extract it separately so echo area text is rendered. */
-  {
-    Lisp_Object mini = FRAME_MINIBUF_WINDOW (f);
-    if (!NILP (mini))
-      {
-        struct window *mw = XWINDOW (mini);
-        if (FRAME_HAS_MINIBUF_P (f)
-            && mw->current_matrix)
-          neomacs_extract_window_glyphs (mw, NULL);
-      }
-  }
-
-  /* Draw vertical window borders for all leaf windows.
-     Borders are cleared by begin_frame/clear_all each frame,
-     so we must re-add them here as part of the full-frame extraction. */
-  if (!FRAME_HAS_VERTICAL_SCROLL_BARS (f) && !FRAME_RIGHT_DIVIDER_WIDTH (f))
-    {
-      struct window *bstack[WINDOW_STACK_SIZE];
-      int bsp = 0;
-      if (WINDOWP (FRAME_ROOT_WINDOW (f)))
-        bstack[bsp++] = XWINDOW (FRAME_ROOT_WINDOW (f));
-
-      while (bsp > 0)
-        {
-          struct window *w = bstack[--bsp];
-          if (WINDOWP (w->contents))
-            {
-              struct window *child = XWINDOW (w->contents);
-              while (child)
-                {
-                  if (bsp < WINDOW_STACK_SIZE)
-                    bstack[bsp++] = child;
-                  child = NILP (child->next) ? NULL : XWINDOW (child->next);
-                }
-            }
-          else
-            {
-              /* Leaf window — draw its vertical borders */
-              gui_draw_vertical_border (w);
-            }
-        }
-    }
-
-  /* Render GPU scroll bars for all active scroll bars on the frame.
-     Walk the frame's scroll bar list and emit FrameGlyph::ScrollBar
-     for each one. */
-  {
-    Lisp_Object bar;
-    struct face *sb_face = FACE_FROM_ID_OR_NULL (f, SCROLL_BAR_FACE_ID);
-    /* Scroll bar face colors: background for track, foreground for thumb */
-    unsigned long track_pixel = sb_face ? sb_face->background
-      : FRAME_BACKGROUND_PIXEL (f);
-    unsigned long thumb_pixel = sb_face ? sb_face->foreground
-      : 0x808080UL;  /* gray fallback */
-    uint32_t track_rgb = ((RED_FROM_ULONG (track_pixel) << 16)
-                          | (GREEN_FROM_ULONG (track_pixel) << 8)
-                          | BLUE_FROM_ULONG (track_pixel));
-    uint32_t thumb_rgb = ((RED_FROM_ULONG (thumb_pixel) << 16)
-                          | (GREEN_FROM_ULONG (thumb_pixel) << 8)
-                          | BLUE_FROM_ULONG (thumb_pixel));
-
-    for (bar = FRAME_SCROLL_BARS (f); !NILP (bar);
-         bar = XSCROLL_BAR (bar)->next)
-      {
-        struct scroll_bar *b = XSCROLL_BAR (bar);
-        int thumb_start = b->start;
-        int thumb_size = b->end - b->start;
-        if (thumb_size < 1)
-          thumb_size = 1;
-
-        neomacs_display_add_scroll_bar (
-            dpyinfo->display_handle,
-            b->horizontal ? 1 : 0,
-            b->left, b->top,
-            b->width, b->height,
-            thumb_start, thumb_size,
-            track_rgb, thumb_rgb);
-      }
-  }
-}
-#endif  /* Legacy neomacs_extract_full_frame */
 
 /* Called at the end of updating a frame */
 void
