@@ -17,6 +17,7 @@ pub mod eval;
 pub mod print;
 pub mod builtins;
 pub mod symbol;
+pub mod load;
 
 // Re-export the main public API
 pub use value::{Value, ConsCell, LambdaData, LambdaParams};

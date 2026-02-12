@@ -14,6 +14,8 @@ pub struct Evaluator {
     pub(crate) obarray: Obarray,
     /// Dynamic binding stack (each frame is one `let`/function call scope).
     pub(crate) dynamic: Vec<HashMap<String, Value>>,
+    /// Lexical environment stack (for lexical-binding mode).
+    pub(crate) lexenv: Vec<HashMap<String, Value>>,
     /// Features list (for require/provide).
     pub(crate) features: Vec<String>,
     /// Recursion depth counter.
@@ -57,10 +59,34 @@ impl Evaluator {
         Self {
             obarray,
             dynamic: Vec::new(),
+            lexenv: Vec::new(),
             features: Vec::new(),
             depth: 0,
             max_depth: 200,
         }
+    }
+
+    /// Whether lexical-binding is currently enabled.
+    pub fn lexical_binding(&self) -> bool {
+        self.obarray.symbol_value("lexical-binding")
+            .is_some_and(|v| v.is_truthy())
+    }
+
+    /// Enable or disable lexical binding.
+    pub fn set_lexical_binding(&mut self, enabled: bool) {
+        self.obarray.set_symbol_value("lexical-binding", Value::bool(enabled));
+    }
+
+    /// Load a file, converting EvalError back to Flow for use in special forms.
+    fn load_file_internal(&mut self, path: &std::path::Path) -> EvalResult {
+        super::load::load_file(self, path).map_err(|e| match e {
+            EvalError::Signal { symbol, data } => {
+                signal(&symbol, data)
+            }
+            EvalError::UncaughtThrow { tag, value } => {
+                Flow::Throw { tag, value }
+            }
+        })
     }
 
     /// Access the obarray (for builtins that need it).
@@ -148,6 +174,15 @@ impl Evaluator {
         // Keywords evaluate to themselves
         if symbol.starts_with(':') {
             return Ok(Value::Keyword(symbol.to_string()));
+        }
+
+        // If lexical binding is on and symbol is NOT special, check lexenv first
+        if self.lexical_binding() && !self.obarray.is_special(symbol) {
+            for frame in self.lexenv.iter().rev() {
+                if let Some(value) = frame.get(symbol) {
+                    return Ok(value.clone());
+                }
+            }
         }
 
         // Dynamic scope lookup (inner to outer)
@@ -309,13 +344,20 @@ impl Evaluator {
             return Err(signal("wrong-number-of-arguments", vec![]));
         }
 
-        let mut bindings = HashMap::new();
+        let mut lexical_bindings = HashMap::new();
+        let mut dynamic_bindings = HashMap::new();
+        let use_lexical = self.lexical_binding();
+
         match &tail[0] {
             Expr::List(entries) => {
                 for binding in entries {
                     match binding {
                         Expr::Symbol(name) => {
-                            bindings.insert(name.clone(), Value::Nil);
+                            if use_lexical && !self.obarray.is_special(name) {
+                                lexical_bindings.insert(name.clone(), Value::Nil);
+                            } else {
+                                dynamic_bindings.insert(name.clone(), Value::Nil);
+                            }
                         }
                         Expr::List(pair) if !pair.is_empty() => {
                             let Expr::Symbol(name) = &pair[0] else {
@@ -326,7 +368,11 @@ impl Evaluator {
                             } else {
                                 Value::Nil
                             };
-                            bindings.insert(name.clone(), value);
+                            if use_lexical && !self.obarray.is_special(name) {
+                                lexical_bindings.insert(name.clone(), value);
+                            } else {
+                                dynamic_bindings.insert(name.clone(), value);
+                            }
                         }
                         _ => return Err(signal("wrong-type-argument", vec![])),
                     }
@@ -336,9 +382,21 @@ impl Evaluator {
             _ => return Err(signal("wrong-type-argument", vec![])),
         }
 
-        self.dynamic.push(bindings);
+        let pushed_lex = !lexical_bindings.is_empty();
+        let pushed_dyn = !dynamic_bindings.is_empty();
+        if pushed_lex {
+            self.lexenv.push(lexical_bindings);
+        }
+        if pushed_dyn {
+            self.dynamic.push(dynamic_bindings);
+        }
         let result = self.sf_progn(&tail[1..]);
-        self.dynamic.pop();
+        if pushed_dyn {
+            self.dynamic.pop();
+        }
+        if pushed_lex {
+            self.lexenv.pop();
+        }
         result
     }
 
@@ -353,16 +411,29 @@ impl Evaluator {
             _ => return Err(signal("wrong-type-argument", vec![])),
         };
 
+        let use_lexical = self.lexical_binding();
+        let pushed_lex = use_lexical; // Always push a frame for let* in lexical mode
+        let pushed_dyn = true; // Always push a dynamic frame too (for special vars or dynamic mode)
+
         self.dynamic.push(HashMap::new());
+        if use_lexical {
+            self.lexenv.push(HashMap::new());
+        }
+
         for binding in &entries {
             match binding {
                 Expr::Symbol(name) => {
-                    if let Some(frame) = self.dynamic.last_mut() {
+                    if use_lexical && !self.obarray.is_special(name) {
+                        if let Some(frame) = self.lexenv.last_mut() {
+                            frame.insert(name.clone(), Value::Nil);
+                        }
+                    } else if let Some(frame) = self.dynamic.last_mut() {
                         frame.insert(name.clone(), Value::Nil);
                     }
                 }
                 Expr::List(pair) if !pair.is_empty() => {
                     let Expr::Symbol(name) = &pair[0] else {
+                        if pushed_lex { self.lexenv.pop(); }
                         self.dynamic.pop();
                         return Err(signal("wrong-type-argument", vec![]));
                     };
@@ -370,6 +441,7 @@ impl Evaluator {
                         match self.eval(&pair[1]) {
                             Ok(v) => v,
                             Err(e) => {
+                                if pushed_lex { self.lexenv.pop(); }
                                 self.dynamic.pop();
                                 return Err(e);
                             }
@@ -377,11 +449,16 @@ impl Evaluator {
                     } else {
                         Value::Nil
                     };
-                    if let Some(frame) = self.dynamic.last_mut() {
+                    if use_lexical && !self.obarray.is_special(name) {
+                        if let Some(frame) = self.lexenv.last_mut() {
+                            frame.insert(name.clone(), value);
+                        }
+                    } else if let Some(frame) = self.dynamic.last_mut() {
                         frame.insert(name.clone(), value);
                     }
                 }
                 _ => {
+                    if pushed_lex { self.lexenv.pop(); }
                     self.dynamic.pop();
                     return Err(signal("wrong-type-argument", vec![]));
                 }
@@ -389,7 +466,8 @@ impl Evaluator {
         }
 
         let result = self.sf_progn(&tail[1..]);
-        self.dynamic.pop();
+        if pushed_dyn { self.dynamic.pop(); }
+        if pushed_lex { self.lexenv.pop(); }
         result
     }
 
@@ -716,10 +794,45 @@ impl Evaluator {
             _ => return Err(signal("wrong-type-argument", vec![Value::symbol("symbolp"), feature])),
         };
         if self.features.contains(&name) {
-            return Ok(feature);
+            return Ok(Value::symbol(name));
         }
-        // Feature not loaded — signal error (file loading will be added later)
-        Err(signal("file-missing", vec![Value::string(format!("Cannot open load file: {}", name))]))
+
+        // Try to find and load the file
+        let filename = if tail.len() > 1 {
+            match &self.eval(&tail[1])? {
+                Value::Str(s) => (**s).clone(),
+                _ => name.clone(),
+            }
+        } else {
+            name.clone()
+        };
+
+        let load_path = super::load::get_load_path(&self.obarray);
+        match super::load::find_file_in_load_path(&filename, &load_path) {
+            Some(path) => {
+                self.load_file_internal(&path)?;
+                // After loading, check if feature was provided
+                if self.features.contains(&name) {
+                    Ok(Value::symbol(name))
+                } else {
+                    Err(signal("file-missing", vec![
+                        Value::string(format!("Required feature '{}' was not provided", name))
+                    ]))
+                }
+            }
+            None => {
+                // Check if no-error flag is set (3rd argument)
+                if tail.len() > 2 {
+                    let noerror = self.eval(&tail[2])?;
+                    if noerror.is_truthy() {
+                        return Ok(Value::Nil);
+                    }
+                }
+                Err(signal("file-missing", vec![
+                    Value::string(format!("Cannot open load file: no such file or directory, {}", name))
+                ]))
+            }
+        }
     }
 
     fn sf_with_current_buffer(&mut self, tail: &[Expr]) -> EvalResult {
@@ -831,10 +944,17 @@ impl Evaluator {
             1
         };
 
+        // Capture lexical environment for closures (when lexical-binding is on)
+        let env = if self.lexical_binding() && !self.lexenv.is_empty() {
+            Some(self.lexenv.clone())
+        } else {
+            None
+        };
+
         Ok(Value::Lambda(std::sync::Arc::new(LambdaData {
             params,
             body: tail[body_start..].to_vec(),
-            env: None,
+            env,
             docstring: None,
         })))
     }
@@ -940,9 +1060,25 @@ impl Evaluator {
             frame.insert(rest_name.clone(), Value::list(rest_args));
         }
 
-        self.dynamic.push(frame);
+        // If closure has a captured lexenv, restore it
+        let saved_lexenv = if let Some(ref env) = lambda.env {
+            let old = std::mem::replace(&mut self.lexenv, env.clone());
+            // Push param bindings as a new lexical frame on top of captured env
+            self.lexenv.push(frame);
+            Some(old)
+        } else {
+            // Dynamic binding (no captured lexenv)
+            self.dynamic.push(frame);
+            None
+        };
+
         let result = self.sf_progn(&lambda.body);
-        self.dynamic.pop();
+
+        if let Some(old_lexenv) = saved_lexenv {
+            self.lexenv = old_lexenv;
+        } else {
+            self.dynamic.pop();
+        }
         result
     }
 
@@ -970,6 +1106,16 @@ impl Evaluator {
     // -----------------------------------------------------------------------
 
     pub(crate) fn assign(&mut self, name: &str, value: Value) {
+        // If lexical binding and not special, check lexenv first
+        if self.lexical_binding() && !self.obarray.is_special(name) {
+            for frame in self.lexenv.iter_mut().rev() {
+                if frame.contains_key(name) {
+                    frame.insert(name.to_string(), value);
+                    return;
+                }
+            }
+        }
+
         // Search dynamic frames (inner to outer)
         for frame in self.dynamic.iter_mut().rev() {
             if frame.contains_key(name) {
@@ -1015,6 +1161,11 @@ pub fn quote_to_value(expr: &Expr) -> Value {
             Value::vector(vals)
         }
     }
+}
+
+/// Public wrapper for value_to_expr (used by builtins::eval).
+pub(crate) fn value_to_expr_pub(value: &Value) -> Expr {
+    value_to_expr(value)
 }
 
 /// Convert a Value back to an Expr (for macro expansion).
@@ -1245,5 +1396,125 @@ mod tests {
         let results = eval_all("(defun inf () (inf))\n(inf)");
         // Second form should trigger excessive nesting
         assert!(results[1].contains("excessive-lisp-nesting"));
+    }
+
+    #[test]
+    fn lexical_binding_closure() {
+        // With lexical binding, closures capture the lexical environment
+        let forms = parse_forms(r#"
+            (let ((x 1))
+              (let ((f (lambda () x)))
+                (let ((x 2))
+                  (funcall f))))
+        "#).expect("parse");
+        let mut ev = Evaluator::new();
+        ev.set_lexical_binding(true);
+        let result = format_eval_result(&ev.eval_expr(&forms[0]));
+        // In lexical binding, the closure captures x=1, not x=2
+        assert_eq!(result, "OK 1");
+    }
+
+    #[test]
+    fn dynamic_binding_closure() {
+        // Without lexical binding (default), closures see dynamic scope
+        let forms = parse_forms(r#"
+            (let ((x 1))
+              (let ((f (lambda () x)))
+                (let ((x 2))
+                  (funcall f))))
+        "#).expect("parse");
+        let mut ev = Evaluator::new();
+        let result = format_eval_result(&ev.eval_expr(&forms[0]));
+        // In dynamic binding, the lambda sees x=2 (innermost dynamic binding)
+        assert_eq!(result, "OK 2");
+    }
+
+    #[test]
+    fn lexical_binding_special_var_stays_dynamic() {
+        // defvar makes a variable special — it stays dynamically scoped
+        let forms = parse_forms(r#"
+            (defvar my-special 10)
+            (let ((my-special 20))
+              (let ((f (lambda () my-special)))
+                (let ((my-special 30))
+                  (funcall f))))
+        "#).expect("parse");
+        let mut ev = Evaluator::new();
+        ev.set_lexical_binding(true);
+        let results: Vec<String> = ev.eval_forms(&forms).iter().map(format_eval_result).collect();
+        // my-special is declared special, so even in lexical mode it's dynamic
+        assert_eq!(results[1], "OK 30");
+    }
+
+    #[test]
+    fn defalias_works() {
+        let results = eval_all(
+            "(defun my-add (a b) (+ a b))
+             (defalias 'my-plus 'my-add)
+             (my-plus 3 4)"
+        );
+        assert_eq!(results[2], "OK 7");
+    }
+
+    #[test]
+    fn provide_require() {
+        let forms = parse_forms("(provide 'my-feature) (featurep 'my-feature)").expect("parse");
+        let mut ev = Evaluator::new();
+        let results: Vec<String> = ev.eval_forms(&forms).iter().map(format_eval_result).collect();
+        assert_eq!(results[0], "OK my-feature");
+        assert_eq!(results[1], "OK t");
+    }
+
+    #[test]
+    fn dotimes_loop() {
+        let result = eval_one(
+            "(let ((sum 0)) (dotimes (i 5) (setq sum (+ sum i))) sum)"
+        );
+        assert_eq!(result, "OK 10"); // 0+1+2+3+4 = 10
+    }
+
+    #[test]
+    fn dolist_loop() {
+        let result = eval_one(
+            "(let ((result nil)) (dolist (x '(a b c)) (setq result (cons x result))) result)"
+        );
+        assert_eq!(result, "OK (c b a)");
+    }
+
+    #[test]
+    fn ignore_errors_catches_signal() {
+        let result = eval_one("(ignore-errors (/ 1 0) 42)");
+        assert_eq!(result, "OK nil"); // error caught, returns nil
+    }
+
+    #[test]
+    fn math_functions() {
+        assert_eq!(eval_one("(expt 2 10)"), "OK 1024");
+        assert_eq!(eval_one("(sqrt 4.0)"), "OK 2.0");
+    }
+
+    #[test]
+    fn hook_system() {
+        let results = eval_all(
+            "(defvar my-hook nil)
+             (defun hook-fn () 42)
+             (add-hook 'my-hook 'hook-fn)
+             (run-hooks 'my-hook)"
+        );
+        assert_eq!(results[3], "OK nil"); // run-hooks returns nil
+    }
+
+    #[test]
+    fn symbol_operations() {
+        let results = eval_all(
+            "(defvar x 42)
+             (boundp 'x)
+             (symbol-value 'x)
+             (put 'x 'doc \"A variable\")
+             (get 'x 'doc)"
+        );
+        assert_eq!(results[1], "OK t");
+        assert_eq!(results[2], "OK 42");
+        assert_eq!(results[4], r#"OK "A variable""#);
     }
 }

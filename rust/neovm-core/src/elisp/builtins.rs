@@ -1616,6 +1616,62 @@ pub(crate) fn builtin_featurep(eval: &mut super::eval::Evaluator, args: Vec<Valu
 }
 
 // ===========================================================================
+// Loading / eval
+// ===========================================================================
+
+/// Convert an EvalError back to a Flow for builtins that call load_file.
+fn eval_error_to_flow(e: super::error::EvalError) -> Flow {
+    match e {
+        super::error::EvalError::Signal { symbol, data } => {
+            Flow::Signal(super::error::SignalData { symbol, data })
+        }
+        super::error::EvalError::UncaughtThrow { tag, value } => {
+            Flow::Throw { tag, value }
+        }
+    }
+}
+
+pub(crate) fn builtin_load(eval: &mut super::eval::Evaluator, args: Vec<Value>) -> EvalResult {
+    expect_min_args("load", &args, 1)?;
+    let file = expect_string(&args[0])?;
+    let noerror = args.get(1).is_some_and(|v| v.is_truthy());
+
+    let load_path = super::load::get_load_path(&eval.obarray);
+    match super::load::find_file_in_load_path(&file, &load_path) {
+        Some(path) => {
+            super::load::load_file(eval, &path).map_err(eval_error_to_flow)
+        }
+        None => {
+            // Try as absolute path
+            let path = std::path::Path::new(&file);
+            if path.exists() {
+                super::load::load_file(eval, path).map_err(eval_error_to_flow)
+            } else if noerror {
+                Ok(Value::Nil)
+            } else {
+                Err(signal("file-missing", vec![
+                    Value::string(format!("Cannot open load file: {}", file))
+                ]))
+            }
+        }
+    }
+}
+
+pub(crate) fn builtin_load_file(eval: &mut super::eval::Evaluator, args: Vec<Value>) -> EvalResult {
+    expect_args("load-file", &args, 1)?;
+    let file = expect_string(&args[0])?;
+    let path = std::path::Path::new(&file);
+    super::load::load_file(eval, path).map_err(eval_error_to_flow)
+}
+
+pub(crate) fn builtin_eval(eval: &mut super::eval::Evaluator, args: Vec<Value>) -> EvalResult {
+    expect_min_args("eval", &args, 1)?;
+    // Convert value back to expr and evaluate
+    let expr = super::eval::value_to_expr_pub(&args[0]);
+    eval.eval(&expr) // eval.eval() already returns EvalResult = Result<Value, Flow>
+}
+
+// ===========================================================================
 // Math functions (pure)
 // ===========================================================================
 
@@ -2068,6 +2124,10 @@ pub(crate) fn dispatch_builtin(
         "run-hooks" => return Some(builtin_run_hooks(eval, args)),
         "run-hook-with-args" => return Some(builtin_run_hook_with_args(eval, args)),
         "featurep" => return Some(builtin_featurep(eval, args)),
+        // Loading
+        "load" => return Some(builtin_load(eval, args)),
+        "load-file" => return Some(builtin_load_file(eval, args)),
+        "eval" => return Some(builtin_eval(eval, args)),
         _ => {}
     }
 
