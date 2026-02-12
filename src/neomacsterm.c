@@ -18,8 +18,6 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include <config.h>
 
-#ifdef HAVE_NEOMACS
-
 #define NLOG_MODULE "display"
 #include "neomacs_log.h"
 
@@ -1464,7 +1462,6 @@ neomacs_extract_window_glyphs (struct window *w, void *user_data)
                   }
                   break;
 
-#ifdef HAVE_NEOMACS
                 case VIDEO_GLYPH:
                   {
                     int glyph_height = glyph->ascent + glyph->descent;
@@ -1484,7 +1481,6 @@ neomacs_extract_window_glyphs (struct window *w, void *user_data)
                                                     glyph_height > 0 ? glyph_height : row->height);
                   }
                   break;
-#endif
 
                 default:
                   /* XWIDGET_GLYPH etc. - skip */
@@ -16074,5 +16070,3 @@ keyboard input forwarding.  Set to nil to clear. */);
   /* Tell Emacs about this window system */
   Fprovide (Qneomacs, Qnil);
 }
-
-#endif /* HAVE_NEOMACS */

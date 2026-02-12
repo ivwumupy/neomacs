@@ -54,10 +54,8 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #endif
 #include "pdumper.h"
 
-#ifdef HAVE_NEOMACS
 #define NLOG_MODULE "frame"
 #include "neomacs_log.h"
-#endif
 
 /* The currently selected frame.  */
 Lisp_Object selected_frame;
@@ -1490,9 +1488,7 @@ static struct frame *
 make_terminal_frame (struct terminal *terminal, Lisp_Object parent,
 		     Lisp_Object params)
 {
-#ifdef HAVE_NEOMACS
   nlog_info ("make_terminal_frame: terminal=%s", terminal->name);
-#endif
   if (!terminal->name)
     error ("Terminal is not live, can't create new frames on it");
 
@@ -2611,9 +2607,7 @@ other_frames (struct frame *f, bool invisible, bool force)
 Lisp_Object
 delete_frame (Lisp_Object frame, Lisp_Object force)
 {
-#ifdef HAVE_NEOMACS
   nlog_info ("delete_frame");
-#endif
   struct frame *f = decode_any_frame (frame);
   struct frame *sf;
   struct kboard *kb;

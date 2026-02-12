@@ -47,10 +47,8 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #endif
 #include "pdumper.h"
 
-#ifdef HAVE_NEOMACS
 #define NLOG_MODULE "window"
 #include "neomacs_log.h"
-#endif
 
 static ptrdiff_t count_windows (struct window *);
 static ptrdiff_t get_leaf_windows (struct window *, struct window **,
@@ -644,9 +642,7 @@ Also note that the main editor command loop sets the current buffer to
 the buffer of the selected window before each command.  */)
   (Lisp_Object window, Lisp_Object norecord)
 {
-#ifdef HAVE_NEOMACS
   nlog_trace ("select_window");
-#endif
   return select_window (window, norecord, false);
 }
 
@@ -5405,9 +5401,7 @@ set correctly.  See the code of `split-window' for how this is done.  */)
   (Lisp_Object old, Lisp_Object pixel_size, Lisp_Object side,
    Lisp_Object normal_size, Lisp_Object refer)
 {
-#ifdef HAVE_NEOMACS
   nlog_info ("split_window_internal");
-#endif
   /* OLD (*o) is the window to split.  REFER (*r) is a reference window,
      either an arbitrary live window or a former live, now deleted
      window on the same frame as OLD.  NEW (*n) is the new window

@@ -18,8 +18,6 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include <config.h>
 
-#ifdef HAVE_NEOMACS
-
 #define NLOG_MODULE "frame"
 #include "neomacs_log.h"
 
@@ -1976,5 +1974,3 @@ syms_of_neomacsfns (void)
   DEFSYM (Qnone, "none");
   DEFSYM (Qonly, "only");
 }
-
-#endif /* HAVE_NEOMACS */

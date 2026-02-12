@@ -630,8 +630,6 @@ x_free_gc (struct frame *f, struct android_gc *gc)
 
 #endif
 
-#ifdef HAVE_NEOMACS
-
 /* Neomacs emulation of GCs */
 
 static Emacs_GC *
@@ -649,8 +647,6 @@ x_free_gc (struct frame *f, Emacs_GC *gc)
 {
   xfree (gc);
 }
-
-#endif  /* HAVE_NEOMACS */
 
 /***********************************************************************
 			   Frames and faces

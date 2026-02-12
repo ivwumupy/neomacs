@@ -500,12 +500,10 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #ifdef HAVE_WINDOW_SYSTEM
 #include TERM_HEADER
 #endif /* HAVE_WINDOW_SYSTEM */
-#ifdef HAVE_NEOMACS
 #include "neomacsterm.h"
 #include "neomacs_display.h"
 #define NLOG_MODULE "xdisp"
 #include "neomacs_log.h"
-#endif
 
 #ifndef FRAME_OUTPUT_DATA
 #define FRAME_OUTPUT_DATA(f) (NULL)
@@ -1188,10 +1186,8 @@ static bool next_element_from_composition (struct it *);
 static bool next_element_from_image (struct it *);
 static bool next_element_from_stretch (struct it *);
 static bool next_element_from_xwidget (struct it *);
-#ifdef HAVE_NEOMACS
 static bool next_element_from_video (struct it *);
 static bool next_element_from_webkit (struct it *);
-#endif
 static void load_overlay_strings (struct it *, ptrdiff_t);
 static bool get_next_display_element (struct it *);
 static enum move_it_result
@@ -5969,10 +5965,8 @@ handle_display_spec (struct it *it, Lisp_Object spec, Lisp_Object object,
 #ifdef HAVE_XWIDGETS
       && !EQ (XCAR (spec), Qxwidget)
 #endif
-#ifdef HAVE_NEOMACS
       && !EQ (XCAR (spec), Qvideo)
       && !EQ (XCAR (spec), Qwebkit)
-#endif
       && !EQ (XCAR (spec), Qspace)
       && !EQ (XCAR (spec), Qwhen)
       && !EQ (XCAR (spec), Qslice)
@@ -6473,10 +6467,8 @@ handle_single_display_spec (struct it *it, Lisp_Object spec, Lisp_Object object,
              || (CONSP (value) && EQ (XCAR (value), Qspace))
              || ((it ? FRAME_WINDOW_P (it->f) : frame_window_p)
 		 && valid_xwidget_spec_p (value))
-#ifdef HAVE_NEOMACS
 	     || VIDEOP (value)
 	     || WEBKITP (value)
-#endif /* HAVE_NEOMACS */
 	     );
 
   if (valid_p && display_replaced == 0)
@@ -6569,7 +6561,6 @@ handle_single_display_spec (struct it *it, Lisp_Object spec, Lisp_Object object,
 	  *position = start_pos;
           it->xwidget = lookup_xwidget (value);
 	}
-#ifdef HAVE_NEOMACS
       /* Handle (video :id N :width W :height H) or (video :file PATH :width W :height H).
 	 Height/width can be integer pixels or (VALUE . em) for font-relative.
 	 If :file is provided, load video on demand and cache the ID.  */
@@ -6678,7 +6669,6 @@ handle_single_display_spec (struct it *it, Lisp_Object spec, Lisp_Object object,
 	      retval = 1 + (it->area == TEXT_AREA);
 	    }
 	}
-#endif /* HAVE_NEOMACS */
 #ifdef HAVE_WINDOW_SYSTEM
       else
 	{
@@ -7415,12 +7405,10 @@ push_it (struct it *it, struct text_pos *position)
     case GET_FROM_XWIDGET:
       p->u.xwidget.object = it->object;
       break;
-#ifdef HAVE_NEOMACS
     case GET_FROM_VIDEO:
     case GET_FROM_WEBKIT:
       /* Video/WebKit state is stored in it->video_id/webkit_id */
       break;
-#endif
     case GET_FROM_BUFFER:
     case GET_FROM_DISPLAY_VECTOR:
     case GET_FROM_STRING:
@@ -7575,12 +7563,10 @@ pop_it (struct it *it)
       break;
     case GET_FROM_C_STRING:
       break;
-#ifdef HAVE_NEOMACS
     case GET_FROM_VIDEO:
     case GET_FROM_WEBKIT:
       /* Video/WebKit state is already in it->video_id/webkit_id */
       break;
-#endif
     default:
       emacs_abort ();
     }
@@ -8355,10 +8341,8 @@ static next_element_function const get_next_element[NUM_IT_METHODS] =
   next_element_from_image,
   next_element_from_stretch,
   next_element_from_xwidget,
-#ifdef HAVE_NEOMACS
   next_element_from_video,
   next_element_from_webkit,
-#endif
 };
 
 #define GET_NEXT_DISPLAY_ELEMENT(it) (*get_next_element[(it)->method]) (it)
@@ -9303,10 +9287,8 @@ set_iterator_to_next (struct it *it, bool reseat_p)
     case GET_FROM_IMAGE:
     case GET_FROM_STRETCH:
     case GET_FROM_XWIDGET:
-#ifdef HAVE_NEOMACS
     case GET_FROM_VIDEO:
     case GET_FROM_WEBKIT:
-#endif
 
       /* The position etc with which we have to proceed are on
 	 the stack.  The position may be at the end of a string,
@@ -9795,7 +9777,6 @@ next_element_from_xwidget (struct it *it)
   return true;
 }
 
-#ifdef HAVE_NEOMACS
 static bool
 next_element_from_video (struct it *it)
 {
@@ -9809,7 +9790,6 @@ next_element_from_webkit (struct it *it)
   it->what = IT_WEBKIT;
   return true;
 }
-#endif /* HAVE_NEOMACS */
 
 
 /* Fill iterator IT with next display element from a stretch glyph
@@ -17361,9 +17341,7 @@ do { if (polling_stopped_here) start_polling ();	\
 static void
 redisplay_internal (void)
 {
-#ifdef HAVE_NEOMACS
   nlog_trace ("redisplay_internal");
-#endif
   struct window *w = XWINDOW (selected_window);
   struct window *sw;
   struct frame *fr;
@@ -18022,7 +18000,6 @@ redisplay_internal (void)
 		  STOP_POLLING;
 
 
-#ifdef HAVE_NEOMACS
 		  /* For neomacs frames, redisplay_window is short-circuited
 		     (the Rust engine handles text layout), so display_menu_bar
 		     and redisplay_tool_bar never run.  Call them here to
@@ -18033,7 +18010,6 @@ redisplay_internal (void)
 		      extern void neomacs_display_menu_and_tool_bar (struct frame *);
 		      neomacs_display_menu_and_tool_bar (f);
 		    }
-#endif
 		  update_frame (f, false);
 		  /* On some platforms (at least MS-Windows), the
 		     scroll_run_hook called from scrolling_window
@@ -20497,7 +20473,6 @@ optimizations mean and when they are in effect.  */)
 static void
 redisplay_window (Lisp_Object window, bool just_this_one_p)
 {
-#ifdef HAVE_NEOMACS
   nlog_trace ("redisplay_window: window=%p", (void *) XWINDOW (window));
   /* Skip the entire C display computation for Neomacs frames.
      The Rust layout engine reads buffer data directly via FFI and handles
@@ -20511,7 +20486,6 @@ redisplay_window (Lisp_Object window, bool just_this_one_p)
     if (FRAME_NEOMACS_P (nf))
       return;
   }
-#endif
   struct window *w = XWINDOW (window);
   struct frame *f = XFRAME (w->frame);
   struct buffer *buffer = XBUFFER (w->contents);
@@ -27794,7 +27768,6 @@ display_menu_bar (struct window *w)
 #endif
 }
 
-#ifdef HAVE_NEOMACS
 /* Populate the menu bar and tool bar desired_matrices for frame F.
    Called from redisplay_internal before update_frame, because
    redisplay_window is short-circuited for neomacs frames and
@@ -27810,7 +27783,6 @@ neomacs_display_menu_and_tool_bar (struct frame *f)
           || !NILP (Vauto_resize_tool_bars)))
     redisplay_tool_bar (f);
 }
-#endif
 
 /* This code is never used on Android where there are only GUI and
    initial frames.  */
@@ -31120,7 +31092,6 @@ fill_xwidget_glyph_string (struct glyph_string *s)
 }
 #endif
 
-#ifdef HAVE_NEOMACS
 static void
 fill_video_glyph_string (struct glyph_string *s)
 {
@@ -31164,7 +31135,6 @@ fill_webkit_glyph_string (struct glyph_string *s)
   s->width = s->first_glyph->pixel_width;
   s->ybase += s->first_glyph->voffset;
 }
-#endif /* HAVE_NEOMACS */
 
 /* Fill glyph string S from a sequence of stretch glyphs.
 
@@ -31652,12 +31622,6 @@ compute_overhangs_and_x (struct glyph_string *s, int x, bool backward_p)
      while (false)
 #endif
 
-#ifndef HAVE_NEOMACS
-# define BUILD_VIDEO_GLYPH_STRING(START, END, HEAD, TAIL, HL, X, LAST_X) \
-     eassume (false)
-# define BUILD_WEBKIT_GLYPH_STRING(START, END, HEAD, TAIL, HL, X, LAST_X) \
-     eassume (false)
-#else
 # define BUILD_VIDEO_GLYPH_STRING(START, END, HEAD, TAIL, HL, X, LAST_X) \
      do									\
        {								\
@@ -31680,7 +31644,6 @@ compute_overhangs_and_x (struct glyph_string *s, int x, bool backward_p)
          s->x = (X);							\
        }								\
      while (false)
-#endif /* HAVE_NEOMACS */
 
 /* Add a glyph string for a sequence of character glyphs to the list
    of strings between HEAD and TAIL.  START is the index of the first
@@ -32686,7 +32649,6 @@ produce_xwidget_glyph (struct it *it)
 #endif
 }
 
-#ifdef HAVE_NEOMACS
 /* Produce a glyph for a video display property.  */
 static void
 produce_video_glyph (struct it *it)
@@ -32882,7 +32844,6 @@ produce_webkit_glyph (struct it *it)
 	IT_EXPAND_MATRIX_WIDTH (it, area);
     }
 }
-#endif /* HAVE_NEOMACS */
 
 /* Append a stretch glyph to IT->glyph_row.  OBJECT is the source
    of the glyph, WIDTH and HEIGHT are the width and height of the
@@ -34427,12 +34388,10 @@ gui_produce_glyphs (struct it *it)
     produce_stretch_glyph (it);
   else if (it->what == IT_XWIDGET)
     produce_xwidget_glyph (it);
-#ifdef HAVE_NEOMACS
   else if (it->what == IT_VIDEO)
     produce_video_glyph (it);
   else if (it->what == IT_WEBKIT)
     produce_webkit_glyph (it);
-#endif /* HAVE_NEOMACS */
 
  done:
   /* Accumulate dimensions.  Note: can't assume that it->descent > 0
@@ -38426,10 +38385,8 @@ be let-bound around code that needs to disable messages temporarily. */);
 	  "long-line-optimizations-in-fontification-functions");
   DEFSYM (Qmode_line_elt_no, "mode-line-elt-no");
 
-#ifdef HAVE_NEOMACS
   DEFSYM (Qvideo, "video");
   DEFSYM (Qwebkit, "webkit");
-#endif
 
   /* Name of the symbol which disables Lisp evaluation in 'display'
      properties.  This is used by enriched.el.  */

@@ -6380,7 +6380,6 @@ buffer_posn_from_coords (struct window *w, int *x, int *y, struct display_pos *p
 	*object = img->spec;
     }
 #endif
-#ifdef HAVE_NEOMACS
   if (it.what == IT_WEBKIT)
     {
       /* Return webkit display spec as the object, similar to images.
@@ -6392,7 +6391,6 @@ buffer_posn_from_coords (struct window *w, int *x, int *y, struct display_pos *p
 		       QCwidth, make_fixnum (it.video_width),
 		       QCheight, make_fixnum (it.video_height));
     }
-#endif
 
   /* IT's vpos counts from the glyph row that includes the window's
      start position, i.e. it excludes the header-line row, but
@@ -6419,7 +6417,6 @@ buffer_posn_from_coords (struct window *w, int *x, int *y, struct display_pos *p
 	    }
 	  else
 #endif
-#ifdef HAVE_NEOMACS
 	  if (glyph->type == WEBKIT_GLYPH)
 	    {
 	      /* For webkit glyphs, adjust dy for baseline and return
@@ -6429,7 +6426,6 @@ buffer_posn_from_coords (struct window *w, int *x, int *y, struct display_pos *p
 	      *height = glyph->ascent + glyph->descent;
 	    }
 	  else
-#endif
 	    {
 	      *width = glyph->pixel_width;
 	      *height = glyph->ascent + glyph->descent;
@@ -7330,13 +7326,11 @@ init_display_interactive (void)
     }
 #endif
 
-#ifdef HAVE_NEOMACS
   if (!inhibit_window_system && !will_dump_p ())
     {
       Vinitial_window_system = Qneomacs;
       return;
     }
-#endif
 
 #ifdef HAVE_HAIKU
   if (!inhibit_window_system && !will_dump_p ())

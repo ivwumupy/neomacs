@@ -25,8 +25,6 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include "font.h"
 #include "keyboard.h"  /* For union buffered_input_event */
 
-#ifdef HAVE_NEOMACS
-
 /* Cairo is used for font rendering with ftcrfont */
 #include <cairo.h>
 
@@ -393,7 +391,5 @@ extern int neomacs_display_is_threaded (void);
 extern void neomacs_display_shutdown_threaded_mode (void);
 
 /* Note: x_create_gc and x_free_gc are defined as static functions in xfaces.c */
-
-#endif /* HAVE_NEOMACS */
 
 #endif /* _NEOMACSTERM_H_ */

@@ -113,10 +113,8 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include "commands.h"
 
-#ifdef HAVE_NEOMACS
 #define NLOG_MODULE "fileio"
 #include "neomacs_log.h"
-#endif
 
 #if !defined HAVE_ANDROID || defined ANDROID_STUBIFY
 
@@ -4098,9 +4096,7 @@ by calling `format-decode', which see.  */)
   (Lisp_Object filename, Lisp_Object visit, Lisp_Object beg, Lisp_Object end,
    Lisp_Object replace)
 {
-#ifdef HAVE_NEOMACS
   nlog_debug ("insert_file_contents: %s", SSDATA (filename));
-#endif
   /* A good read blocksize for insert-file-contents.
      It is for reading a big chunk of a file into memory,
      as opposed to coreutils IO_BUFSIZE which is for 'cat'-like stream reads.
@@ -5518,9 +5514,7 @@ write_region (Lisp_Object start, Lisp_Object end, Lisp_Object filename,
 	      Lisp_Object append, Lisp_Object visit, Lisp_Object lockname,
 	      Lisp_Object mustbenew, int desc)
 {
-#ifdef HAVE_NEOMACS
   nlog_debug ("write_region: %s", SSDATA (filename));
-#endif
   int open_flags;
   int mode;
   off_t offset UNINIT;

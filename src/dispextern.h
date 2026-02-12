@@ -156,14 +156,12 @@ typedef Emacs_Pixmap XImagePtr;
 typedef XImagePtr XImagePtr_or_DC;
 #endif /* HAVE_PGTK */
 
-#ifdef HAVE_NEOMACS
 #include "neomacsgui.h"
 /* Following typedef needed to accommodate the MSDOS port, believe it or not.  */
 typedef struct neomacs_display_info Display_Info;
 typedef Emacs_Pixmap XImagePtr;
 typedef XImagePtr XImagePtr_or_DC;
 /* Emacs_Pix_Container and Emacs_Pix_Context are already defined by USE_CAIRO above */
-#endif /* HAVE_NEOMACS */
 
 #ifdef HAVE_HAIKU
 #include "haikugui.h"
@@ -607,13 +605,11 @@ struct glyph
     /* Image ID for image glyphs (type == IMAGE_GLYPH).  */
     int img_id;
 
-#ifdef HAVE_NEOMACS
     /* Video ID for video glyphs (type == VIDEO_GLYPH).  */
     uint32_t video_id;
 
     /* WebKit view ID for webkit glyphs (type == WEBKIT_GLYPH).  */
     uint32_t webkit_id;
-#endif
 
 #ifdef HAVE_XWIDGETS
     /* Xwidget ID.  */
@@ -1484,9 +1480,7 @@ struct glyph_string
 #if defined (HAVE_PGTK)
   Emacs_GC xgcv;
 #endif
-#if defined (HAVE_NEOMACS)
   Emacs_GC *gc;
-#endif
 
   /* A pointer to the first glyph in the string.  This glyph
      corresponds to char2b[0].  Needed to draw rectangles if
@@ -2306,13 +2300,11 @@ enum display_element_type
   /* Xwidget.  */
   IT_XWIDGET,
 
-#ifdef HAVE_NEOMACS
   /* Video (Neomacs).  */
   IT_VIDEO,
 
   /* WebKit browser view (Neomacs).  */
   IT_WEBKIT
-#endif
 };
 
 
@@ -2377,10 +2369,8 @@ enum it_method {
   GET_FROM_IMAGE,
   GET_FROM_STRETCH,
   GET_FROM_XWIDGET,
-#ifdef HAVE_NEOMACS
   GET_FROM_VIDEO,
   GET_FROM_WEBKIT,
-#endif
   NUM_IT_METHODS
 };
 
@@ -2758,7 +2748,6 @@ struct it
   /* If what == IT_XWIDGET.  */
   struct xwidget *xwidget;
 
-#ifdef HAVE_NEOMACS
   /* If what == IT_VIDEO, the video player id.  */
   uint32_t video_id;
 
@@ -2768,7 +2757,6 @@ struct it
   /* Width and height for IT_VIDEO or IT_WEBKIT.  */
   int video_width;
   int video_height;
-#endif
 
   /* Values from `slice' property.  */
   struct it_slice slice;

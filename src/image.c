@@ -150,13 +150,11 @@ typedef struct ns_bitmap_record Bitmap_Record;
 typedef struct pgtk_bitmap_record Bitmap_Record;
 #endif /* HAVE_PGTK */
 
-#ifdef HAVE_NEOMACS
 typedef struct neomacs_bitmap_record Bitmap_Record;
 #include "neomacsterm.h"
 #include "neomacs_display.h"
 #define NLOG_MODULE "image"
 #include "neomacs_log.h"
-#endif /* HAVE_NEOMACS */
 
 #if (defined HAVE_X_WINDOWS \
      && ! (defined HAVE_NTGUI || defined USE_CAIRO || defined HAVE_NS))
@@ -296,69 +294,6 @@ image_pix_container_create_from_bitmap_data (char *data, unsigned int width,
   return pimg;
 }
 
-#ifndef HAVE_NEOMACS
-static cairo_surface_t *
-cr_create_surface_from_pix_containers (Emacs_Pix_Container pimg,
-				       Emacs_Pix_Container mask)
-{
-  cairo_surface_t *surface;
-
-  if (mask)
-    {
-      int x, y;
-
-      for (y = 0; y < pimg->height; y++)
-	for (x = 0; x < pimg->width; x++)
-	  {
-	    unsigned long color, alpha;
-	    int r, g, b;
-
-	    color = GET_PIXEL (pimg, x, y);
-	    alpha = GET_PIXEL (mask, x, y);
-	    r = (RED_FROM_ULONG (color) * alpha + 0x7f) / 0xff;
-	    g = (GREEN_FROM_ULONG (color) * alpha + 0x7f) / 0xff;
-	    b = (BLUE_FROM_ULONG (color) * alpha + 0x7f) / 0xff;
-	    PUT_PIXEL (pimg, x, y, ARGB_TO_ULONG (alpha, r, g, b));
-	  }
-      xfree (mask->data);
-      mask->data = NULL;
-    }
-  surface = cairo_image_surface_create_for_data ((unsigned char *) pimg->data,
-						 (mask ? CAIRO_FORMAT_ARGB32
-						  : CAIRO_FORMAT_RGB24),
-						 pimg->width, pimg->height,
-						 pimg->bytes_per_line);
-  static const cairo_user_data_key_t key;
-  cairo_surface_set_user_data (surface, &key, pimg->data, xfree);
-  pimg->data = NULL;
-
-  return surface;
-}
-
-static void
-cr_put_image_to_cr_data (struct image *img)
-{
-  cairo_pattern_t *pattern = NULL;
-  cairo_surface_t *surface = cr_create_surface_from_pix_containers (img->pixmap,
-								    img->mask);
-  if (surface)
-    {
-      pattern = cairo_pattern_create_for_surface (surface);
-      if (img->cr_data)
-	{
-	  cairo_matrix_t matrix;
-	  cairo_pattern_get_matrix (img->cr_data, &matrix);
-	  cairo_pattern_set_matrix (pattern, &matrix);
-          cairo_pattern_set_filter
-            (pattern, cairo_pattern_get_filter (img->cr_data));
-	  cairo_pattern_destroy (img->cr_data);
-	}
-      cairo_surface_destroy (surface);
-    }
-
-  img->cr_data = pattern;
-}
-#endif	/* !HAVE_NEOMACS */
 
 #endif	/* USE_CAIRO */
 
@@ -690,7 +625,6 @@ image_create_bitmap_from_data (struct frame *f, char *bits,
   dpyinfo->bitmaps[id - 1].pattern = pattern;
 #endif
 
-#ifdef HAVE_NEOMACS
   {
     int bytes_per_row = (width + 7) / 8;
     int nbytes = bytes_per_row * height;
@@ -699,7 +633,6 @@ image_create_bitmap_from_data (struct frame *f, char *bits,
     dpyinfo->bitmaps[id - 1].stipple_bits = xmalloc (nbytes);
     memcpy (dpyinfo->bitmaps[id - 1].stipple_bits, bits, nbytes);
   }
-#endif
 
 #ifdef HAVE_HAIKU
   dpyinfo->bitmaps[id - 1].img = bitmap;
@@ -889,7 +822,6 @@ image_create_bitmap_from_file (struct frame *f, Lisp_Object file)
   return id;
 #endif
 
-#ifdef HAVE_NEOMACS
   ptrdiff_t id, size;
   int fd, width, height, rc;
   char *contents, *data;
@@ -928,7 +860,6 @@ image_create_bitmap_from_file (struct frame *f, Lisp_Object file)
   xfree (contents);
   xfree (data);
   return id;
-#endif
 
 #ifdef HAVE_X_WINDOWS
   unsigned int width, height;
@@ -1189,13 +1120,11 @@ free_bitmap_record (Display_Info *dpyinfo, Bitmap_Record *bm)
     xfree (bm->stipple_bits);
 #endif
 
-#ifdef HAVE_NEOMACS
   if (bm->stipple_bits)
     {
       xfree (bm->stipple_bits);
       bm->stipple_bits = NULL;
     }
-#endif
 
   if (bm->file)
     {
@@ -1926,27 +1855,12 @@ prepare_image_for_display (struct frame *f, struct image *img)
       if (img->cr_data == NULL || (cairo_pattern_get_type (img->cr_data)
 				   != CAIRO_PATTERN_TYPE_SURFACE))
 	{
-#ifdef HAVE_NEOMACS
 	  /* Neomacs renders images via GPU, not Cairo.  Preserve
 	     img->pixmap->data so neomacsterm.c can upload it directly.
 	     cr_put_image_to_cr_data would transfer ownership to a Cairo
 	     pattern and set pixmap->data = NULL, making it inaccessible.  */
 	  IMAGE_BACKGROUND (img, f, img->pixmap);
 	  IMAGE_BACKGROUND_TRANSPARENT (img, f, img->mask);
-#else
-	    {
-	      /* Fill in the background/background_transparent field while
-		 we have img->pixmap->data/img->mask->data.  */
-	      IMAGE_BACKGROUND (img, f, img->pixmap);
-	      IMAGE_BACKGROUND_TRANSPARENT (img, f, img->mask);
-	      cr_put_image_to_cr_data (img);
-	      if (img->cr_data == NULL)
-		{
-		  img->load_failed_p = 1;
-		  img->type->free_img (f, img);
-		}
-	    }
-#endif
 	}
       unblock_input ();
     }
@@ -3593,9 +3507,7 @@ image_set_transform (struct frame *f, struct image *img)
 ptrdiff_t
 lookup_image (struct frame *f, Lisp_Object spec, int face_id)
 {
-#ifdef HAVE_NEOMACS
   nlog_debug ("lookup_image: face_id=%d", face_id);
-#endif
   struct image *img;
   EMACS_UINT hash;
 
@@ -13008,7 +12920,6 @@ initialize_image_type (struct image_type const *type)
   return true;
 }
 
-#ifdef HAVE_NEOMACS
 /* Neomacs image type - images loaded via GPU backend (gdk-pixbuf).
    This allows PNG, JPEG, GIF, WebP, SVG support without native libraries.
    The actual image loading is done by neomacsterm.c via the Rust backend. */
@@ -13201,7 +13112,6 @@ neomacs_load (struct frame *f, struct image *img)
 
   return true;
 }
-#endif /* HAVE_NEOMACS */
 
 /* Array of supported image types.  */
 
@@ -13243,9 +13153,7 @@ static struct image_type const image_types[] =
  { SYMBOL_INDEX (Qwebp), webp_image_p, webp_load, image_clear_image,
    IMAGE_TYPE_INIT (init_webp_functions) },
 #endif
-#ifdef HAVE_NEOMACS
  { SYMBOL_INDEX (Qneomacs), neomacs_image_p, neomacs_load, image_clear_image },
-#endif
  { SYMBOL_INDEX (Qxbm), xbm_image_p, xbm_load, image_clear_image },
  { SYMBOL_INDEX (Qpbm), pbm_image_p, pbm_load, image_clear_image },
 };
@@ -13404,10 +13312,8 @@ non-numeric, there is no explicit limit on the size of images.  */);
   DEFSYM (Qxbm, "xbm");
   add_image_type (Qxbm);
 
-#ifdef HAVE_NEOMACS
   DEFSYM (Qneomacs, "neomacs");
   add_image_type (Qneomacs);
-#endif
 
 #if defined (HAVE_XPM) || defined (HAVE_NS) \
   || defined (HAVE_HAIKU) || defined (HAVE_PGTK) \

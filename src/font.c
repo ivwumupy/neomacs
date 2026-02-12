@@ -44,10 +44,8 @@ along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 #include TERM_HEADER
 #endif /* HAVE_WINDOW_SYSTEM */
 
-#ifdef HAVE_NEOMACS
 #define NLOG_MODULE "font"
 #include "neomacs_log.h"
-#endif
 
 #define DEFAULT_ENCODING Qiso8859_1
 
@@ -2939,9 +2937,7 @@ font_matching_entity (struct frame *f, Lisp_Object *attrs, Lisp_Object spec)
 static Lisp_Object
 font_open_entity (struct frame *f, Lisp_Object entity, int pixel_size)
 {
-#ifdef HAVE_NEOMACS
   nlog_debug ("font_open_entity: pixel_size=%d", pixel_size);
-#endif
   struct font_driver_list *driver_list;
   Lisp_Object objlist, size, val, font_object;
   struct font *font;

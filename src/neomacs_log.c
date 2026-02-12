@@ -8,8 +8,6 @@
 
 #include <config.h>
 
-#ifdef HAVE_NEOMACS
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -249,5 +247,3 @@ nlog_log (enum nlog_level level, const char *module,
   fputc ('\n', stderr);
   fflush (stderr);
 }
-
-#endif /* HAVE_NEOMACS */
