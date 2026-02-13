@@ -8,3 +8,4 @@ description = "Core runtime structures for NeoVM"
 [dependencies]
 neovm-host-abi = { path = "../neovm-host-abi" }
 regex = "1"
+strum = { version = "0.26", features = ["derive"] }
