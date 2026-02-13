@@ -13,6 +13,7 @@ pub mod abbrev;
 pub mod advice;
 pub mod autoload;
 pub mod bookmark;
+pub(crate) mod builtin_registry;
 pub mod builtins;
 pub mod builtins_extra;
 pub mod bytecode;

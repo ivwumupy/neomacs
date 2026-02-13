@@ -1652,6 +1652,7 @@ pub(crate) fn builtin_fboundp(eval: &mut super::eval::Evaluator, args: Vec<Value
     Ok(Value::bool(
         eval.obarray().fboundp(name)
             || super::subr_info::is_special_form(name)
+            || super::builtin_registry::is_dispatch_builtin_name(name)
             || name.parse::<PureBuiltinId>().is_ok(),
     ))
 }
@@ -6283,6 +6284,27 @@ mod tests {
         .expect("dispatch_builtin should resolve string-equal")
         .expect("dispatch_builtin should evaluate string-equal");
         assert!(result.is_truthy());
+    }
+
+    #[test]
+    fn fboundp_recognizes_dispatch_and_typed_builtin_names() {
+        let mut eval = crate::elisp::eval::Evaluator::new();
+
+        let message = builtin_fboundp(&mut eval, vec![Value::symbol("message")])
+            .expect("fboundp should succeed for message");
+        assert!(message.is_truthy());
+
+        let load = builtin_fboundp(&mut eval, vec![Value::symbol("load")])
+            .expect("fboundp should succeed for load");
+        assert!(load.is_truthy());
+
+        let symbol_value = builtin_fboundp(&mut eval, vec![Value::symbol("symbol-value")])
+            .expect("fboundp should succeed for symbol-value");
+        assert!(symbol_value.is_truthy());
+
+        let random = builtin_fboundp(&mut eval, vec![Value::symbol("random")])
+            .expect("fboundp should succeed for random");
+        assert!(random.is_truthy());
     }
 
     #[test]
