@@ -5152,7 +5152,7 @@ pub(crate) fn builtin_search_forward(
             Ok(Value::Int((char_pos + 1) as i64))
         }
         Ok(None) => Ok(Value::Nil),
-        Err(msg) => Err(signal("search-failed", vec![Value::string(msg)])),
+        Err(_) => Err(signal("search-failed", vec![Value::string(pattern)])),
     }
 }
 
@@ -5180,7 +5180,7 @@ pub(crate) fn builtin_search_backward(
             Ok(Value::Int((char_pos + 1) as i64))
         }
         Ok(None) => Ok(Value::Nil),
-        Err(msg) => Err(signal("search-failed", vec![Value::string(msg)])),
+        Err(_) => Err(signal("search-failed", vec![Value::string(pattern)])),
     }
 }
 
@@ -5208,7 +5208,10 @@ pub(crate) fn builtin_re_search_forward(
             Ok(Value::Int((char_pos + 1) as i64))
         }
         Ok(None) => Ok(Value::Nil),
-        Err(msg) => Err(signal("search-failed", vec![Value::string(msg)])),
+        Err(msg) if msg.starts_with("Invalid regexp:") => {
+            Err(signal("invalid-regexp", vec![Value::string(msg)]))
+        }
+        Err(_) => Err(signal("search-failed", vec![Value::string(pattern)])),
     }
 }
 
@@ -5236,7 +5239,10 @@ pub(crate) fn builtin_re_search_backward(
             Ok(Value::Int((char_pos + 1) as i64))
         }
         Ok(None) => Ok(Value::Nil),
-        Err(msg) => Err(signal("search-failed", vec![Value::string(msg)])),
+        Err(msg) if msg.starts_with("Invalid regexp:") => {
+            Err(signal("invalid-regexp", vec![Value::string(msg)]))
+        }
+        Err(_) => Err(signal("search-failed", vec![Value::string(pattern)])),
     }
 }
 
