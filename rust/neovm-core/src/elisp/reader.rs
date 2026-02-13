@@ -820,7 +820,7 @@ fn non_character_input_event_error() -> Flow {
 ///
 /// Batch-mode behavior: signal `end-of-file`.
 pub(crate) fn builtin_y_or_n_p(args: Vec<Value>) -> EvalResult {
-    expect_min_args("y-or-n-p", &args, 1)?;
+    expect_args("y-or-n-p", &args, 1)?;
     match &args[0] {
         Value::Str(_) | Value::Vector(_) | Value::Nil => {}
         other => {
@@ -841,7 +841,7 @@ pub(crate) fn builtin_y_or_n_p(args: Vec<Value>) -> EvalResult {
 ///
 /// Batch-mode behavior: signal `end-of-file`.
 pub(crate) fn builtin_yes_or_no_p(args: Vec<Value>) -> EvalResult {
-    expect_min_args("yes-or-no-p", &args, 1)?;
+    expect_args("yes-or-no-p", &args, 1)?;
     let _prompt = expect_string(&args[0])?;
     Err(signal("end-of-file", vec![]))
 }
@@ -1465,6 +1465,15 @@ mod tests {
     }
 
     #[test]
+    fn y_or_n_p_rejects_extra_arg() {
+        let result = builtin_y_or_n_p(vec![Value::string("Continue? "), Value::Nil]);
+        assert!(matches!(
+            result,
+            Err(Flow::Signal(sig)) if sig.symbol == "wrong-number-of-arguments"
+        ));
+    }
+
+    #[test]
     fn y_or_n_p_accepts_nil_and_vector_prompts() {
         let nil_prompt = builtin_y_or_n_p(vec![Value::Nil]);
         assert!(nil_prompt.is_err());
@@ -1500,6 +1509,15 @@ mod tests {
     fn yes_or_no_p_rejects_non_string_prompt() {
         let result = builtin_yes_or_no_p(vec![Value::Int(123)]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn yes_or_no_p_rejects_extra_arg() {
+        let result = builtin_yes_or_no_p(vec![Value::string("Confirm? "), Value::Nil]);
+        assert!(matches!(
+            result,
+            Err(Flow::Signal(sig)) if sig.symbol == "wrong-number-of-arguments"
+        ));
     }
 
     #[test]

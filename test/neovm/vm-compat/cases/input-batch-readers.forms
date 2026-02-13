@@ -60,3 +60,5 @@
 (condition-case err (progn (setq unread-command-events (list 'foo)) (read-key-sequence-vector "")) (error (car err)))
 (condition-case err (progn (setq unread-command-events (list 97)) (read-key-sequence-vector nil)) (error (car err)))
 (condition-case err (read-key-sequence-vector 123) (error (car err)))
+(condition-case err (y-or-n-p "Continue? " nil) (error (car err)))
+(condition-case err (yes-or-no-p "Confirm? " nil) (error (car err)))
