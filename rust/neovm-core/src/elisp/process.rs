@@ -210,6 +210,23 @@ fn expect_int(value: &Value) -> Result<i64, Flow> {
     }
 }
 
+fn file_error_symbol(kind: std::io::ErrorKind) -> &'static str {
+    match kind {
+        std::io::ErrorKind::NotFound => "file-missing",
+        std::io::ErrorKind::AlreadyExists => "file-already-exists",
+        std::io::ErrorKind::PermissionDenied => "permission-denied",
+        _ => "file-error",
+    }
+}
+
+fn signal_process_io(action: &str, target: Option<&str>, err: std::io::Error) -> Flow {
+    let mut data = vec![Value::string(action), Value::string(err.to_string())];
+    if let Some(target) = target {
+        data.push(Value::string(target));
+    }
+    signal(file_error_symbol(err.kind()), data)
+}
+
 /// Resolve a process argument: either a ProcessId integer or a name string.
 fn resolve_process(eval: &super::eval::Evaluator, value: &Value) -> Result<ProcessId, Flow> {
     match value {
@@ -312,15 +329,7 @@ pub(crate) fn builtin_call_process(
     let output = Command::new(&program)
         .args(&cmd_args)
         .output()
-        .map_err(|e| {
-            signal(
-                "file-error",
-                vec![
-                    Value::string(format!("Searching for program: {}", e)),
-                    Value::string(program.clone()),
-                ],
-            )
-        })?;
+        .map_err(|e| signal_process_io("Searching for program", Some(&program), e))?;
 
     let exit_code = output.status.code().unwrap_or(-1);
 
@@ -394,27 +403,16 @@ pub(crate) fn builtin_call_process_region(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| {
-            signal(
-                "file-error",
-                vec![
-                    Value::string(format!("Searching for program: {}", e)),
-                    Value::string(program.clone()),
-                ],
-            )
-        })?;
+        .map_err(|e| signal_process_io("Searching for program", Some(&program), e))?;
 
     // Write region text to stdin.
     if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(region_text.as_bytes());
     }
 
-    let output = child.wait_with_output().map_err(|e| {
-        signal(
-            "file-error",
-            vec![Value::string(format!("Process error: {}", e))],
-        )
-    })?;
+    let output = child
+        .wait_with_output()
+        .map_err(|e| signal_process_io("Process error", None, e))?;
 
     let exit_code = output.status.code().unwrap_or(-1);
 
@@ -541,12 +539,7 @@ pub(crate) fn builtin_shell_command_to_string(args: Vec<Value>) -> EvalResult {
         .arg("-c")
         .arg(&command)
         .output()
-        .map_err(|e| {
-            signal(
-                "file-error",
-                vec![Value::string(format!("Shell command failed: {}", e))],
-            )
-        })?;
+        .map_err(|e| signal_process_io("Shell command failed", Some(&shell), e))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     Ok(Value::string(stdout))
@@ -876,6 +869,22 @@ mod tests {
     fn call_process_bad_program() {
         let result = eval_one(r#"(call-process "/nonexistent/program_xyz")"#);
         assert!(result.contains("ERR"));
+    }
+
+    #[test]
+    fn call_process_bad_program_signals_file_missing() {
+        let result = eval_one(
+            r#"(condition-case err (call-process "/nonexistent/program_xyz") (error (car err)))"#,
+        );
+        assert_eq!(result, "OK file-missing");
+    }
+
+    #[test]
+    fn call_process_region_bad_program_signals_file_missing() {
+        let result = eval_one(
+            r#"(condition-case err (call-process-region 1 1 "/nonexistent/program_xyz") (error (car err)))"#,
+        );
+        assert_eq!(result, "OK file-missing");
     }
 
     #[test]
