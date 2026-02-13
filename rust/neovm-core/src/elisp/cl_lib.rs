@@ -691,32 +691,116 @@ pub fn builtin_seq_reverse(args: Vec<Value>) -> EvalResult {
 /// `(seq-drop SEQ N)` — drop first n elements.
 pub fn builtin_seq_drop(args: Vec<Value>) -> EvalResult {
     expect_args("seq-drop", &args, 2)?;
-    let elems = collect_sequence(&args[0]);
-    let n = expect_int(&args[1])? as usize;
-    let n = n.min(elems.len());
-    let result: Vec<Value> = elems[n..].to_vec();
+    let n = expect_int(&args[1])?;
+
     match &args[0] {
-        Value::Vector(_) => Ok(Value::vector(result)),
-        _ => Ok(Value::list(result)),
+        Value::Nil => Ok(Value::Nil),
+        Value::Vector(v) => {
+            let elems = v.lock().expect("poisoned");
+            if n <= 0 {
+                return Ok(Value::vector(elems.clone()));
+            }
+            let n = (n as usize).min(elems.len());
+            Ok(Value::vector(elems[n..].to_vec()))
+        }
+        Value::Str(s) => {
+            let chars: Vec<char> = s.chars().collect();
+            if n <= 0 {
+                return Ok(Value::string((**s).clone()));
+            }
+            let n = (n as usize).min(chars.len());
+            let out: String = chars[n..].iter().collect();
+            Ok(Value::string(out))
+        }
+        Value::Cons(_) => {
+            if n <= 0 {
+                return Ok(args[0].clone());
+            }
+            let mut cursor = args[0].clone();
+            let mut remaining = n as usize;
+            while remaining > 0 {
+                match cursor {
+                    Value::Nil => return Ok(Value::Nil),
+                    Value::Cons(cell) => {
+                        let pair = cell.lock().expect("poisoned");
+                        cursor = pair.cdr.clone();
+                        remaining -= 1;
+                    }
+                    _ => {
+                        return Err(signal(
+                            "wrong-type-argument",
+                            vec![Value::symbol("listp"), args[0].clone()],
+                        ));
+                    }
+                }
+            }
+            Ok(cursor)
+        }
+        other => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("sequencep"), other.clone()],
+        )),
     }
 }
 
 /// `(seq-take SEQ N)` — take first n elements.
 pub fn builtin_seq_take(args: Vec<Value>) -> EvalResult {
     expect_args("seq-take", &args, 2)?;
-    let elems = collect_sequence(&args[0]);
-    let n = expect_int(&args[1])? as usize;
-    let n = n.min(elems.len());
-    let result: Vec<Value> = elems[..n].to_vec();
+    let n = expect_int(&args[1])?;
+
     match &args[0] {
-        Value::Vector(_) => Ok(Value::vector(result)),
-        _ => Ok(Value::list(result)),
+        Value::Nil => Ok(Value::Nil),
+        Value::Vector(v) => {
+            let elems = v.lock().expect("poisoned");
+            if n <= 0 {
+                return Ok(Value::vector(Vec::new()));
+            }
+            let n = (n as usize).min(elems.len());
+            Ok(Value::vector(elems[..n].to_vec()))
+        }
+        Value::Str(s) => {
+            let chars: Vec<char> = s.chars().collect();
+            if n <= 0 {
+                return Ok(Value::string(""));
+            }
+            let n = (n as usize).min(chars.len());
+            let out: String = chars[..n].iter().collect();
+            Ok(Value::string(out))
+        }
+        Value::Cons(_) => {
+            if n <= 0 {
+                return Ok(Value::Nil);
+            }
+            let mut out = Vec::new();
+            let mut cursor = args[0].clone();
+            let mut remaining = n as usize;
+            while remaining > 0 {
+                match cursor {
+                    Value::Nil => break,
+                    Value::Cons(cell) => {
+                        let pair = cell.lock().expect("poisoned");
+                        out.push(pair.car.clone());
+                        cursor = pair.cdr.clone();
+                        remaining -= 1;
+                    }
+                    tail => {
+                        return Err(signal(
+                            "wrong-type-argument",
+                            vec![Value::symbol("listp"), tail],
+                        ));
+                    }
+                }
+            }
+            Ok(Value::list(out))
+        }
+        other => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("sequencep"), other.clone()],
+        )),
     }
 }
 
-/// `(seq-subseq SEQ START &optional END)` — subsequence.
-pub fn builtin_seq_subseq(args: Vec<Value>) -> EvalResult {
-    expect_min_args("seq-subseq", &args, 2)?;
+fn builtin_seq_subseq_legacy(args: &[Value]) -> EvalResult {
     let elems = collect_sequence(&args[0]);
     let start = expect_int(&args[1])? as usize;
     let end = if args.len() > 2 && !args[2].is_nil() {
@@ -733,6 +817,42 @@ pub fn builtin_seq_subseq(args: Vec<Value>) -> EvalResult {
     match &args[0] {
         Value::Vector(_) => Ok(Value::vector(result)),
         _ => Ok(Value::list(result)),
+    }
+}
+
+/// `(seq-subseq SEQ START &optional END)` — subsequence.
+pub fn builtin_seq_subseq(args: Vec<Value>) -> EvalResult {
+    expect_min_args("seq-subseq", &args, 2)?;
+    let start = expect_int(&args[1])?;
+    let end = if args.len() > 2 && !args[2].is_nil() {
+        Some(expect_int(&args[2])?)
+    } else {
+        None
+    };
+
+    // Preserve existing behavior for negative indices until full seq.el
+    // index normalization support lands.
+    if start < 0 || end.is_some_and(|v| v < 0) {
+        return builtin_seq_subseq_legacy(&args);
+    }
+
+    match &args[0] {
+        Value::Nil | Value::Cons(_) | Value::Vector(_) | Value::Str(_) => {
+            let dropped = builtin_seq_drop(vec![args[0].clone(), Value::Int(start)])?;
+            if let Some(end_idx) = end {
+                let span = end_idx - start;
+                builtin_seq_take(vec![dropped, Value::Int(span)])
+            } else {
+                Ok(dropped)
+            }
+        }
+        other => Err(signal(
+            "error",
+            vec![Value::string(format!(
+                "Unsupported sequence: {}",
+                super::print::print_value(other)
+            ))],
+        )),
     }
 }
 
