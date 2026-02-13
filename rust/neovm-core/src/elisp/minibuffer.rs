@@ -623,24 +623,7 @@ pub(crate) fn builtin_completing_read(args: Vec<Value>) -> EvalResult {
 pub(crate) fn builtin_read_file_name(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-file-name", &args, 1)?;
     let _prompt = expect_string(&args[0])?;
-
-    // INITIAL (arg 4)
-    if let Some(initial) = args.get(4) {
-        if !initial.is_nil() {
-            let s = expect_string(initial)?;
-            return Ok(Value::string(s));
-        }
-    }
-
-    // DEFAULT (arg 2)
-    if let Some(default) = args.get(2) {
-        if !default.is_nil() {
-            let s = expect_string(default)?;
-            return Ok(Value::string(s));
-        }
-    }
-
-    Ok(Value::string(""))
+    Err(signal("end-of-file", vec![]))
 }
 
 /// `(read-directory-name PROMPT &optional DIR DEFAULT MUSTMATCH INITIAL)`
@@ -649,24 +632,7 @@ pub(crate) fn builtin_read_file_name(args: Vec<Value>) -> EvalResult {
 pub(crate) fn builtin_read_directory_name(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-directory-name", &args, 1)?;
     let _prompt = expect_string(&args[0])?;
-
-    // INITIAL (arg 4)
-    if let Some(initial) = args.get(4) {
-        if !initial.is_nil() {
-            let s = expect_string(initial)?;
-            return Ok(Value::string(s));
-        }
-    }
-
-    // DEFAULT (arg 2)
-    if let Some(default) = args.get(2) {
-        if !default.is_nil() {
-            let s = expect_string(default)?;
-            return Ok(Value::string(s));
-        }
-    }
-
-    Ok(Value::string(""))
+    Err(signal("end-of-file", vec![]))
 }
 
 /// `(read-buffer PROMPT &optional DEFAULT REQUIRE-MATCH PREDICATE)`
@@ -675,16 +641,7 @@ pub(crate) fn builtin_read_directory_name(args: Vec<Value>) -> EvalResult {
 pub(crate) fn builtin_read_buffer(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-buffer", &args, 1)?;
     let _prompt = expect_string(&args[0])?;
-
-    if let Some(default) = args.get(1) {
-        if !default.is_nil() {
-            if let Ok(s) = expect_string(default) {
-                return Ok(Value::string(s));
-            }
-        }
-    }
-
-    Ok(Value::string(""))
+    Err(signal("end-of-file", vec![]))
 }
 
 /// `(read-command PROMPT &optional DEFAULT)`
@@ -693,16 +650,7 @@ pub(crate) fn builtin_read_buffer(args: Vec<Value>) -> EvalResult {
 pub(crate) fn builtin_read_command(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-command", &args, 1)?;
     let _prompt = expect_string(&args[0])?;
-
-    if let Some(default) = args.get(1) {
-        if !default.is_nil() {
-            if let Ok(s) = expect_string(default) {
-                return Ok(Value::string(s));
-            }
-        }
-    }
-
-    Ok(Value::string(""))
+    Err(signal("end-of-file", vec![]))
 }
 
 /// `(read-variable PROMPT &optional DEFAULT)`
@@ -711,16 +659,7 @@ pub(crate) fn builtin_read_command(args: Vec<Value>) -> EvalResult {
 pub(crate) fn builtin_read_variable(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-variable", &args, 1)?;
     let _prompt = expect_string(&args[0])?;
-
-    if let Some(default) = args.get(1) {
-        if !default.is_nil() {
-            if let Ok(s) = expect_string(default) {
-                return Ok(Value::string(s));
-            }
-        }
-    }
-
-    Ok(Value::string(""))
+    Err(signal("end-of-file", vec![]))
 }
 
 /// `(read-char &optional PROMPT INHERIT SECONDS)`

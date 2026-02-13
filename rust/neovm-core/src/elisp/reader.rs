@@ -756,15 +756,7 @@ pub(crate) fn builtin_read_number(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_min_args("read-number", &args, 1)?;
-
-    if args.len() > 1 && args[1].is_truthy() {
-        match &args[1] {
-            Value::Int(_) | Value::Float(_) => return Ok(args[1].clone()),
-            _ => {}
-        }
-    }
-
-    Ok(Value::Int(0))
+    Err(signal("end-of-file", vec![]))
 }
 
 // ---------------------------------------------------------------------------
