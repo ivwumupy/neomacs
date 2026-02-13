@@ -7,21 +7,6 @@ use super::error::{signal, EvalResult, Flow};
 use super::expr::Expr;
 use super::value::*;
 
-// ---------------------------------------------------------------------------
-// Argument / extraction helpers (local copies — this module is self-contained)
-// ---------------------------------------------------------------------------
-
-fn expect_args(name: &str, args: &[Value], n: usize) -> Result<(), Flow> {
-    if args.len() != n {
-        Err(signal(
-            "wrong-number-of-arguments",
-            vec![Value::symbol(name), Value::Int(args.len() as i64)],
-        ))
-    } else {
-        Ok(())
-    }
-}
-
 fn expect_int(value: &Value) -> Result<i64, Flow> {
     match value {
         Value::Int(n) => Ok(*n),
