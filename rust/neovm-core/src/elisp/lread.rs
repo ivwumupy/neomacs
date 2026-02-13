@@ -297,6 +297,10 @@ pub(crate) fn builtin_load(eval: &mut super::eval::Evaluator, args: Vec<Value>) 
     let noerror = args.get(1).is_some_and(|v| v.is_truthy());
     let nosuffix = args.get(3).is_some_and(|v| v.is_truthy());
     let must_suffix = args.get(4).is_some_and(|v| v.is_truthy());
+    let prefer_newer = eval
+        .obarray
+        .symbol_value("load-prefer-newer")
+        .is_some_and(|v| v.is_truthy());
 
     let load_path = super::load::get_load_path(&eval.obarray);
     match super::load::find_file_in_load_path_with_flags(
@@ -304,6 +308,7 @@ pub(crate) fn builtin_load(eval: &mut super::eval::Evaluator, args: Vec<Value>) 
         &load_path,
         nosuffix,
         must_suffix,
+        prefer_newer,
     ) {
         Some(path) => super::load::load_file(eval, &path).map_err(eval_error_to_flow),
         None => {

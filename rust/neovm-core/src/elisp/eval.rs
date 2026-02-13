@@ -111,6 +111,7 @@ impl Evaluator {
         obarray.set_symbol_value("features", Value::Nil);
         obarray.set_symbol_value("debug-on-error", Value::Nil);
         obarray.set_symbol_value("lexical-binding", Value::Nil);
+        obarray.set_symbol_value("load-prefer-newer", Value::Nil);
         obarray.set_symbol_value("load-file-name", Value::Nil);
         obarray.set_symbol_value("noninteractive", Value::True);
         obarray.set_symbol_value("inhibit-quit", Value::Nil);
@@ -121,6 +122,7 @@ impl Evaluator {
         for name in &[
             "debug-on-error",
             "lexical-binding",
+            "load-prefer-newer",
             "load-path",
             "load-history",
             "features",
