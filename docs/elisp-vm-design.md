@@ -18,6 +18,11 @@ Neo-Elisp VM must preserve observable GNU Emacs behavior:
 
 Performance features are allowed only when semantics remain identical.
 
+Compatibility scope is source-first and explicit:
+
+- Compatibility target is GNU Emacs Elisp source behavior (`.el`), not GNU `.elc` binary format compatibility.
+- Loading GNU Emacs `.elc` artifacts is explicitly unsupported in NeoVM.
+
 ## Compatibility Verification Harness
 
 NeoVM compatibility should be verified continuously against GNU Emacs oracle results.
@@ -60,6 +65,7 @@ Next phase:
 - No mandatory optimizing JIT in phase 1.
 - No compatibility-breaking language extensions.
 - No Common Lisp-style shared-heap multi-threaded Elisp execution in default mode.
+- No GNU Emacs `.elc` binary compatibility goal.
 
 ## Architecture Overview
 
@@ -85,7 +91,7 @@ Concurrency
   - Message passing between isolates
 ```
 
-## Implementation Snapshot (February 12, 2026)
+## Implementation Snapshot (February 13, 2026)
 
 Implemented now:
 
@@ -118,6 +124,13 @@ Implemented now:
   - key includes schema version, VM version, and lexical-binding mode
   - source-content hash invalidates stale cache entries
   - cache stores parsed forms and bypasses parse work on valid hits
+  - cache is non-authoritative: corruption, mismatch, or read failure must always fall back to source parse
+  - cache format is internal to NeoVM and may change by schema/version without compatibility guarantees
+
+Package/runtime policy:
+
+- Packages are expected to ship/load `.el` sources under NeoVM.
+- `.elc`-only package delivery is unsupported and should be treated as incompatible packaging for NeoVM.
 
 Not implemented yet:
 
@@ -380,6 +393,7 @@ Phase A (interpreter + register bytecode + IC + generational GC):
 - Lisp-heavy microbenchmarks: about 2x to 4x
 - Interactive editor latency: about 20% to 50% improvement
 - Major GC pauses: substantially reduced versus non-generational baseline
+- Startup/load performance should be reported separately for cold parse-cache (`.neoc` miss) and warm parse-cache (`.neoc` hit) runs.
 
 Phase B (+ baseline JIT):
 
@@ -413,7 +427,7 @@ Phase C (+ optimizing JIT):
 ### 10.1 Correctness Gates
 
 - Differential testing against GNU Emacs for language semantics
-- Bytecode behavior parity tests for compiled and interpreted paths
+- Bytecode behavior parity tests for NeoVM-compiled/internal bytecode and interpreted paths (not GNU `.elc` format parity)
 - Fuzzing reader/evaluator/error unwinding
 - Deterministic tests for deopt state reconstruction
 
