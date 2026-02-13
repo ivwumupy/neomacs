@@ -1,0 +1,4 @@
+; default-directory should be bound to an existing directory path.
+(stringp default-directory)
+(file-directory-p default-directory)
+(string-suffix-p "/" default-directory)

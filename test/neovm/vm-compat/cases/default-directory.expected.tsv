@@ -1,0 +1,3 @@
+1	(stringp default-directory)	OK t
+2	(file-directory-p default-directory)	OK t
+3	(string-suffix-p "/" default-directory)	OK t
