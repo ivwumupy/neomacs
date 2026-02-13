@@ -3070,6 +3070,22 @@ enum PureBuiltinId {
     StringToList,
     #[strum(serialize = "string-width")]
     StringWidth,
+    #[strum(serialize = "last")]
+    Last,
+    #[strum(serialize = "butlast")]
+    Butlast,
+    #[strum(serialize = "delete")]
+    Delete,
+    #[strum(serialize = "delq")]
+    Delq,
+    #[strum(serialize = "elt")]
+    Elt,
+    #[strum(serialize = "nconc")]
+    Nconc,
+    #[strum(serialize = "alist-get")]
+    AlistGet,
+    #[strum(serialize = "number-sequence")]
+    NumberSequence,
 }
 
 fn dispatch_builtin_id_pure(id: PureBuiltinId, args: Vec<Value>) -> EvalResult {
@@ -3190,6 +3206,14 @@ fn dispatch_builtin_id_pure(id: PureBuiltinId, args: Vec<Value>) -> EvalResult {
         PureBuiltinId::MakeString => builtin_make_string(args),
         PureBuiltinId::StringToList => builtin_string_to_list(args),
         PureBuiltinId::StringWidth => builtin_string_width(args),
+        PureBuiltinId::Last => builtin_last(args),
+        PureBuiltinId::Butlast => builtin_butlast(args),
+        PureBuiltinId::Delete => builtin_delete(args),
+        PureBuiltinId::Delq => builtin_delq(args),
+        PureBuiltinId::Elt => builtin_elt(args),
+        PureBuiltinId::Nconc => builtin_nconc(args),
+        PureBuiltinId::AlistGet => builtin_alist_get(args),
+        PureBuiltinId::NumberSequence => builtin_number_sequence(args),
     }
 }
 
@@ -3749,15 +3773,7 @@ pub(crate) fn dispatch_builtin(
 
         // Extended string (typed subset is dispatched above)
 
-        // Extended list
-        "last" => builtin_last(args),
-        "butlast" => builtin_butlast(args),
-        "delete" => builtin_delete(args),
-        "delq" => builtin_delq(args),
-        "elt" => builtin_elt(args),
-        "nconc" => builtin_nconc(args),
-        "alist-get" => builtin_alist_get(args),
-        "number-sequence" => builtin_number_sequence(args),
+        // Extended list (typed subset is dispatched above)
 
         // Output / misc
         "identity" => builtin_identity(args),
@@ -4805,5 +4821,24 @@ mod tests {
             .expect("builtin string-width should resolve")
             .expect("builtin string-width should evaluate");
         assert_eq!(width, Value::Int(2));
+    }
+
+    #[test]
+    fn pure_dispatch_typed_extended_list_ops_work() {
+        let seq = dispatch_builtin_pure(
+            "number-sequence",
+            vec![Value::Int(1), Value::Int(4)],
+        )
+        .expect("builtin number-sequence should resolve")
+        .expect("builtin number-sequence should evaluate");
+        assert_eq!(
+            seq,
+            Value::list(vec![Value::Int(1), Value::Int(2), Value::Int(3), Value::Int(4)])
+        );
+
+        let last = dispatch_builtin_pure("last", vec![seq])
+            .expect("builtin last should resolve")
+            .expect("builtin last should evaluate");
+        assert_eq!(last, Value::list(vec![Value::Int(4)]));
     }
 }
