@@ -14,3 +14,8 @@
 (condition-case err (expand-file-name nil) (error (car err)))
 (expand-file-name "a" :x)
 (expand-file-name "a" t)
+(file-name-extension "foo.txt" t)
+(file-name-extension "foo" t)
+(file-name-extension ".bashrc" t)
+(file-name-extension "a." t)
+(condition-case err (file-name-extension "x" nil nil) (error (car err)))

@@ -13,3 +13,8 @@
 13	(condition-case err (expand-file-name nil) (error (car err)))	OK wrong-type-argument
 14	(expand-file-name "a" :x)	OK "/a"
 15	(expand-file-name "a" t)	OK "/a"
+16	(file-name-extension "foo.txt" t)	OK ".txt"
+17	(file-name-extension "foo" t)	OK ""
+18	(file-name-extension ".bashrc" t)	OK ""
+19	(file-name-extension "a." t)	OK "."
+20	(condition-case err (file-name-extension "x" nil nil) (error (car err)))	OK wrong-number-of-arguments
