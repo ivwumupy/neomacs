@@ -4138,25 +4138,7 @@ pub(crate) fn dispatch_builtin_pure(name: &str, args: Vec<Value>) -> Option<Eval
 
     Some(match name {
         // Arithmetic (typed subset is dispatched above)
-        // Type predicates
-        "null" => builtin_null(args),
-        "not" => builtin_not(args),
-        "atom" => builtin_atom(args),
-        "consp" => builtin_consp(args),
-        "listp" => builtin_listp(args),
-        "nlistp" => builtin_nlistp(args),
-        "symbolp" => builtin_symbolp(args),
-        "functionp" => builtin_functionp(args),
-        "keywordp" => builtin_keywordp(args),
-        "hash-table-p" => builtin_hash_table_p(args),
-        "bufferp" => builtin_bufferp(args),
-        "type-of" => builtin_type_of(args),
-        "sequencep" => builtin_sequencep(args),
-        "arrayp" => builtin_arrayp(args),
-        // Equality
-        "eq" => builtin_eq(args),
-        "eql" => builtin_eql(args),
-        "equal" => builtin_equal(args),
+        // Type predicates and equality (typed subset is dispatched above)
         // Cons/List (typed subset is dispatched above)
         "append" => builtin_append(args),
         "reverse" => builtin_reverse(args),
