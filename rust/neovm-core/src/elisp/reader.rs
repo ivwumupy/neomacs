@@ -769,10 +769,10 @@ pub(crate) fn builtin_completing_read(
 
 /// `(y-or-n-p PROMPT)`
 ///
-/// Stub: returns t (non-interactive mode assumes "yes").
+/// Batch-mode behavior: signal `end-of-file`.
 pub(crate) fn builtin_y_or_n_p(args: Vec<Value>) -> EvalResult {
     expect_min_args("y-or-n-p", &args, 1)?;
-    Ok(Value::True)
+    Err(signal("end-of-file", vec![]))
 }
 
 // ---------------------------------------------------------------------------
@@ -781,10 +781,10 @@ pub(crate) fn builtin_y_or_n_p(args: Vec<Value>) -> EvalResult {
 
 /// `(yes-or-no-p PROMPT)`
 ///
-/// Stub: returns t (non-interactive mode assumes "yes").
+/// Batch-mode behavior: signal `end-of-file`.
 pub(crate) fn builtin_yes_or_no_p(args: Vec<Value>) -> EvalResult {
     expect_min_args("yes-or-no-p", &args, 1)?;
-    Ok(Value::True)
+    Err(signal("end-of-file", vec![]))
 }
 
 // ---------------------------------------------------------------------------
@@ -1333,15 +1333,15 @@ mod tests {
     }
 
     #[test]
-    fn y_or_n_p_returns_t() {
-        let result = builtin_y_or_n_p(vec![Value::string("Continue? ")]).unwrap();
-        assert!(result.is_truthy());
+    fn y_or_n_p_signals_end_of_file() {
+        let result = builtin_y_or_n_p(vec![Value::string("Continue? ")]);
+        assert!(result.is_err());
     }
 
     #[test]
-    fn yes_or_no_p_returns_t() {
-        let result = builtin_yes_or_no_p(vec![Value::string("Confirm? ")]).unwrap();
-        assert!(result.is_truthy());
+    fn yes_or_no_p_signals_end_of_file() {
+        let result = builtin_yes_or_no_p(vec![Value::string("Confirm? ")]);
+        assert!(result.is_err());
     }
 
     #[test]
