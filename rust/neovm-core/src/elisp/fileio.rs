@@ -41,10 +41,15 @@ pub fn expand_file_name(name: &str, default_dir: Option<&str>) -> String {
     };
 
     let path = Path::new(&expanded);
+    let preserve_trailing_slash = expanded.ends_with('/');
 
     // If already absolute, just clean it up
     if path.is_absolute() {
-        return clean_path(&PathBuf::from(&expanded));
+        let mut cleaned = clean_path(&PathBuf::from(&expanded));
+        if preserve_trailing_slash && !cleaned.ends_with('/') {
+            cleaned.push('/');
+        }
+        return cleaned;
     }
 
     // Resolve relative to default_dir or cwd
@@ -57,7 +62,11 @@ pub fn expand_file_name(name: &str, default_dir: Option<&str>) -> String {
     };
 
     let joined = base.join(&expanded);
-    clean_path(&joined)
+    let mut cleaned = clean_path(&joined);
+    if preserve_trailing_slash && !cleaned.ends_with('/') {
+        cleaned.push('/');
+    }
+    cleaned
 }
 
 /// Clean up a path by resolving `.` and `..` components without touching the
@@ -649,6 +658,37 @@ pub(crate) fn builtin_expand_file_name(args: Vec<Value>) -> EvalResult {
     } else {
         None
     };
+    Ok(Value::string(expand_file_name(
+        &name,
+        default_dir.as_deref(),
+    )))
+}
+
+/// Evaluator-aware variant of `expand-file-name` that falls back to dynamic
+/// `default-directory` when DEFAULT-DIRECTORY is omitted or nil.
+pub(crate) fn builtin_expand_file_name_eval(eval: &Evaluator, args: Vec<Value>) -> EvalResult {
+    expect_min_args("expand-file-name", &args, 1)?;
+    if args.len() > 2 {
+        return Err(signal(
+            "wrong-number-of-arguments",
+            vec![
+                Value::symbol("expand-file-name"),
+                Value::Int(args.len() as i64),
+            ],
+        ));
+    }
+    let name = expect_string_strict(&args[0])?;
+    let default_dir = if let Some(arg) = args.get(1) {
+        match arg {
+            Value::Nil => default_directory_for_eval(eval),
+            Value::Str(s) => Some((**s).clone()),
+            // Emacs treats non-string DEFAULT-DIRECTORY as root.
+            _ => Some("/".to_string()),
+        }
+    } else {
+        default_directory_for_eval(eval)
+    };
+
     Ok(Value::string(expand_file_name(
         &name,
         default_dir.as_deref(),
@@ -1271,6 +1311,15 @@ mod tests {
     }
 
     #[test]
+    fn test_expand_file_name_preserves_directory_marker() {
+        assert_eq!(
+            expand_file_name("fixtures/", Some("/tmp")),
+            "/tmp/fixtures/"
+        );
+        assert_eq!(expand_file_name("", Some("/tmp")), "/tmp");
+    }
+
+    #[test]
     fn test_file_name_directory() {
         assert_eq!(
             file_name_directory("/home/user/test.txt"),
@@ -1631,6 +1680,28 @@ mod tests {
             Value::Nil,
         ]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_builtin_expand_file_name_eval_uses_default_directory() {
+        let mut eval = Evaluator::new();
+        eval.obarray
+            .set_symbol_value("default-directory", Value::string("/tmp/neovm-expand/"));
+
+        let with_implicit = builtin_expand_file_name_eval(&eval, vec![Value::string("alpha.txt")]);
+        assert_eq!(
+            with_implicit.unwrap().as_str(),
+            Some("/tmp/neovm-expand/alpha.txt")
+        );
+
+        let with_nil = builtin_expand_file_name_eval(
+            &eval,
+            vec![Value::string("beta.txt"), Value::Nil],
+        );
+        assert_eq!(
+            with_nil.unwrap().as_str(),
+            Some("/tmp/neovm-expand/beta.txt")
+        );
     }
 
     #[test]
