@@ -11,3 +11,5 @@
 (condition-case err (read-buffer "") (error (car err)))
 (condition-case err (read-command "") (error (car err)))
 (condition-case err (read-variable "") (error (car err)))
+(condition-case err (y-or-n-p "Continue? ") (error (car err)))
+(condition-case err (yes-or-no-p "Confirm? ") (error (car err)))
