@@ -3,11 +3,12 @@
 //! Provides path manipulation, file predicates, read/write operations,
 //! directory operations, and file attribute queries.
 
-use std::fs;
+use std::collections::VecDeque;
 #[cfg(unix)]
 use std::ffi::{CStr, CString};
+use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::collections::VecDeque;
 
 use regex::Regex;
 
@@ -379,27 +380,22 @@ pub fn file_symlink_p(filename: &str) -> bool {
 // ===========================================================================
 
 /// Read the contents of FILENAME as a UTF-8 string.
-pub fn read_file_contents(filename: &str) -> Result<String, String> {
-    fs::read_to_string(filename).map_err(|e| format!("Opening input file: {}: {}", filename, e))
+pub fn read_file_contents(filename: &str) -> std::io::Result<String> {
+    fs::read_to_string(filename)
 }
 
 /// Write CONTENT to FILENAME, optionally appending.
-pub fn write_string_to_file(content: &str, filename: &str, append: bool) -> Result<(), String> {
+pub fn write_string_to_file(content: &str, filename: &str, append: bool) -> std::io::Result<()> {
     use std::io::Write;
-    let file = if append {
+    let mut file = if append {
         fs::OpenOptions::new()
             .create(true)
             .append(true)
-            .open(filename)
+            .open(filename)?
     } else {
-        fs::File::create(filename)
+        fs::File::create(filename)?
     };
-    match file {
-        Ok(mut f) => f
-            .write_all(content.as_bytes())
-            .map_err(|e| format!("Writing to {}: {}", filename, e)),
-        Err(e) => Err(format!("Opening output file {}: {}", filename, e)),
-    }
+    file.write_all(content.as_bytes())
 }
 
 // ===========================================================================
@@ -462,8 +458,7 @@ pub fn directory_files(
 
     let re = match match_regex {
         Some(pattern) => Some(
-            Regex::new(pattern)
-                .map_err(|e| format!("Invalid regexp \"{}\": {}", pattern, e))?,
+            Regex::new(pattern).map_err(|e| format!("Invalid regexp \"{}\": {}", pattern, e))?,
         ),
         None => None,
     };
@@ -510,13 +505,12 @@ pub fn directory_files(
 }
 
 /// Create directory DIR.  If PARENTS is true, create parent directories as needed.
-pub fn make_directory(dir: &str, parents: bool) -> Result<(), String> {
-    let result = if parents {
+pub fn make_directory(dir: &str, parents: bool) -> std::io::Result<()> {
+    if parents {
         fs::create_dir_all(dir)
     } else {
         fs::create_dir(dir)
-    };
-    result.map_err(|e| format!("Creating directory {}: {}", dir, e))
+    }
 }
 
 // ===========================================================================
@@ -524,20 +518,18 @@ pub fn make_directory(dir: &str, parents: bool) -> Result<(), String> {
 // ===========================================================================
 
 /// Delete FILENAME.
-pub fn delete_file(filename: &str) -> Result<(), String> {
-    fs::remove_file(filename).map_err(|e| format!("Deleting {}: {}", filename, e))
+pub fn delete_file(filename: &str) -> std::io::Result<()> {
+    fs::remove_file(filename)
 }
 
 /// Rename file FROM to TO.
-pub fn rename_file(from: &str, to: &str) -> Result<(), String> {
-    fs::rename(from, to).map_err(|e| format!("Renaming {} to {}: {}", from, to, e))
+pub fn rename_file(from: &str, to: &str) -> std::io::Result<()> {
+    fs::rename(from, to)
 }
 
 /// Copy file FROM to TO.
-pub fn copy_file(from: &str, to: &str) -> Result<(), String> {
-    fs::copy(from, to)
-        .map(|_| ())
-        .map_err(|e| format!("Copying {} to {}: {}", from, to, e))
+pub fn copy_file(from: &str, to: &str) -> std::io::Result<()> {
+    fs::copy(from, to).map(|_| ())
 }
 
 // ===========================================================================
@@ -823,6 +815,28 @@ pub(crate) fn resolve_filename_for_eval(eval: &Evaluator, filename: &str) -> Str
     expand_file_name(filename, default_dir.as_deref())
 }
 
+fn file_error_symbol(kind: ErrorKind) -> &'static str {
+    match kind {
+        ErrorKind::NotFound => "file-missing",
+        ErrorKind::AlreadyExists => "file-already-exists",
+        ErrorKind::PermissionDenied => "permission-denied",
+        _ => "file-error",
+    }
+}
+
+fn signal_file_io_error(err: std::io::Error, context: String) -> Flow {
+    let symbol = file_error_symbol(err.kind());
+    signal(symbol, vec![Value::string(format!("{context}: {err}"))])
+}
+
+fn signal_file_io_path(err: std::io::Error, action: &str, path: &str) -> Flow {
+    signal_file_io_error(err, format!("{action} {path}"))
+}
+
+fn signal_file_io_paths(err: std::io::Error, action: &str, from: &str, to: &str) -> Flow {
+    signal_file_io_error(err, format!("{action} {from} to {to}"))
+}
+
 /// (file-exists-p FILENAME) -> t or nil
 pub(crate) fn builtin_file_exists_p(args: Vec<Value>) -> EvalResult {
     expect_args("file-exists-p", &args, 1)?;
@@ -923,7 +937,7 @@ pub(crate) fn builtin_file_symlink_p_eval(eval: &Evaluator, args: Vec<Value>) ->
 pub(crate) fn builtin_delete_file(args: Vec<Value>) -> EvalResult {
     expect_args("delete-file", &args, 1)?;
     let filename = expect_string_strict(&args[0])?;
-    delete_file(&filename).map_err(|e| signal("file-error", vec![Value::string(e)]))?;
+    delete_file(&filename).map_err(|e| signal_file_io_path(e, "Deleting", &filename))?;
     Ok(Value::Nil)
 }
 
@@ -933,7 +947,7 @@ pub(crate) fn builtin_delete_file_eval(eval: &Evaluator, args: Vec<Value>) -> Ev
     expect_args("delete-file", &args, 1)?;
     let filename = expect_string_strict(&args[0])?;
     let filename = resolve_filename_for_eval(eval, &filename);
-    delete_file(&filename).map_err(|e| signal("file-error", vec![Value::string(e)]))?;
+    delete_file(&filename).map_err(|e| signal_file_io_path(e, "Deleting", &filename))?;
     Ok(Value::Nil)
 }
 
@@ -942,7 +956,7 @@ pub(crate) fn builtin_rename_file(args: Vec<Value>) -> EvalResult {
     expect_args("rename-file", &args, 2)?;
     let from = expect_string_strict(&args[0])?;
     let to = expect_string_strict(&args[1])?;
-    rename_file(&from, &to).map_err(|e| signal("file-error", vec![Value::string(e)]))?;
+    rename_file(&from, &to).map_err(|e| signal_file_io_paths(e, "Renaming", &from, &to))?;
     Ok(Value::Nil)
 }
 
@@ -952,7 +966,7 @@ pub(crate) fn builtin_rename_file_eval(eval: &Evaluator, args: Vec<Value>) -> Ev
     expect_args("rename-file", &args, 2)?;
     let from = resolve_filename_for_eval(eval, &expect_string_strict(&args[0])?);
     let to = resolve_filename_for_eval(eval, &expect_string_strict(&args[1])?);
-    rename_file(&from, &to).map_err(|e| signal("file-error", vec![Value::string(e)]))?;
+    rename_file(&from, &to).map_err(|e| signal_file_io_paths(e, "Renaming", &from, &to))?;
     Ok(Value::Nil)
 }
 
@@ -961,7 +975,7 @@ pub(crate) fn builtin_copy_file(args: Vec<Value>) -> EvalResult {
     expect_min_args("copy-file", &args, 2)?;
     let from = expect_string_strict(&args[0])?;
     let to = expect_string_strict(&args[1])?;
-    copy_file(&from, &to).map_err(|e| signal("file-error", vec![Value::string(e)]))?;
+    copy_file(&from, &to).map_err(|e| signal_file_io_paths(e, "Copying", &from, &to))?;
     Ok(Value::Nil)
 }
 
@@ -971,7 +985,7 @@ pub(crate) fn builtin_copy_file_eval(eval: &Evaluator, args: Vec<Value>) -> Eval
     expect_min_args("copy-file", &args, 2)?;
     let from = resolve_filename_for_eval(eval, &expect_string_strict(&args[0])?);
     let to = resolve_filename_for_eval(eval, &expect_string_strict(&args[1])?);
-    copy_file(&from, &to).map_err(|e| signal("file-error", vec![Value::string(e)]))?;
+    copy_file(&from, &to).map_err(|e| signal_file_io_paths(e, "Copying", &from, &to))?;
     Ok(Value::Nil)
 }
 
@@ -980,7 +994,8 @@ pub(crate) fn builtin_make_directory(args: Vec<Value>) -> EvalResult {
     expect_min_args("make-directory", &args, 1)?;
     let dir = expect_string_strict(&args[0])?;
     let parents = args.get(1).is_some_and(|v| v.is_truthy());
-    make_directory(&dir, parents).map_err(|e| signal("file-error", vec![Value::string(e)]))?;
+    make_directory(&dir, parents)
+        .map_err(|e| signal_file_io_path(e, "Creating directory", &dir))?;
     Ok(Value::Nil)
 }
 
@@ -990,7 +1005,8 @@ pub(crate) fn builtin_make_directory_eval(eval: &Evaluator, args: Vec<Value>) ->
     expect_min_args("make-directory", &args, 1)?;
     let dir = resolve_filename_for_eval(eval, &expect_string_strict(&args[0])?);
     let parents = args.get(1).is_some_and(|v| v.is_truthy());
-    make_directory(&dir, parents).map_err(|e| signal("file-error", vec![Value::string(e)]))?;
+    make_directory(&dir, parents)
+        .map_err(|e| signal_file_io_path(e, "Creating directory", &dir))?;
     Ok(Value::Nil)
 }
 
@@ -1000,7 +1016,10 @@ pub(crate) fn builtin_directory_files(args: Vec<Value>) -> EvalResult {
     if args.len() > 5 {
         return Err(signal(
             "wrong-number-of-arguments",
-            vec![Value::symbol("directory-files"), Value::Int(args.len() as i64)],
+            vec![
+                Value::symbol("directory-files"),
+                Value::Int(args.len() as i64),
+            ],
         ));
     }
     let dir = expect_string_strict(&args[0])?;
@@ -1041,7 +1060,10 @@ pub(crate) fn builtin_directory_files_eval(eval: &Evaluator, args: Vec<Value>) -
     if args.len() > 5 {
         return Err(signal(
             "wrong-number-of-arguments",
-            vec![Value::symbol("directory-files"), Value::Int(args.len() as i64)],
+            vec![
+                Value::symbol("directory-files"),
+                Value::Int(args.len() as i64),
+            ],
         ));
     }
     let dir = resolve_filename_for_eval(eval, &expect_string_strict(&args[0])?);
@@ -1127,8 +1149,8 @@ pub(crate) fn builtin_insert_file_contents(
     let visit = args.get(1).is_some_and(|v| v.is_truthy());
 
     // Read file contents
-    let contents =
-        read_file_contents(&resolved).map_err(|e| signal("file-error", vec![Value::string(e)]))?;
+    let contents = read_file_contents(&resolved)
+        .map_err(|e| signal_file_io_path(e, "Opening input file", &resolved))?;
 
     let char_count = contents.chars().count() as i64;
 
@@ -1185,7 +1207,7 @@ pub(crate) fn builtin_write_region(
     };
 
     write_string_to_file(&content, &resolved, append)
-        .map_err(|e| signal("file-error", vec![Value::string(e)]))?;
+        .map_err(|e| signal_file_io_path(e, "Writing to", &resolved))?;
 
     if visit {
         // Need mutable access to set file_name and modified flag
@@ -1230,7 +1252,7 @@ pub(crate) fn builtin_find_file_noselect(
     // If the file exists, read its contents into the new buffer
     if file_exists_p(&abs_path) {
         let contents = read_file_contents(&abs_path)
-            .map_err(|e| signal("file-error", vec![Value::string(e)]))?;
+            .map_err(|e| signal_file_io_path(e, "Opening input file", &abs_path))?;
 
         // Save and restore current buffer around the insert
         let saved_current = eval
@@ -1340,8 +1362,14 @@ mod tests {
 
     #[test]
     fn test_file_name_extension() {
-        assert_eq!(file_name_extension("test.txt", false), Some("txt".to_string()));
-        assert_eq!(file_name_extension("test.txt", true), Some(".txt".to_string()));
+        assert_eq!(
+            file_name_extension("test.txt", false),
+            Some("txt".to_string())
+        );
+        assert_eq!(
+            file_name_extension("test.txt", true),
+            Some(".txt".to_string())
+        );
         assert_eq!(
             file_name_extension("/home/user/file.el", false),
             Some("el".to_string())
@@ -1448,10 +1476,7 @@ mod tests {
     fn test_substitute_in_file_name() {
         let home = std::env::var("HOME").unwrap_or_default();
 
-        assert_eq!(
-            substitute_in_file_name("$HOME/foo"),
-            format!("{home}/foo")
-        );
+        assert_eq!(substitute_in_file_name("$HOME/foo"), format!("{home}/foo"));
         assert_eq!(
             substitute_in_file_name("${HOME}/foo"),
             format!("{home}/foo")
@@ -1538,6 +1563,36 @@ mod tests {
         assert!(!file_exists_p(&path_str));
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_file_error_symbol_mapping() {
+        assert_eq!(file_error_symbol(ErrorKind::NotFound), "file-missing");
+        assert_eq!(file_error_symbol(ErrorKind::AlreadyExists), "file-already-exists");
+        assert_eq!(
+            file_error_symbol(ErrorKind::PermissionDenied),
+            "permission-denied"
+        );
+        assert_eq!(file_error_symbol(ErrorKind::InvalidInput), "file-error");
+    }
+
+    #[test]
+    fn test_signal_file_io_error_uses_specific_condition() {
+        let flow = signal_file_io_error(
+            std::io::Error::from(ErrorKind::PermissionDenied),
+            "Writing to /tmp/neovm-probe".to_string(),
+        );
+        match flow {
+            Flow::Signal(sig) => {
+                assert_eq!(sig.symbol, "permission-denied");
+                assert_eq!(sig.data.len(), 1);
+                let Some(message) = sig.data[0].as_str() else {
+                    panic!("expected string error payload");
+                };
+                assert!(message.contains("Writing to /tmp/neovm-probe"));
+            }
+            other => panic!("expected signal, got {:?}", other),
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -1673,11 +1728,7 @@ mod tests {
         let result = builtin_expand_file_name(vec![Value::string("a"), Value::symbol("x")]);
         assert_eq!(result.unwrap().as_str(), Some("/a"));
 
-        let result = builtin_expand_file_name(vec![
-            Value::string("a"),
-            Value::Nil,
-            Value::Nil,
-        ]);
+        let result = builtin_expand_file_name(vec![Value::string("a"), Value::Nil, Value::Nil]);
         assert!(result.is_err());
     }
 
@@ -1693,10 +1744,8 @@ mod tests {
             Some("/tmp/neovm-expand/alpha.txt")
         );
 
-        let with_nil = builtin_expand_file_name_eval(
-            &eval,
-            vec![Value::string("beta.txt"), Value::Nil],
-        );
+        let with_nil =
+            builtin_expand_file_name_eval(&eval, vec![Value::string("beta.txt"), Value::Nil]);
         assert_eq!(
             with_nil.unwrap().as_str(),
             Some("/tmp/neovm-expand/beta.txt")
@@ -1901,7 +1950,8 @@ mod tests {
         let result = builtin_file_name_extension(vec![Value::string("/home/user/test.el")]);
         assert_eq!(result.unwrap().as_str(), Some("el"));
 
-        let result = builtin_file_name_extension(vec![Value::string("/home/user/test.el"), Value::True]);
+        let result =
+            builtin_file_name_extension(vec![Value::string("/home/user/test.el"), Value::True]);
         assert_eq!(result.unwrap().as_str(), Some(".el"));
 
         let result = builtin_file_name_extension(vec![Value::string("no_ext"), Value::True]);
@@ -1930,12 +1980,9 @@ mod tests {
         assert!(builtin_file_name_directory(vec![Value::symbol("x")]).is_err());
         assert!(builtin_file_name_nondirectory(vec![Value::symbol("x")]).is_err());
         assert!(builtin_file_name_extension(vec![Value::symbol("x")]).is_err());
-        assert!(builtin_file_name_extension(vec![
-            Value::string("x"),
-            Value::Nil,
-            Value::Nil
-        ])
-        .is_err());
+        assert!(
+            builtin_file_name_extension(vec![Value::string("x"), Value::Nil, Value::Nil]).is_err()
+        );
         assert!(builtin_file_name_sans_extension(vec![Value::symbol("x")]).is_err());
         assert!(builtin_file_name_as_directory(vec![Value::symbol("x")]).is_err());
         assert!(builtin_directory_file_name(vec![Value::symbol("x")]).is_err());
@@ -2121,8 +2168,8 @@ mod tests {
         eval_find
             .obarray
             .set_symbol_value("default-directory", Value::string(&default_dir));
-        let found = builtin_find_file_noselect(&mut eval_find, vec![Value::string("alpha.txt")])
-            .unwrap();
+        let found =
+            builtin_find_file_noselect(&mut eval_find, vec![Value::string("alpha.txt")]).unwrap();
         let Value::Buffer(buf_id) = found else {
             panic!("expected Buffer");
         };
