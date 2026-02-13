@@ -4,5 +4,6 @@
 (symbol-function 'if)
 (symbol-function 'car)
 (symbol-function 'read-key)
+(symbol-function 'read-key-sequence-vector)
 (symbol-function 'read-event)
 (symbol-function 'read-char-exclusive)
