@@ -56,7 +56,10 @@ impl<'a> Vm<'a> {
         self.depth += 1;
         if self.depth > self.max_depth {
             self.depth -= 1;
-            return Err(signal("excessive-lisp-nesting", vec![Value::Int(self.max_depth as i64)]));
+            return Err(signal(
+                "excessive-lisp-nesting",
+                vec![Value::Int(self.max_depth as i64)],
+            ));
         }
 
         let result = self.run_frame(func, args);
@@ -79,7 +82,8 @@ impl<'a> Vm<'a> {
                 if let Some(ref env) = func.env {
                     let saved_lexenv = std::mem::replace(self.lexenv, env.clone());
                     self.lexenv.push(param_binds);
-                    let result = self.run_loop(func, &mut stack, &mut pc, &mut handlers, &mut bind_count);
+                    let result =
+                        self.run_loop(func, &mut stack, &mut pc, &mut handlers, &mut bind_count);
                     self.lexenv.pop();
                     *self.lexenv = saved_lexenv;
                     // Unbind dynamic bindings
@@ -128,7 +132,9 @@ impl<'a> Vm<'a> {
                 }
                 Op::Nil => stack.push(Value::Nil),
                 Op::True => stack.push(Value::True),
-                Op::Pop => { stack.pop(); }
+                Op::Pop => {
+                    stack.pop();
+                }
                 Op::Dup => {
                     if let Some(top) = stack.last() {
                         stack.push(top.clone());
@@ -349,7 +355,10 @@ impl<'a> Vm<'a> {
                         c.lock().expect("poisoned").car = newcar.clone();
                         stack.push(newcar);
                     } else {
-                        return Err(signal("wrong-type-argument", vec![Value::symbol("consp"), cell]));
+                        return Err(signal(
+                            "wrong-type-argument",
+                            vec![Value::symbol("consp"), cell],
+                        ));
                     }
                 }
                 Op::Setcdr => {
@@ -359,7 +368,10 @@ impl<'a> Vm<'a> {
                         c.lock().expect("poisoned").cdr = newcdr.clone();
                         stack.push(newcdr);
                     } else {
-                        return Err(signal("wrong-type-argument", vec![Value::symbol("consp"), cell]));
+                        return Err(signal(
+                            "wrong-type-argument",
+                            vec![Value::symbol("consp"), cell],
+                        ));
                     }
                 }
                 Op::Memq => {
@@ -464,7 +476,10 @@ impl<'a> Vm<'a> {
                             stack.push(v.get(idx).cloned().unwrap_or(Value::Nil));
                         }
                         _ => {
-                            return Err(signal("wrong-type-argument", vec![Value::symbol("arrayp"), vec_val]));
+                            return Err(signal(
+                                "wrong-type-argument",
+                                vec![Value::symbol("arrayp"), vec_val],
+                            ));
                         }
                     }
                 }
@@ -482,7 +497,10 @@ impl<'a> Vm<'a> {
                             stack.push(val);
                         }
                         _ => {
-                            return Err(signal("wrong-type-argument", vec![Value::symbol("arrayp"), vec_val]));
+                            return Err(signal(
+                                "wrong-type-argument",
+                                vec![Value::symbol("arrayp"), vec_val],
+                            ));
                         }
                     }
                 }
@@ -523,7 +541,9 @@ impl<'a> Vm<'a> {
                     let sym = stack.pop().unwrap_or(Value::Nil);
                     let sym_name = sym.as_symbol_name().unwrap_or("nil");
                     let prop_name = prop.as_symbol_name().unwrap_or("nil");
-                    let val = self.obarray.get_property(sym_name, prop_name)
+                    let val = self
+                        .obarray
+                        .get_property(sym_name, prop_name)
                         .cloned()
                         .unwrap_or(Value::Nil);
                     stack.push(val);
@@ -534,7 +554,8 @@ impl<'a> Vm<'a> {
                     let sym = stack.pop().unwrap_or(Value::Nil);
                     let sym_name = sym.as_symbol_name().unwrap_or("nil").to_string();
                     let prop_name = prop.as_symbol_name().unwrap_or("nil").to_string();
-                    self.obarray.put_property(&sym_name, &prop_name, val.clone());
+                    self.obarray
+                        .put_property(&sym_name, &prop_name, val.clone());
                     stack.push(val);
                 }
 
@@ -585,9 +606,15 @@ impl<'a> Vm<'a> {
     // -- Helper methods --
 
     fn lookup_var(&self, name: &str) -> EvalResult {
-        if name == "nil" { return Ok(Value::Nil); }
-        if name == "t" { return Ok(Value::True); }
-        if name.starts_with(':') { return Ok(Value::Keyword(name.to_string())); }
+        if name == "nil" {
+            return Ok(Value::Nil);
+        }
+        if name == "t" {
+            return Ok(Value::True);
+        }
+        if name.starts_with(':') {
+            return Ok(Value::Keyword(name.to_string()));
+        }
 
         // Check lexenv
         for frame in self.lexenv.iter().rev() {
@@ -630,7 +657,11 @@ impl<'a> Vm<'a> {
         self.obarray.set_symbol_value(name, value);
     }
 
-    fn bind_params(&self, params: &LambdaParams, args: Vec<Value>) -> Result<HashMap<String, Value>, Flow> {
+    fn bind_params(
+        &self,
+        params: &LambdaParams,
+        args: Vec<Value>,
+    ) -> Result<HashMap<String, Value>, Flow> {
         let mut frame = HashMap::new();
         let mut arg_idx = 0;
 
@@ -664,9 +695,7 @@ impl<'a> Vm<'a> {
 
     fn call_function(&mut self, func_val: Value, args: Vec<Value>) -> EvalResult {
         match func_val {
-            Value::ByteCode(bc) => {
-                self.execute(&bc, args)
-            }
+            Value::ByteCode(bc) => self.execute(&bc, args),
             Value::Lambda(lambda) => {
                 // Fall back to tree-walking for non-compiled lambdas
                 // This creates a temporary evaluator context
@@ -766,8 +795,18 @@ fn arith_add(a: &Value, b: &Value) -> EvalResult {
     match (a, b) {
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a.wrapping_add(*b))),
         _ => {
-            let a = a.as_number_f64().ok_or_else(|| signal("wrong-type-argument", vec![Value::symbol("number-or-marker-p"), a.clone()]))?;
-            let b = b.as_number_f64().ok_or_else(|| signal("wrong-type-argument", vec![Value::symbol("number-or-marker-p"), b.clone()]))?;
+            let a = a.as_number_f64().ok_or_else(|| {
+                signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("number-or-marker-p"), a.clone()],
+                )
+            })?;
+            let b = b.as_number_f64().ok_or_else(|| {
+                signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("number-or-marker-p"), b.clone()],
+                )
+            })?;
             Ok(Value::Float(a + b))
         }
     }
@@ -777,8 +816,18 @@ fn arith_sub(a: &Value, b: &Value) -> EvalResult {
     match (a, b) {
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a.wrapping_sub(*b))),
         _ => {
-            let a = a.as_number_f64().ok_or_else(|| signal("wrong-type-argument", vec![Value::symbol("number-or-marker-p"), a.clone()]))?;
-            let b = b.as_number_f64().ok_or_else(|| signal("wrong-type-argument", vec![Value::symbol("number-or-marker-p"), b.clone()]))?;
+            let a = a.as_number_f64().ok_or_else(|| {
+                signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("number-or-marker-p"), a.clone()],
+                )
+            })?;
+            let b = b.as_number_f64().ok_or_else(|| {
+                signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("number-or-marker-p"), b.clone()],
+                )
+            })?;
             Ok(Value::Float(a - b))
         }
     }
@@ -788,8 +837,18 @@ fn arith_mul(a: &Value, b: &Value) -> EvalResult {
     match (a, b) {
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a.wrapping_mul(*b))),
         _ => {
-            let a = a.as_number_f64().ok_or_else(|| signal("wrong-type-argument", vec![Value::symbol("number-or-marker-p"), a.clone()]))?;
-            let b = b.as_number_f64().ok_or_else(|| signal("wrong-type-argument", vec![Value::symbol("number-or-marker-p"), b.clone()]))?;
+            let a = a.as_number_f64().ok_or_else(|| {
+                signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("number-or-marker-p"), a.clone()],
+                )
+            })?;
+            let b = b.as_number_f64().ok_or_else(|| {
+                signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("number-or-marker-p"), b.clone()],
+                )
+            })?;
             Ok(Value::Float(a * b))
         }
     }
@@ -797,12 +856,30 @@ fn arith_mul(a: &Value, b: &Value) -> EvalResult {
 
 fn arith_div(a: &Value, b: &Value) -> EvalResult {
     match (a, b) {
-        (Value::Int(_), Value::Int(0)) => Err(signal("arith-error", vec![Value::string("Division by zero")])),
+        (Value::Int(_), Value::Int(0)) => Err(signal(
+            "arith-error",
+            vec![Value::string("Division by zero")],
+        )),
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a / b)),
         _ => {
-            let a = a.as_number_f64().ok_or_else(|| signal("wrong-type-argument", vec![Value::symbol("number-or-marker-p"), a.clone()]))?;
-            let b = b.as_number_f64().ok_or_else(|| signal("wrong-type-argument", vec![Value::symbol("number-or-marker-p"), b.clone()]))?;
-            if b == 0.0 { return Err(signal("arith-error", vec![Value::string("Division by zero")])); }
+            let a = a.as_number_f64().ok_or_else(|| {
+                signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("number-or-marker-p"), a.clone()],
+                )
+            })?;
+            let b = b.as_number_f64().ok_or_else(|| {
+                signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("number-or-marker-p"), b.clone()],
+                )
+            })?;
+            if b == 0.0 {
+                return Err(signal(
+                    "arith-error",
+                    vec![Value::string("Division by zero")],
+                ));
+            }
             Ok(Value::Float(a / b))
         }
     }
@@ -810,9 +887,15 @@ fn arith_div(a: &Value, b: &Value) -> EvalResult {
 
 fn arith_rem(a: &Value, b: &Value) -> EvalResult {
     match (a, b) {
-        (Value::Int(_), Value::Int(0)) => Err(signal("arith-error", vec![Value::string("Division by zero")])),
+        (Value::Int(_), Value::Int(0)) => Err(signal(
+            "arith-error",
+            vec![Value::string("Division by zero")],
+        )),
         (Value::Int(a), Value::Int(b)) => Ok(Value::Int(a % b)),
-        _ => Err(signal("wrong-type-argument", vec![Value::symbol("integerp"), a.clone()])),
+        _ => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("integerp"), a.clone()],
+        )),
     }
 }
 
@@ -820,7 +903,10 @@ fn arith_add1(a: &Value) -> EvalResult {
     match a {
         Value::Int(n) => Ok(Value::Int(n.wrapping_add(1))),
         Value::Float(f) => Ok(Value::Float(f + 1.0)),
-        _ => Err(signal("wrong-type-argument", vec![Value::symbol("number-or-marker-p"), a.clone()])),
+        _ => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("number-or-marker-p"), a.clone()],
+        )),
     }
 }
 
@@ -828,7 +914,10 @@ fn arith_sub1(a: &Value) -> EvalResult {
     match a {
         Value::Int(n) => Ok(Value::Int(n.wrapping_sub(1))),
         Value::Float(f) => Ok(Value::Float(f - 1.0)),
-        _ => Err(signal("wrong-type-argument", vec![Value::symbol("number-or-marker-p"), a.clone()])),
+        _ => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("number-or-marker-p"), a.clone()],
+        )),
     }
 }
 
@@ -836,7 +925,10 @@ fn arith_negate(a: &Value) -> EvalResult {
     match a {
         Value::Int(n) => Ok(Value::Int(-n)),
         Value::Float(f) => Ok(Value::Float(-f)),
-        _ => Err(signal("wrong-type-argument", vec![Value::symbol("number-or-marker-p"), a.clone()])),
+        _ => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("number-or-marker-p"), a.clone()],
+        )),
     }
 }
 
@@ -844,8 +936,18 @@ fn num_eq(a: &Value, b: &Value) -> Result<bool, Flow> {
     match (a, b) {
         (Value::Int(a), Value::Int(b)) => Ok(a == b),
         _ => {
-            let a = a.as_number_f64().ok_or_else(|| signal("wrong-type-argument", vec![Value::symbol("number-or-marker-p"), a.clone()]))?;
-            let b = b.as_number_f64().ok_or_else(|| signal("wrong-type-argument", vec![Value::symbol("number-or-marker-p"), b.clone()]))?;
+            let a = a.as_number_f64().ok_or_else(|| {
+                signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("number-or-marker-p"), a.clone()],
+                )
+            })?;
+            let b = b.as_number_f64().ok_or_else(|| {
+                signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("number-or-marker-p"), b.clone()],
+                )
+            })?;
             Ok(a == b)
         }
     }
@@ -855,9 +957,25 @@ fn num_cmp(a: &Value, b: &Value) -> Result<i32, Flow> {
     match (a, b) {
         (Value::Int(a), Value::Int(b)) => Ok(a.cmp(b) as i32),
         _ => {
-            let a = a.as_number_f64().ok_or_else(|| signal("wrong-type-argument", vec![Value::symbol("number-or-marker-p"), a.clone()]))?;
-            let b = b.as_number_f64().ok_or_else(|| signal("wrong-type-argument", vec![Value::symbol("number-or-marker-p"), b.clone()]))?;
-            Ok(if a < b { -1 } else if a > b { 1 } else { 0 })
+            let a = a.as_number_f64().ok_or_else(|| {
+                signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("number-or-marker-p"), a.clone()],
+                )
+            })?;
+            let b = b.as_number_f64().ok_or_else(|| {
+                signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("number-or-marker-p"), b.clone()],
+                )
+            })?;
+            Ok(if a < b {
+                -1
+            } else if a > b {
+                1
+            } else {
+                0
+            })
         }
     }
 }
@@ -885,15 +1003,18 @@ fn length_value(val: &Value) -> EvalResult {
         Value::Nil => Ok(Value::Int(0)),
         Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
         Value::Vector(v) => Ok(Value::Int(v.lock().expect("poisoned").len() as i64)),
-        Value::Cons(_) => {
-            Ok(Value::Int(list_to_vec(val).map_or(0, |v| v.len()) as i64))
-        }
-        _ => Err(signal("wrong-type-argument", vec![Value::symbol("sequencep"), val.clone()])),
+        Value::Cons(_) => Ok(Value::Int(list_to_vec(val).map_or(0, |v| v.len()) as i64)),
+        _ => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("sequencep"), val.clone()],
+        )),
     }
 }
 
 fn nth_value(n: i64, list: &Value) -> Value {
-    if n < 0 { return Value::Nil; }
+    if n < 0 {
+        return Value::Nil;
+    }
     let mut cursor = list.clone();
     for _ in 0..n {
         cursor = cdr(&cursor);
@@ -902,7 +1023,9 @@ fn nth_value(n: i64, list: &Value) -> Value {
 }
 
 fn nthcdr_value(n: i64, list: &Value) -> Value {
-    if n <= 0 { return list.clone(); }
+    if n <= 0 {
+        return list.clone();
+    }
     let mut cursor = list.clone();
     for _ in 0..n {
         cursor = cdr(&cursor);
@@ -958,7 +1081,8 @@ fn assq(key: &Value, alist: &Value) -> Value {
 }
 
 fn sym_name(constants: &[Value], idx: u16) -> String {
-    constants.get(idx as usize)
+    constants
+        .get(idx as usize)
         .and_then(|v| v.as_symbol_name())
         .unwrap_or("nil")
         .to_string()
@@ -1121,7 +1245,10 @@ mod tests {
 
     #[test]
     fn vm_concat() {
-        assert_eq!(vm_eval_str(r#"(concat "hello" " " "world")"#), r#"OK "hello world""#);
+        assert_eq!(
+            vm_eval_str(r#"(concat "hello" " " "world")"#),
+            r#"OK "hello world""#
+        );
     }
 
     #[test]
@@ -1140,10 +1267,7 @@ mod tests {
 
     #[test]
     fn vm_nested_let() {
-        assert_eq!(
-            vm_eval_str("(let ((x 1)) (let ((y 2)) (+ x y)))"),
-            "OK 3"
-        );
+        assert_eq!(vm_eval_str("(let ((x 1)) (let ((y 2)) (+ x y)))"), "OK 3");
     }
 
     #[test]
@@ -1175,7 +1299,9 @@ mod tests {
     #[test]
     fn vm_dolist() {
         assert_eq!(
-            vm_eval_str("(let ((result nil)) (dolist (x '(a b c)) (setq result (cons x result))) result)"),
+            vm_eval_str(
+                "(let ((result nil)) (dolist (x '(a b c)) (setq result (cons x result))) result)"
+            ),
             "OK (c b a)"
         );
     }

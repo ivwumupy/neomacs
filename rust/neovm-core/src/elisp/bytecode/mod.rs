@@ -6,9 +6,9 @@
 //! - `compiler::Compiler` — AST to bytecode compiler
 //! - `vm::Vm` — stack-based bytecode interpreter
 
-pub mod opcode;
 pub mod chunk;
 pub mod compiler;
+pub mod opcode;
 pub mod vm;
 
 // Re-export main types

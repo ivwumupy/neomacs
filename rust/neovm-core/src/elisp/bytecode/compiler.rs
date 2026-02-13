@@ -3,7 +3,7 @@
 use super::chunk::ByteCodeFunction;
 use super::opcode::Op;
 use crate::elisp::expr::Expr;
-use crate::elisp::value::{Value, LambdaParams};
+use crate::elisp::value::{LambdaParams, Value};
 
 /// Compiler state.
 pub struct Compiler {
@@ -43,11 +43,7 @@ impl Compiler {
     }
 
     /// Compile a lambda expression into a ByteCodeFunction.
-    pub fn compile_lambda(
-        &mut self,
-        params: &LambdaParams,
-        body: &[Expr],
-    ) -> ByteCodeFunction {
+    pub fn compile_lambda(&mut self, params: &LambdaParams, body: &[Expr]) -> ByteCodeFunction {
         let mut func = ByteCodeFunction::new(params.clone());
 
         if body.is_empty() {
@@ -253,7 +249,9 @@ impl Compiler {
             }
             "prog1" => {
                 if tail.is_empty() {
-                    if for_value { func.emit(Op::Nil); }
+                    if for_value {
+                        func.emit(Op::Nil);
+                    }
                 } else {
                     self.compile_expr(func, &tail[0], for_value);
                     for form in &tail[1..] {
@@ -317,20 +315,26 @@ impl Compiler {
             }
             "funcall" => {
                 if tail.is_empty() {
-                    if for_value { func.emit(Op::Nil); }
+                    if for_value {
+                        func.emit(Op::Nil);
+                    }
                 } else {
                     self.compile_expr(func, &tail[0], true);
                     for arg in &tail[1..] {
                         self.compile_expr(func, arg, true);
                     }
                     func.emit(Op::Call(tail.len().saturating_sub(1) as u8));
-                    if !for_value { func.emit(Op::Pop); }
+                    if !for_value {
+                        func.emit(Op::Pop);
+                    }
                 }
                 true
             }
             "when" => {
                 if tail.is_empty() {
-                    if for_value { func.emit(Op::Nil); }
+                    if for_value {
+                        func.emit(Op::Nil);
+                    }
                 } else {
                     // (when COND BODY...) => (if COND (progn BODY...))
                     self.compile_expr(func, &tail[0], true);
@@ -341,7 +345,9 @@ impl Compiler {
                     func.emit(Op::Goto(0)); // placeholder
                     let else_target = func.current_offset();
                     func.patch_jump(jump_false, else_target);
-                    if for_value { func.emit(Op::Nil); }
+                    if for_value {
+                        func.emit(Op::Nil);
+                    }
                     let end_target = func.current_offset();
                     func.patch_jump(jump_end, end_target);
                 }
@@ -349,7 +355,9 @@ impl Compiler {
             }
             "unless" => {
                 if tail.is_empty() {
-                    if for_value { func.emit(Op::Nil); }
+                    if for_value {
+                        func.emit(Op::Nil);
+                    }
                 } else {
                     self.compile_expr(func, &tail[0], true);
                     let jump_true = func.current_offset();
@@ -359,7 +367,9 @@ impl Compiler {
                     func.emit(Op::Goto(0)); // placeholder
                     let else_target = func.current_offset();
                     func.patch_jump(jump_true, else_target);
-                    if for_value { func.emit(Op::Nil); }
+                    if for_value {
+                        func.emit(Op::Nil);
+                    }
                     let end_target = func.current_offset();
                     func.patch_jump(jump_end, end_target);
                 }
@@ -379,7 +389,9 @@ impl Compiler {
             }
             "interactive" | "declare" => {
                 // Ignored
-                if for_value { func.emit(Op::Nil); }
+                if for_value {
+                    func.emit(Op::Nil);
+                }
                 true
             }
             "dotimes" => {
@@ -398,7 +410,9 @@ impl Compiler {
             "with-current-buffer" => {
                 // Stub: skip buffer arg, compile body
                 if tail.is_empty() {
-                    if for_value { func.emit(Op::Nil); }
+                    if for_value {
+                        func.emit(Op::Nil);
+                    }
                 } else {
                     self.compile_expr(func, &tail[0], false); // eval buffer arg, discard
                     self.compile_progn(func, &tail[1..], for_value);
@@ -761,7 +775,9 @@ impl Compiler {
 
     fn compile_if(&mut self, func: &mut ByteCodeFunction, tail: &[Expr], for_value: bool) {
         if tail.len() < 2 {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         }
         // Compile condition
@@ -789,7 +805,9 @@ impl Compiler {
 
     fn compile_and(&mut self, func: &mut ByteCodeFunction, forms: &[Expr], for_value: bool) {
         if forms.is_empty() {
-            if for_value { func.emit(Op::True); }
+            if for_value {
+                func.emit(Op::True);
+            }
             return;
         }
 
@@ -828,7 +846,9 @@ impl Compiler {
 
     fn compile_or(&mut self, func: &mut ByteCodeFunction, forms: &[Expr], for_value: bool) {
         if forms.is_empty() {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         }
 
@@ -863,7 +883,9 @@ impl Compiler {
 
     fn compile_cond(&mut self, func: &mut ByteCodeFunction, clauses: &[Expr], for_value: bool) {
         if clauses.is_empty() {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         }
 
@@ -884,7 +906,9 @@ impl Compiler {
             if items.len() == 1 {
                 // (cond (TEST)) - return test value if true
                 if is_last {
-                    if !for_value { func.emit(Op::Pop); }
+                    if !for_value {
+                        func.emit(Op::Pop);
+                    }
                 } else {
                     if for_value {
                         let jump = func.current_offset();
@@ -922,7 +946,9 @@ impl Compiler {
         }
 
         // All remaining clauses fell through — push nil if needed
-        if for_value { func.emit(Op::Nil); }
+        if for_value {
+            func.emit(Op::Nil);
+        }
 
         let end = func.current_offset();
         for patch in end_patches {
@@ -950,7 +976,9 @@ impl Compiler {
 
     fn compile_let(&mut self, func: &mut ByteCodeFunction, tail: &[Expr], for_value: bool) {
         if tail.is_empty() {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         }
 
@@ -1000,7 +1028,9 @@ impl Compiler {
 
     fn compile_let_star(&mut self, func: &mut ByteCodeFunction, tail: &[Expr], for_value: bool) {
         if tail.is_empty() {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         }
 
@@ -1046,7 +1076,9 @@ impl Compiler {
 
     fn compile_setq(&mut self, func: &mut ByteCodeFunction, tail: &[Expr], for_value: bool) {
         if tail.is_empty() {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         }
 
@@ -1067,24 +1099,27 @@ impl Compiler {
         }
     }
 
-    fn compile_defun(
-        &mut self,
-        func: &mut ByteCodeFunction,
-        tail: &[Expr],
-        for_value: bool,
-    ) {
+    fn compile_defun(&mut self, func: &mut ByteCodeFunction, tail: &[Expr], for_value: bool) {
         if tail.len() < 3 {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         }
         let Expr::Symbol(name) = &tail[0] else {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         };
 
         // Compile the lambda body (skip docstring)
         let body_start = if tail.len() > 3 {
-            if let Expr::Str(_) = &tail[2] { 3 } else { 2 }
+            if let Expr::Str(_) = &tail[2] {
+                3
+            } else {
+                2
+            }
         } else {
             2
         };
@@ -1112,18 +1147,17 @@ impl Compiler {
         }
     }
 
-    fn compile_defvar(
-        &mut self,
-        func: &mut ByteCodeFunction,
-        tail: &[Expr],
-        for_value: bool,
-    ) {
+    fn compile_defvar(&mut self, func: &mut ByteCodeFunction, tail: &[Expr], for_value: bool) {
         if tail.is_empty() {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         }
         let Expr::Symbol(name) = &tail[0] else {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         };
 
@@ -1138,27 +1172,26 @@ impl Compiler {
             func.emit(Op::Nil);
         }
         let defvar_name = func.add_symbol("%%defvar");
-        func.emit(Op::Constant(name_idx));  // symbol name
-        // Stack: [init-value, symbol-name]
-        // Swap order for defvar builtin: needs (name value)
+        func.emit(Op::Constant(name_idx)); // symbol name
+                                           // Stack: [init-value, symbol-name]
+                                           // Swap order for defvar builtin: needs (name value)
         func.emit(Op::CallBuiltin(defvar_name, 2));
         if !for_value {
             func.emit(Op::Pop);
         }
     }
 
-    fn compile_defconst(
-        &mut self,
-        func: &mut ByteCodeFunction,
-        tail: &[Expr],
-        for_value: bool,
-    ) {
+    fn compile_defconst(&mut self, func: &mut ByteCodeFunction, tail: &[Expr], for_value: bool) {
         if tail.len() < 2 {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         }
         let Expr::Symbol(name) = &tail[0] else {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         };
 
@@ -1212,7 +1245,11 @@ impl Compiler {
 
         let params = parse_params(&tail[0]);
         let body_start = if tail.len() > 2 {
-            if let Expr::Str(_) = &tail[1] { 2 } else { 1 }
+            if let Expr::Str(_) = &tail[1] {
+                2
+            } else {
+                1
+            }
         } else {
             1
         };
@@ -1229,14 +1266,11 @@ impl Compiler {
         }
     }
 
-    fn compile_catch(
-        &mut self,
-        func: &mut ByteCodeFunction,
-        tail: &[Expr],
-        for_value: bool,
-    ) {
+    fn compile_catch(&mut self, func: &mut ByteCodeFunction, tail: &[Expr], for_value: bool) {
         if tail.is_empty() {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         }
         // Compile tag
@@ -1272,7 +1306,9 @@ impl Compiler {
         for_value: bool,
     ) {
         if tail.is_empty() {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         }
 
@@ -1312,7 +1348,9 @@ impl Compiler {
         for_value: bool,
     ) {
         if tail.len() < 3 {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         }
 
@@ -1353,11 +1391,15 @@ impl Compiler {
                 }
             } else {
                 func.emit(Op::Pop);
-                if for_value { func.emit(Op::Nil); }
+                if for_value {
+                    func.emit(Op::Nil);
+                }
             }
         } else {
             func.emit(Op::Pop);
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
         }
 
         let end_target = func.current_offset();
@@ -1384,32 +1426,37 @@ impl Compiler {
         let handler_target = func.current_offset();
         func.patch_jump(handler_jump, handler_target);
         func.emit(Op::Pop); // discard error
-        if for_value { func.emit(Op::Nil); }
+        if for_value {
+            func.emit(Op::Nil);
+        }
 
         let end = func.current_offset();
         func.patch_jump(end_jump, end);
     }
 
-    fn compile_dotimes(
-        &mut self,
-        func: &mut ByteCodeFunction,
-        tail: &[Expr],
-        for_value: bool,
-    ) {
+    fn compile_dotimes(&mut self, func: &mut ByteCodeFunction, tail: &[Expr], for_value: bool) {
         if tail.is_empty() {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         }
         let Expr::List(spec) = &tail[0] else {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         };
         if spec.len() < 2 {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         }
         let Expr::Symbol(var) = &spec[0] else {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         };
 
@@ -1422,18 +1469,12 @@ impl Compiler {
         let incr = Expr::List(vec![
             Expr::Symbol("setq".into()),
             Expr::Symbol(var.clone()),
-            Expr::List(vec![
-                Expr::Symbol("1+".into()),
-                Expr::Symbol(var.clone()),
-            ]),
+            Expr::List(vec![Expr::Symbol("1+".into()), Expr::Symbol(var.clone())]),
         ]);
 
         // Bind var = 0
         let init_val = Expr::Int(0);
-        let binding = Expr::List(vec![
-            Expr::Symbol(var.clone()),
-            init_val,
-        ]);
+        let binding = Expr::List(vec![Expr::Symbol(var.clone()), init_val]);
 
         let mut body_forms: Vec<Expr> = tail[1..].to_vec();
         body_forms.push(incr);
@@ -1459,26 +1500,29 @@ impl Compiler {
         self.compile_expr(func, &let_form, for_value);
     }
 
-    fn compile_dolist(
-        &mut self,
-        func: &mut ByteCodeFunction,
-        tail: &[Expr],
-        for_value: bool,
-    ) {
+    fn compile_dolist(&mut self, func: &mut ByteCodeFunction, tail: &[Expr], for_value: bool) {
         if tail.is_empty() {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         }
         let Expr::List(spec) = &tail[0] else {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         };
         if spec.len() < 2 {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         }
         let Expr::Symbol(var) = &spec[0] else {
-            if for_value { func.emit(Op::Nil); }
+            if for_value {
+                func.emit(Op::Nil);
+            }
             return;
         };
 
@@ -1491,14 +1535,8 @@ impl Compiler {
         //   RESULT)
         let tail_var = "__dolist_tail__".to_string();
 
-        let binding_tail = Expr::List(vec![
-            Expr::Symbol(tail_var.clone()),
-            spec[1].clone(),
-        ]);
-        let binding_var = Expr::List(vec![
-            Expr::Symbol(var.clone()),
-            Expr::Symbol("nil".into()),
-        ]);
+        let binding_tail = Expr::List(vec![Expr::Symbol(tail_var.clone()), spec[1].clone()]);
+        let binding_var = Expr::List(vec![Expr::Symbol(var.clone()), Expr::Symbol("nil".into())]);
 
         let setq_var = Expr::List(vec![
             Expr::Symbol("setq".into()),
@@ -1576,18 +1614,31 @@ fn parse_params(expr: &Expr) -> LambdaParams {
             for item in items {
                 let Expr::Symbol(name) = item else { continue };
                 match name.as_str() {
-                    "&optional" => { mode = 1; continue; }
-                    "&rest" => { mode = 2; continue; }
+                    "&optional" => {
+                        mode = 1;
+                        continue;
+                    }
+                    "&rest" => {
+                        mode = 2;
+                        continue;
+                    }
                     _ => {}
                 }
                 match mode {
                     0 => required.push(name.clone()),
                     1 => optional.push(name.clone()),
-                    2 => { rest = Some(name.clone()); break; }
+                    2 => {
+                        rest = Some(name.clone());
+                        break;
+                    }
                     _ => {}
                 }
             }
-            LambdaParams { required, optional, rest }
+            LambdaParams {
+                required,
+                optional,
+                rest,
+            }
         }
         _ => LambdaParams::simple(vec![]),
     }
@@ -1595,9 +1646,14 @@ fn parse_params(expr: &Expr) -> LambdaParams {
 
 /// Check if an expression is a literal (constant) that doesn't need evaluation.
 fn is_literal(expr: &Expr) -> bool {
-    matches!(expr,
-        Expr::Int(_) | Expr::Float(_) | Expr::Str(_) | Expr::Char(_)
-        | Expr::Keyword(_) | Expr::Bool(_)
+    matches!(
+        expr,
+        Expr::Int(_)
+            | Expr::Float(_)
+            | Expr::Str(_)
+            | Expr::Char(_)
+            | Expr::Keyword(_)
+            | Expr::Bool(_)
     ) || matches!(expr, Expr::Symbol(s) if s == "nil" || s == "t")
 }
 
@@ -1634,9 +1690,10 @@ fn literal_to_value(expr: &Expr) -> Value {
         Expr::DottedList(items, last) => {
             let head_vals: Vec<Value> = items.iter().map(literal_to_value).collect();
             let tail_val = literal_to_value(last);
-            head_vals.into_iter().rev().fold(tail_val, |acc, item| {
-                Value::cons(item, acc)
-            })
+            head_vals
+                .into_iter()
+                .rev()
+                .fold(tail_val, |acc, item| Value::cons(item, acc))
         }
     }
 }
@@ -1666,8 +1723,14 @@ fn stack_delta(op: &Op) -> i32 {
         Op::Length => 0,
         Op::Nth | Op::Nthcdr | Op::Memq | Op::Assq => -1,
         Op::Setcar | Op::Setcdr => -1,
-        Op::Symbolp | Op::Consp | Op::Stringp | Op::Listp
-        | Op::Integerp | Op::Numberp | Op::Null | Op::Not => 0,
+        Op::Symbolp
+        | Op::Consp
+        | Op::Stringp
+        | Op::Listp
+        | Op::Integerp
+        | Op::Numberp
+        | Op::Null
+        | Op::Not => 0,
         Op::Eq | Op::Equal => -1,
         Op::Concat(n) => -(*n as i32) + 1,
         Op::Substring | Op::StringEqual | Op::StringLessp => -1,
@@ -1772,15 +1835,17 @@ mod tests {
     #[test]
     fn compile_and_or() {
         let func = compile("(and 1 2 3)");
-        let has_short_circuit = func.ops.iter().any(|op|
-            matches!(op, Op::GotoIfNilElsePop(_))
-        );
+        let has_short_circuit = func
+            .ops
+            .iter()
+            .any(|op| matches!(op, Op::GotoIfNilElsePop(_)));
         assert!(has_short_circuit);
 
         let func = compile("(or 1 2 3)");
-        let has_short_circuit = func.ops.iter().any(|op|
-            matches!(op, Op::GotoIfNotNilElsePop(_))
-        );
+        let has_short_circuit = func
+            .ops
+            .iter()
+            .any(|op| matches!(op, Op::GotoIfNotNilElsePop(_)));
         assert!(has_short_circuit);
     }
 

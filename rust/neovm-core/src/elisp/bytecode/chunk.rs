@@ -1,7 +1,7 @@
 //! ByteCode chunk — compiled function representation.
 
 use super::opcode::Op;
-use crate::elisp::value::{Value, LambdaParams};
+use crate::elisp::value::{LambdaParams, Value};
 
 /// A compiled bytecode function.
 #[derive(Clone, Debug)]
@@ -86,8 +86,12 @@ impl ByteCodeFunction {
     /// Disassemble to a human-readable string.
     pub fn disassemble(&self) -> String {
         let mut out = String::new();
-        out.push_str(&format!("bytecode function ({} ops, {} constants, stack {})\n",
-            self.ops.len(), self.constants.len(), self.max_stack));
+        out.push_str(&format!(
+            "bytecode function ({} ops, {} constants, stack {})\n",
+            self.ops.len(),
+            self.constants.len(),
+            self.max_stack
+        ));
 
         out.push_str("constants:\n");
         for (i, c) in self.constants.iter().enumerate() {

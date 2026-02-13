@@ -8,7 +8,6 @@
 #[derive(Clone, Debug, PartialEq)]
 pub enum Op {
     // -- Constants and stack --------------------------------------------------
-
     /// Push a constant from the constant pool.
     Constant(u16),
     /// Push nil.
@@ -23,7 +22,6 @@ pub enum Op {
     StackRef(u16),
 
     // -- Variable access ------------------------------------------------------
-
     /// Push value of variable. Operand = constant pool index of symbol name.
     VarRef(u16),
     /// Set variable to TOS (pops). Operand = constant pool index of symbol name.
@@ -34,7 +32,6 @@ pub enum Op {
     Unbind(u16),
 
     // -- Function calls -------------------------------------------------------
-
     /// Call function on stack with N args.
     /// Stack: [func arg1 arg2 ... argN] -> [result]
     Call(u8),
@@ -43,7 +40,6 @@ pub enum Op {
     Apply(u8),
 
     // -- Control flow ---------------------------------------------------------
-
     /// Unconditional jump to absolute instruction index.
     Goto(u32),
     /// Jump if TOS is nil (pops TOS).
@@ -58,7 +54,6 @@ pub enum Op {
     Return,
 
     // -- Arithmetic -----------------------------------------------------------
-
     Add,
     Sub,
     Mul,
@@ -69,7 +64,6 @@ pub enum Op {
     Negate,
 
     // -- Comparison -----------------------------------------------------------
-
     /// Numeric =
     Eqlsign,
     /// >
@@ -84,7 +78,6 @@ pub enum Op {
     Min,
 
     // -- List operations ------------------------------------------------------
-
     Car,
     Cdr,
     Cons,
@@ -99,7 +92,6 @@ pub enum Op {
     Assq,
 
     // -- Type predicates ------------------------------------------------------
-
     Symbolp,
     Consp,
     Stringp,
@@ -112,7 +104,6 @@ pub enum Op {
     Equal,
 
     // -- String operations ----------------------------------------------------
-
     /// Concat N strings from the stack.
     Concat(u16),
     Substring,
@@ -120,12 +111,10 @@ pub enum Op {
     StringLessp,
 
     // -- Vector operations ----------------------------------------------------
-
     Aref,
     Aset,
 
     // -- Symbol operations ----------------------------------------------------
-
     SymbolValue,
     SymbolFunction,
     Set,
@@ -134,7 +123,6 @@ pub enum Op {
     Put,
 
     // -- Error handling -------------------------------------------------------
-
     /// Push a condition-case handler.
     /// Operand = jump target (instruction index) for handler body.
     PushConditionCase(u32),
@@ -147,13 +135,11 @@ pub enum Op {
     Throw,
 
     // -- Closure support ------------------------------------------------------
-
     /// Create a closure from a bytecode function object at constant pool index,
     /// capturing the current lexical environment.
     MakeClosure(u16),
 
     // -- Misc -----------------------------------------------------------------
-
     /// Call a named builtin (constant pool index for name) with N args.
     /// This is the escape hatch for builtins not covered by dedicated opcodes.
     CallBuiltin(u16, u8),
@@ -164,7 +150,8 @@ impl Op {
     pub fn disasm(&self, constants: &[super::super::value::Value]) -> String {
         match self {
             Op::Constant(idx) => {
-                let val = constants.get(*idx as usize)
+                let val = constants
+                    .get(*idx as usize)
                     .map(|v| format!("{}", v))
                     .unwrap_or_else(|| "???".to_string());
                 format!("constant {} ; {}", idx, val)
@@ -257,7 +244,8 @@ impl Op {
 }
 
 fn const_name(constants: &[super::super::value::Value], idx: u16) -> String {
-    constants.get(idx as usize)
+    constants
+        .get(idx as usize)
         .and_then(|v| v.as_symbol_name().or_else(|| v.as_str()))
         .unwrap_or("???")
         .to_string()
