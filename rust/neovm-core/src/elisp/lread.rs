@@ -1,0 +1,870 @@
+//! Reader-internals builtins: intern, intern-soft, read, read-from-string,
+//! eval-buffer, eval-region, read-char, read-event, read-char-exclusive, load,
+//! get-load-suffixes, locate-file, locate-file-internal, read-coding-system,
+//! read-non-nil-coding-system.
+
+use super::error::{signal, EvalResult, Flow};
+use super::value::*;
+
+// ---------------------------------------------------------------------------
+// Argument helpers
+// ---------------------------------------------------------------------------
+
+fn expect_min_args(name: &str, args: &[Value], min: usize) -> Result<(), Flow> {
+    if args.len() < min {
+        Err(signal(
+            "wrong-number-of-arguments",
+            vec![Value::symbol(name), Value::Int(args.len() as i64)],
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn expect_string(value: &Value) -> Result<String, Flow> {
+    match value {
+        Value::Str(s) => Ok((**s).clone()),
+        Value::Symbol(s) => Ok(s.clone()),
+        Value::Nil => Ok("nil".to_string()),
+        Value::True => Ok("t".to_string()),
+        other => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("stringp"), other.clone()],
+        )),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Eval-dependent builtins
+// ---------------------------------------------------------------------------
+
+/// `(intern STRING &optional OBARRAY)`
+///
+/// Intern a symbol with the given name in the obarray.  If the symbol already
+/// exists, return the existing one; otherwise create it.  The optional OBARRAY
+/// argument is accepted but ignored (we use the single global obarray).
+pub(crate) fn builtin_intern(
+    eval: &mut super::eval::Evaluator,
+    args: Vec<Value>,
+) -> EvalResult {
+    expect_min_args("intern", &args, 1)?;
+    let name = expect_string(&args[0])?;
+    eval.obarray.intern(&name);
+    Ok(Value::symbol(name))
+}
+
+/// `(intern-soft STRING &optional OBARRAY)`
+///
+/// Look up STRING in the obarray without creating a new symbol.
+/// Return the symbol if found, nil otherwise.
+pub(crate) fn builtin_intern_soft(
+    eval: &mut super::eval::Evaluator,
+    args: Vec<Value>,
+) -> EvalResult {
+    expect_min_args("intern-soft", &args, 1)?;
+    let name = expect_string(&args[0])?;
+    if eval.obarray.intern_soft(&name).is_some() {
+        Ok(Value::symbol(name))
+    } else {
+        Ok(Value::Nil)
+    }
+}
+
+/// `(read &optional STREAM)`
+///
+/// Read one Lisp expression from STREAM.
+/// - If STREAM is a string, parse the first form from it.
+/// - If STREAM is nil or omitted, return nil (no terminal input in batch mode).
+/// - If STREAM is a buffer, read from buffer at point.
+pub(crate) fn builtin_read(
+    eval: &mut super::eval::Evaluator,
+    args: Vec<Value>,
+) -> EvalResult {
+    if args.is_empty() || args[0].is_nil() {
+        // No stream / nil -- non-interactive, return nil
+        return Ok(Value::Nil);
+    }
+
+    match &args[0] {
+        Value::Str(s) => {
+            let input = (**s).clone();
+            let forms = super::parser::parse_forms(&input).map_err(|e| {
+                signal(
+                    "invalid-read-syntax",
+                    vec![Value::string(e.message.clone())],
+                )
+            })?;
+            if forms.is_empty() {
+                return Err(signal(
+                    "end-of-file",
+                    vec![Value::string("End of file during parsing")],
+                ));
+            }
+            Ok(super::eval::quote_to_value(&forms[0]))
+        }
+        Value::Buffer(id) => {
+            // Read from buffer at point
+            let buf_id = *id;
+            let (text, pt) = {
+                let buf = eval.buffers.get(buf_id).ok_or_else(|| {
+                    signal("error", vec![Value::string("Buffer does not exist")])
+                })?;
+                (buf.buffer_string(), buf.pt)
+            };
+            let start = if pt > 0 { pt - 1 } else { 0 };
+            if start >= text.len() {
+                return Err(signal(
+                    "end-of-file",
+                    vec![Value::string("End of file during parsing")],
+                ));
+            }
+            let substring = &text[start..];
+            let forms = super::parser::parse_forms(substring).map_err(|e| {
+                signal(
+                    "invalid-read-syntax",
+                    vec![Value::string(e.message.clone())],
+                )
+            })?;
+            if forms.is_empty() {
+                return Err(signal(
+                    "end-of-file",
+                    vec![Value::string("End of file during parsing")],
+                ));
+            }
+            let value = super::eval::quote_to_value(&forms[0]);
+            // Advance point past the read form
+            let end_offset = compute_read_end_position(substring);
+            let new_pt = pt + end_offset;
+            if let Some(buf) = eval.buffers.get_mut(buf_id) {
+                buf.pt = new_pt;
+            }
+            Ok(value)
+        }
+        _ => {
+            // Unsupported stream type -- treat as nil
+            Ok(Value::Nil)
+        }
+    }
+}
+
+/// `(read-from-string STRING &optional START END)`
+///
+/// Read one Lisp object from STRING starting at position START (default 0).
+/// Returns `(OBJECT . END-POSITION)` where END-POSITION is the character index
+/// after the parsed object.
+pub(crate) fn builtin_read_from_string(
+    _eval: &mut super::eval::Evaluator,
+    args: Vec<Value>,
+) -> EvalResult {
+    expect_min_args("read-from-string", &args, 1)?;
+
+    let full_string = match &args[0] {
+        Value::Str(s) => (**s).clone(),
+        other => {
+            return Err(signal(
+                "wrong-type-argument",
+                vec![Value::symbol("stringp"), other.clone()],
+            ))
+        }
+    };
+
+    let start = if args.len() > 1 && args[1].is_truthy() {
+        match &args[1] {
+            Value::Int(n) => {
+                if *n < 0 {
+                    return Err(signal(
+                        "args-out-of-range",
+                        vec![args[0].clone(), args[1].clone()],
+                    ));
+                }
+                *n as usize
+            }
+            _ => 0,
+        }
+    } else {
+        0
+    };
+
+    let end = if args.len() > 2 && args[2].is_truthy() {
+        match &args[2] {
+            Value::Int(n) => {
+                if *n < 0 || (*n as usize) > full_string.len() {
+                    return Err(signal(
+                        "args-out-of-range",
+                        vec![args[0].clone(), args[2].clone()],
+                    ));
+                }
+                *n as usize
+            }
+            _ => full_string.len(),
+        }
+    } else {
+        full_string.len()
+    };
+
+    if start > end || start > full_string.len() {
+        return Err(signal(
+            "args-out-of-range",
+            vec![args[0].clone(), Value::Int(start as i64)],
+        ));
+    }
+
+    let substring = &full_string[start..end];
+
+    let forms = super::parser::parse_forms(substring).map_err(|e| {
+        signal(
+            "invalid-read-syntax",
+            vec![Value::string(e.message.clone())],
+        )
+    })?;
+
+    if forms.is_empty() {
+        return Err(signal(
+            "end-of-file",
+            vec![Value::string("End of file during parsing")],
+        ));
+    }
+
+    let value = super::eval::quote_to_value(&forms[0]);
+
+    // Compute end position after the first form
+    let end_pos = compute_read_end_position(substring);
+    let absolute_end = start + end_pos;
+
+    Ok(Value::cons(value, Value::Int(absolute_end as i64)))
+}
+
+/// `(eval-buffer &optional BUFFER PRINTFLAG FILENAME UNIBYTE DO-ALLOW-PRINT)`
+///
+/// Stub: returns nil.
+pub(crate) fn builtin_eval_buffer(
+    _eval: &mut super::eval::Evaluator,
+    _args: Vec<Value>,
+) -> EvalResult {
+    Ok(Value::Nil)
+}
+
+/// `(eval-region START END &optional PRINTFLAG READ-FUNCTION)`
+///
+/// Stub: returns nil.
+pub(crate) fn builtin_eval_region(
+    _eval: &mut super::eval::Evaluator,
+    _args: Vec<Value>,
+) -> EvalResult {
+    Ok(Value::Nil)
+}
+
+/// `(read-char &optional PROMPT INHERIT-INPUT-METHOD SECONDS)`
+///
+/// Stub: returns 0 (no terminal input available in batch mode).
+pub(crate) fn builtin_read_char(
+    _eval: &mut super::eval::Evaluator,
+    _args: Vec<Value>,
+) -> EvalResult {
+    Ok(Value::Int(0))
+}
+
+/// `(read-event &optional PROMPT INHERIT-INPUT-METHOD SECONDS)`
+///
+/// Stub: returns nil (no event input available in batch mode).
+pub(crate) fn builtin_read_event(
+    _eval: &mut super::eval::Evaluator,
+    _args: Vec<Value>,
+) -> EvalResult {
+    Ok(Value::Nil)
+}
+
+/// `(read-char-exclusive &optional PROMPT INHERIT-INPUT-METHOD SECONDS)`
+///
+/// Stub: returns 0 (no terminal input available in batch mode).
+pub(crate) fn builtin_read_char_exclusive(
+    _eval: &mut super::eval::Evaluator,
+    _args: Vec<Value>,
+) -> EvalResult {
+    Ok(Value::Int(0))
+}
+
+/// `(load FILE &optional NOERROR NOMESSAGE NOSUFFIX MUST-SUFFIX)`
+///
+/// Load a file of Lisp code.  Delegates to the existing load module when
+/// possible; otherwise signals an error or returns nil based on NOERROR.
+pub(crate) fn builtin_load(
+    eval: &mut super::eval::Evaluator,
+    args: Vec<Value>,
+) -> EvalResult {
+    expect_min_args("load", &args, 1)?;
+    let file = match &args[0] {
+        Value::Str(s) => (**s).clone(),
+        other => {
+            return Err(signal(
+                "wrong-type-argument",
+                vec![Value::symbol("stringp"), other.clone()],
+            ))
+        }
+    };
+    let noerror = args.get(1).is_some_and(|v| v.is_truthy());
+
+    let load_path = super::load::get_load_path(&eval.obarray);
+    match super::load::find_file_in_load_path(&file, &load_path) {
+        Some(path) => {
+            super::load::load_file(eval, &path).map_err(|e| {
+                signal("error", vec![Value::string(format!("{}", e))])
+            })
+        }
+        None => {
+            // Try as absolute path
+            let path = std::path::Path::new(&file);
+            if path.exists() {
+                super::load::load_file(eval, path).map_err(|e| {
+                    signal("error", vec![Value::string(format!("{}", e))])
+                })
+            } else if noerror {
+                Ok(Value::Nil)
+            } else {
+                Err(signal(
+                    "file-missing",
+                    vec![Value::string(format!("Cannot open load file: {}", file))],
+                ))
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Pure builtins
+// ---------------------------------------------------------------------------
+
+/// `(get-load-suffixes)`
+///
+/// Return a list of suffixes that `load` tries when searching for files.
+pub(crate) fn builtin_get_load_suffixes(args: Vec<Value>) -> EvalResult {
+    let _ = args;
+    Ok(Value::list(vec![
+        Value::string(".el"),
+        Value::string(".elc"),
+    ]))
+}
+
+/// `(locate-file FILENAME PATH SUFFIXES &optional PREDICATE)`
+///
+/// Stub: returns nil (file not found).
+pub(crate) fn builtin_locate_file(args: Vec<Value>) -> EvalResult {
+    expect_min_args("locate-file", &args, 3)?;
+    Ok(Value::Nil)
+}
+
+/// `(locate-file-internal FILENAME PATH SUFFIXES &optional PREDICATE)`
+///
+/// Stub: returns nil (file not found).
+pub(crate) fn builtin_locate_file_internal(args: Vec<Value>) -> EvalResult {
+    expect_min_args("locate-file-internal", &args, 3)?;
+    Ok(Value::Nil)
+}
+
+/// `(read-coding-system PROMPT &optional DEFAULT-CODING-SYSTEM)`
+///
+/// Stub: returns the symbol `utf-8`.
+pub(crate) fn builtin_read_coding_system(args: Vec<Value>) -> EvalResult {
+    expect_min_args("read-coding-system", &args, 1)?;
+    Ok(Value::symbol("utf-8"))
+}
+
+/// `(read-non-nil-coding-system PROMPT)`
+///
+/// Stub: returns the symbol `utf-8`.
+pub(crate) fn builtin_read_non_nil_coding_system(args: Vec<Value>) -> EvalResult {
+    expect_min_args("read-non-nil-coding-system", &args, 1)?;
+    Ok(Value::symbol("utf-8"))
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/// Compute the byte offset after the first s-expression in `input`.
+/// Skips leading whitespace/comments, then skips one complete sexp.
+fn compute_read_end_position(input: &str) -> usize {
+    let pos = skip_ws_comments(input, 0);
+    if pos >= input.len() {
+        return input.len();
+    }
+    skip_one_sexp(input, pos)
+}
+
+fn skip_ws_comments(input: &str, mut pos: usize) -> usize {
+    let bytes = input.as_bytes();
+    loop {
+        if pos >= bytes.len() {
+            return pos;
+        }
+        let ch = bytes[pos];
+        if ch.is_ascii_whitespace() {
+            pos += 1;
+            continue;
+        }
+        if ch == b';' {
+            // line comment
+            while pos < bytes.len() && bytes[pos] != b'\n' {
+                pos += 1;
+            }
+            if pos < bytes.len() {
+                pos += 1; // skip newline
+            }
+            continue;
+        }
+        if ch == b'#' && pos + 1 < bytes.len() && bytes[pos + 1] == b'|' {
+            // block comment #| ... |#
+            pos += 2;
+            let mut depth = 1;
+            while depth > 0 && pos < bytes.len() {
+                if bytes[pos] == b'#' && pos + 1 < bytes.len() && bytes[pos + 1] == b'|' {
+                    depth += 1;
+                    pos += 2;
+                } else if bytes[pos] == b'|' && pos + 1 < bytes.len() && bytes[pos + 1] == b'#' {
+                    depth -= 1;
+                    pos += 2;
+                } else {
+                    pos += 1;
+                }
+            }
+            continue;
+        }
+        return pos;
+    }
+}
+
+fn skip_one_sexp(input: &str, mut pos: usize) -> usize {
+    let bytes = input.as_bytes();
+    if pos >= bytes.len() {
+        return pos;
+    }
+
+    let ch = bytes[pos];
+
+    match ch {
+        b'(' => {
+            pos += 1;
+            let mut depth = 1;
+            while depth > 0 && pos < bytes.len() {
+                match bytes[pos] {
+                    b'(' => {
+                        depth += 1;
+                        pos += 1;
+                    }
+                    b')' => {
+                        depth -= 1;
+                        pos += 1;
+                    }
+                    b'"' => {
+                        pos = skip_string(input, pos);
+                    }
+                    b';' => {
+                        while pos < bytes.len() && bytes[pos] != b'\n' {
+                            pos += 1;
+                        }
+                    }
+                    b'\\' => {
+                        pos += 1;
+                        if pos < bytes.len() {
+                            pos += 1;
+                        }
+                    }
+                    _ => {
+                        pos += 1;
+                    }
+                }
+            }
+            pos
+        }
+        b'[' => {
+            pos += 1;
+            let mut depth = 1;
+            while depth > 0 && pos < bytes.len() {
+                match bytes[pos] {
+                    b'[' => {
+                        depth += 1;
+                        pos += 1;
+                    }
+                    b']' => {
+                        depth -= 1;
+                        pos += 1;
+                    }
+                    b'"' => {
+                        pos = skip_string(input, pos);
+                    }
+                    b'\\' => {
+                        pos += 1;
+                        if pos < bytes.len() {
+                            pos += 1;
+                        }
+                    }
+                    _ => {
+                        pos += 1;
+                    }
+                }
+            }
+            pos
+        }
+        b'"' => skip_string(input, pos),
+        b'\'' | b'`' => {
+            // quote / backquote -- skip prefix then one sexp
+            pos += 1;
+            pos = skip_ws_comments(input, pos);
+            skip_one_sexp(input, pos)
+        }
+        b',' => {
+            pos += 1;
+            if pos < bytes.len() && bytes[pos] == b'@' {
+                pos += 1;
+            }
+            pos = skip_ws_comments(input, pos);
+            skip_one_sexp(input, pos)
+        }
+        b'#' => {
+            pos += 1;
+            if pos >= bytes.len() {
+                return pos;
+            }
+            match bytes[pos] {
+                b'\'' => {
+                    // #'symbol
+                    pos += 1;
+                    pos = skip_ws_comments(input, pos);
+                    skip_one_sexp(input, pos)
+                }
+                b'(' => {
+                    // #(vector)
+                    skip_one_sexp(input, pos)
+                }
+                b's' => {
+                    // #s(hash-table ...)
+                    pos += 1;
+                    if pos < bytes.len() && bytes[pos] == b'(' {
+                        skip_one_sexp(input, pos)
+                    } else {
+                        pos
+                    }
+                }
+                b'x' | b'X' | b'o' | b'O' | b'b' | b'B' => {
+                    // radix number
+                    pos += 1;
+                    while pos < bytes.len()
+                        && (bytes[pos].is_ascii_alphanumeric() || bytes[pos] == b'_')
+                    {
+                        pos += 1;
+                    }
+                    pos
+                }
+                _ => pos,
+            }
+        }
+        b'?' => {
+            // char literal
+            pos += 1;
+            if pos < bytes.len() && bytes[pos] == b'\\' {
+                pos += 1;
+                if pos < bytes.len() {
+                    let esc = bytes[pos];
+                    pos += 1;
+                    match esc {
+                        b'x' => {
+                            while pos < bytes.len() && bytes[pos].is_ascii_hexdigit() {
+                                pos += 1;
+                            }
+                            if pos < bytes.len() && bytes[pos] == b';' {
+                                pos += 1;
+                            }
+                        }
+                        b'u' => {
+                            for _ in 0..4 {
+                                if pos < bytes.len() && bytes[pos].is_ascii_hexdigit() {
+                                    pos += 1;
+                                }
+                            }
+                        }
+                        b'U' => {
+                            for _ in 0..8 {
+                                if pos < bytes.len() && bytes[pos].is_ascii_hexdigit() {
+                                    pos += 1;
+                                }
+                            }
+                        }
+                        b'0'..=b'7' => {
+                            for _ in 0..2 {
+                                if pos < bytes.len() && bytes[pos] >= b'0' && bytes[pos] <= b'7' {
+                                    pos += 1;
+                                }
+                            }
+                        }
+                        b'C' | b'M' | b'S' => {
+                            if pos < bytes.len() && bytes[pos] == b'-' {
+                                pos += 1;
+                                if pos < bytes.len() {
+                                    pos += 1;
+                                }
+                            }
+                        }
+                        _ => {} // single escaped char already consumed
+                    }
+                }
+            } else if pos < bytes.len() {
+                // Regular character -- consume one UTF-8 char
+                let ch = input[pos..].chars().next();
+                if let Some(c) = ch {
+                    pos += c.len_utf8();
+                }
+            }
+            pos
+        }
+        _ => {
+            // Atom: symbol or number
+            while pos < bytes.len() {
+                let b = bytes[pos];
+                if b.is_ascii_whitespace()
+                    || b == b'('
+                    || b == b')'
+                    || b == b'['
+                    || b == b']'
+                    || b == b'\''
+                    || b == b'`'
+                    || b == b','
+                    || b == b'"'
+                    || b == b';'
+                {
+                    break;
+                }
+                pos += 1;
+            }
+            pos
+        }
+    }
+}
+
+fn skip_string(input: &str, mut pos: usize) -> usize {
+    let bytes = input.as_bytes();
+    if pos >= bytes.len() || bytes[pos] != b'"' {
+        return pos;
+    }
+    pos += 1; // opening quote
+    while pos < bytes.len() {
+        match bytes[pos] {
+            b'"' => {
+                pos += 1;
+                return pos;
+            }
+            b'\\' => {
+                pos += 1;
+                if pos < bytes.len() {
+                    pos += 1;
+                }
+            }
+            _ => {
+                pos += 1;
+            }
+        }
+    }
+    pos
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::elisp::eval::Evaluator;
+
+    #[test]
+    fn intern_creates_symbol() {
+        let mut ev = Evaluator::new();
+        let result = builtin_intern(&mut ev, vec![Value::string("my-sym")]).unwrap();
+        assert!(matches!(result, Value::Symbol(ref s) if s == "my-sym"));
+    }
+
+    #[test]
+    fn intern_soft_found() {
+        let mut ev = Evaluator::new();
+        // First intern it
+        builtin_intern(&mut ev, vec![Value::string("existing")]).unwrap();
+        // Then intern-soft should find it
+        let result = builtin_intern_soft(&mut ev, vec![Value::string("existing")]).unwrap();
+        assert!(matches!(result, Value::Symbol(ref s) if s == "existing"));
+    }
+
+    #[test]
+    fn intern_soft_not_found() {
+        let mut ev = Evaluator::new();
+        let result = builtin_intern_soft(&mut ev, vec![Value::string("nonexistent")]).unwrap();
+        assert!(result.is_nil());
+    }
+
+    #[test]
+    fn read_from_string_integer() {
+        let mut ev = Evaluator::new();
+        let result = builtin_read_from_string(&mut ev, vec![Value::string("42")]).unwrap();
+        match &result {
+            Value::Cons(cell) => {
+                let pair = cell.lock().unwrap();
+                assert!(matches!(&pair.car, Value::Int(42)));
+                assert!(matches!(&pair.cdr, Value::Int(2)));
+            }
+            _ => panic!("Expected cons, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn read_from_string_symbol() {
+        let mut ev = Evaluator::new();
+        let result = builtin_read_from_string(&mut ev, vec![Value::string("hello")]).unwrap();
+        match &result {
+            Value::Cons(cell) => {
+                let pair = cell.lock().unwrap();
+                assert!(matches!(&pair.car, Value::Symbol(ref s) if s == "hello"));
+                assert!(matches!(&pair.cdr, Value::Int(5)));
+            }
+            _ => panic!("Expected cons, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn read_from_string_with_start() {
+        let mut ev = Evaluator::new();
+        let result = builtin_read_from_string(
+            &mut ev,
+            vec![Value::string("  42 rest"), Value::Int(2)],
+        )
+        .unwrap();
+        match &result {
+            Value::Cons(cell) => {
+                let pair = cell.lock().unwrap();
+                assert!(matches!(&pair.car, Value::Int(42)));
+                assert!(matches!(&pair.cdr, Value::Int(4)));
+            }
+            _ => panic!("Expected cons, got {:?}", result),
+        }
+    }
+
+    #[test]
+    fn read_from_string_empty_error() {
+        let mut ev = Evaluator::new();
+        let result = builtin_read_from_string(&mut ev, vec![Value::string("")]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn read_from_string_list() {
+        let mut ev = Evaluator::new();
+        let result =
+            builtin_read_from_string(&mut ev, vec![Value::string("(+ 1 2)")]).unwrap();
+        match &result {
+            Value::Cons(cell) => {
+                let pair = cell.lock().unwrap();
+                assert!(pair.car.is_cons());
+                assert!(matches!(&pair.cdr, Value::Int(7)));
+            }
+            _ => panic!("Expected cons"),
+        }
+    }
+
+    #[test]
+    fn read_from_nil_stream() {
+        let mut ev = Evaluator::new();
+        let result = builtin_read(&mut ev, vec![Value::Nil]).unwrap();
+        assert!(result.is_nil());
+    }
+
+    #[test]
+    fn read_from_string_stream() {
+        let mut ev = Evaluator::new();
+        let result = builtin_read(&mut ev, vec![Value::string("42")]).unwrap();
+        assert!(matches!(result, Value::Int(42)));
+    }
+
+    #[test]
+    fn read_no_args() {
+        let mut ev = Evaluator::new();
+        let result = builtin_read(&mut ev, vec![]).unwrap();
+        assert!(result.is_nil());
+    }
+
+    #[test]
+    fn eval_buffer_returns_nil() {
+        let mut ev = Evaluator::new();
+        let result = builtin_eval_buffer(&mut ev, vec![]).unwrap();
+        assert!(result.is_nil());
+    }
+
+    #[test]
+    fn eval_region_returns_nil() {
+        let mut ev = Evaluator::new();
+        let result = builtin_eval_region(&mut ev, vec![Value::Int(1), Value::Int(10)]).unwrap();
+        assert!(result.is_nil());
+    }
+
+    #[test]
+    fn read_char_returns_zero() {
+        let mut ev = Evaluator::new();
+        let result = builtin_read_char(&mut ev, vec![]).unwrap();
+        assert!(matches!(result, Value::Int(0)));
+    }
+
+    #[test]
+    fn read_event_returns_nil() {
+        let mut ev = Evaluator::new();
+        let result = builtin_read_event(&mut ev, vec![]).unwrap();
+        assert!(result.is_nil());
+    }
+
+    #[test]
+    fn read_char_exclusive_returns_zero() {
+        let mut ev = Evaluator::new();
+        let result = builtin_read_char_exclusive(&mut ev, vec![]).unwrap();
+        assert!(matches!(result, Value::Int(0)));
+    }
+
+    #[test]
+    fn get_load_suffixes_returns_list() {
+        let result = builtin_get_load_suffixes(vec![]).unwrap();
+        let items = list_to_vec(&result).unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].as_str(), Some(".el"));
+        assert_eq!(items[1].as_str(), Some(".elc"));
+    }
+
+    #[test]
+    fn locate_file_returns_nil() {
+        let result = builtin_locate_file(vec![
+            Value::string("foo"),
+            Value::Nil,
+            Value::Nil,
+        ])
+        .unwrap();
+        assert!(result.is_nil());
+    }
+
+    #[test]
+    fn locate_file_internal_returns_nil() {
+        let result = builtin_locate_file_internal(vec![
+            Value::string("foo"),
+            Value::Nil,
+            Value::Nil,
+        ])
+        .unwrap();
+        assert!(result.is_nil());
+    }
+
+    #[test]
+    fn read_coding_system_returns_utf8() {
+        let result =
+            builtin_read_coding_system(vec![Value::string("Coding system: ")]).unwrap();
+        assert!(matches!(result, Value::Symbol(ref s) if s == "utf-8"));
+    }
+
+    #[test]
+    fn read_non_nil_coding_system_returns_utf8() {
+        let result =
+            builtin_read_non_nil_coding_system(vec![Value::string("Coding system: ")]).unwrap();
+        assert!(matches!(result, Value::Symbol(ref s) if s == "utf-8"));
+    }
+}
