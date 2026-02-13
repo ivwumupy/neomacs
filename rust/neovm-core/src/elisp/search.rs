@@ -367,14 +367,31 @@ pub(crate) fn builtin_word_search_backward(
 mod tests {
     use super::*;
 
+    fn assert_int(val: Value, expected: i64) {
+        match val {
+            Value::Int(n) => assert_eq!(n, expected),
+            other => panic!("Expected Int({}), got {:?}", expected, other),
+        }
+    }
+
+    fn assert_nil(val: Value) {
+        assert!(val.is_nil(), "Expected nil, got {:?}", val);
+    }
+
+    fn assert_str(val: Value, expected: &str) {
+        match val {
+            Value::Str(s) => assert_eq!(&*s, expected),
+            other => panic!("Expected string {:?}, got {:?}", expected, other),
+        }
+    }
+
     #[test]
     fn string_match_basic() {
         let result = builtin_string_match(vec![
             Value::string("he..o"),
             Value::string("hello world"),
         ]);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Value::Int(0));
+        assert_int(result.unwrap(), 0);
     }
 
     #[test]
@@ -384,8 +401,7 @@ mod tests {
             Value::string("hello world"),
             Value::Int(6),
         ]);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Value::Int(6));
+        assert_int(result.unwrap(), 6);
     }
 
     #[test]
@@ -394,8 +410,7 @@ mod tests {
             Value::string("xyz"),
             Value::string("hello world"),
         ]);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Value::Nil);
+        assert_nil(result.unwrap());
     }
 
     #[test]
@@ -404,8 +419,7 @@ mod tests {
             Value::string("[0-9]+"),
             Value::string("abc 123 def"),
         ]);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Value::Int(4));
+        assert_int(result.unwrap(), 4);
     }
 
     #[test]
@@ -414,73 +428,55 @@ mod tests {
             Value::string("[0-9]+"),
             Value::string("no digits here"),
         ]);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Value::Nil);
+        assert_nil(result.unwrap());
     }
 
     #[test]
     fn regexp_quote_specials() {
         let result = builtin_regexp_quote(vec![Value::string("foo.bar*baz+qux")]);
-        assert!(result.is_ok());
-        match result.unwrap() {
-            Value::Str(s) => assert_eq!(&*s, "foo\\.bar\\*baz\\+qux"),
-            other => panic!("Expected string, got {:?}", other),
-        }
+        assert_str(result.unwrap(), "foo\\.bar\\*baz\\+qux");
     }
 
     #[test]
     fn regexp_quote_no_specials() {
         let result = builtin_regexp_quote(vec![Value::string("hello")]);
-        assert!(result.is_ok());
-        match result.unwrap() {
-            Value::Str(s) => assert_eq!(&*s, "hello"),
-            other => panic!("Expected string, got {:?}", other),
-        }
+        assert_str(result.unwrap(), "hello");
     }
 
     #[test]
     fn regexp_quote_all_specials() {
         let result = builtin_regexp_quote(vec![Value::string(".*+?[]^$\\")]);
-        assert!(result.is_ok());
-        match result.unwrap() {
-            Value::Str(s) => assert_eq!(&*s, "\\.\\*\\+\\?\\[\\]\\^\\$\\\\"),
-            other => panic!("Expected string, got {:?}", other),
-        }
+        assert_str(result.unwrap(), "\\.\\*\\+\\?\\[\\]\\^\\$\\\\");
     }
 
     #[test]
     fn match_beginning_stub() {
         let result = builtin_match_beginning(vec![Value::Int(0)]);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Value::Int(0));
+        assert_int(result.unwrap(), 0);
     }
 
     #[test]
     fn match_end_stub() {
         let result = builtin_match_end(vec![Value::Int(0)]);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Value::Int(0));
+        assert_int(result.unwrap(), 0);
     }
 
     #[test]
     fn match_data_stub() {
         let result = builtin_match_data(vec![]);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Value::Nil);
+        assert_nil(result.unwrap());
     }
 
     #[test]
     fn set_match_data_stub() {
         let result = builtin_set_match_data(vec![Value::Nil]);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Value::Nil);
+        assert_nil(result.unwrap());
     }
 
     #[test]
     fn looking_at_stub() {
         let result = builtin_looking_at(vec![Value::string("foo")]);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Value::Nil);
+        assert_nil(result.unwrap());
     }
 
     #[test]
@@ -490,11 +486,7 @@ mod tests {
             Value::string("NUM"),
             Value::string("abc 123 def 456"),
         ]);
-        assert!(result.is_ok());
-        match result.unwrap() {
-            Value::Str(s) => assert_eq!(&*s, "abc NUM def NUM"),
-            other => panic!("Expected string, got {:?}", other),
-        }
+        assert_str(result.unwrap(), "abc NUM def NUM");
     }
 
     #[test]
@@ -506,11 +498,7 @@ mod tests {
             Value::Nil,  // fixedcase
             Value::True, // literal
         ]);
-        assert!(result.is_ok());
-        match result.unwrap() {
-            Value::Str(s) => assert_eq!(&*s, "abc $0 def"),
-            other => panic!("Expected string, got {:?}", other),
-        }
+        assert_str(result.unwrap(), "abc $0 def");
     }
 
     #[test]
@@ -521,11 +509,7 @@ mod tests {
             Value::string("[\\1]"),
             Value::string("hello world"),
         ]);
-        assert!(result.is_ok());
-        match result.unwrap() {
-            Value::Str(s) => assert_eq!(&*s, "[hello] [world]"),
-            other => panic!("Expected string, got {:?}", other),
-        }
+        assert_str(result.unwrap(), "[hello] [world]");
     }
 
     #[test]
@@ -539,11 +523,7 @@ mod tests {
             Value::Nil, // subexp
             Value::Int(4), // start
         ]);
-        assert!(result.is_ok());
-        match result.unwrap() {
-            Value::Str(s) => assert_eq!(&*s, "111 X X"),
-            other => panic!("Expected string, got {:?}", other),
-        }
+        assert_str(result.unwrap(), "111 X X");
     }
 
     #[test]
@@ -563,11 +543,7 @@ mod tests {
         // In Emacs regex, literal ( ) are NOT special, so regexp-quote
         // should NOT escape them.
         let result = builtin_regexp_quote(vec![Value::string("(foo)")]);
-        assert!(result.is_ok());
-        match result.unwrap() {
-            Value::Str(s) => assert_eq!(&*s, "(foo)"),
-            other => panic!("Expected string, got {:?}", other),
-        }
+        assert_str(result.unwrap(), "(foo)");
     }
 
     #[test]
@@ -577,7 +553,6 @@ mod tests {
             Value::string("\\(foo\\|bar\\)"),
             Value::string("test bar"),
         ]);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Value::Int(5));
+        assert_int(result.unwrap(), 5);
     }
 }

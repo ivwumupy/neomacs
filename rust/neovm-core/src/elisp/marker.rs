@@ -47,17 +47,6 @@ fn expect_args(name: &str, args: &[Value], n: usize) -> Result<(), Flow> {
     }
 }
 
-fn expect_min_args(name: &str, args: &[Value], min: usize) -> Result<(), Flow> {
-    if args.len() < min {
-        Err(signal(
-            "wrong-number-of-arguments",
-            vec![Value::symbol(name), Value::Int(args.len() as i64)],
-        ))
-    } else {
-        Ok(())
-    }
-}
-
 fn expect_range_args(name: &str, args: &[Value], min: usize, max: usize) -> Result<(), Flow> {
     if args.len() < min || args.len() > max {
         Err(signal(
@@ -115,7 +104,7 @@ pub(crate) fn make_marker_value(
 
 /// Assert that a value is a marker and return a wrong-type-argument error if
 /// it is not.
-fn expect_marker<'a>(name: &str, v: &'a Value) -> Result<(), Flow> {
+fn expect_marker(_name: &str, v: &Value) -> Result<(), Flow> {
     if is_marker(v) {
         Ok(())
     } else {

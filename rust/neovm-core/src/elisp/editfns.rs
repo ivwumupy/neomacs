@@ -50,7 +50,7 @@ fn expect_max_args(name: &str, args: &[Value], max: usize) -> Result<(), Flow> {
 
 /// Extract an integer (or char-as-integer) from a Value, signalling
 /// `wrong-type-argument` on type mismatch.
-fn expect_integer(name: &str, val: &Value) -> Result<i64, Flow> {
+fn expect_integer(_name: &str, val: &Value) -> Result<i64, Flow> {
     val.as_int().ok_or_else(|| {
         signal(
             "wrong-type-argument",
@@ -183,7 +183,7 @@ pub(crate) fn builtin_char_before(
 }
 
 /// Collect the insertable text from a mixed list of strings and characters.
-fn collect_insert_text(name: &str, args: &[Value]) -> Result<String, Flow> {
+fn collect_insert_text(_name: &str, args: &[Value]) -> Result<String, Flow> {
     let mut text = String::new();
     for arg in args {
         match arg {

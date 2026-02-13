@@ -3,7 +3,7 @@
 //! get-load-suffixes, locate-file, locate-file-internal, read-coding-system,
 //! read-non-nil-coding-system.
 
-use super::error::{signal, EvalResult, Flow};
+use super::error::{signal, EvalResult, Flow, SignalData};
 use super::value::*;
 
 // ---------------------------------------------------------------------------
@@ -307,17 +307,13 @@ pub(crate) fn builtin_load(
     let load_path = super::load::get_load_path(&eval.obarray);
     match super::load::find_file_in_load_path(&file, &load_path) {
         Some(path) => {
-            super::load::load_file(eval, &path).map_err(|e| {
-                signal("error", vec![Value::string(format!("{}", e))])
-            })
+            super::load::load_file(eval, &path).map_err(eval_error_to_flow)
         }
         None => {
             // Try as absolute path
             let path = std::path::Path::new(&file);
             if path.exists() {
-                super::load::load_file(eval, path).map_err(|e| {
-                    signal("error", vec![Value::string(format!("{}", e))])
-                })
+                super::load::load_file(eval, path).map_err(eval_error_to_flow)
             } else if noerror {
                 Ok(Value::Nil)
             } else {
@@ -375,6 +371,22 @@ pub(crate) fn builtin_read_coding_system(args: Vec<Value>) -> EvalResult {
 pub(crate) fn builtin_read_non_nil_coding_system(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-non-nil-coding-system", &args, 1)?;
     Ok(Value::symbol("utf-8"))
+}
+
+// ---------------------------------------------------------------------------
+// Error conversion helper
+// ---------------------------------------------------------------------------
+
+/// Convert an `EvalError` back to a `Flow` for builtins that call `load_file`.
+fn eval_error_to_flow(e: super::error::EvalError) -> Flow {
+    match e {
+        super::error::EvalError::Signal { symbol, data } => {
+            Flow::Signal(SignalData { symbol, data })
+        }
+        super::error::EvalError::UncaughtThrow { tag, value } => {
+            Flow::Throw { tag, value }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
