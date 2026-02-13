@@ -239,7 +239,7 @@ impl MinibufferManager {
     ///
     /// Returns a fresh `MinibufferState` that has been pushed onto the stack.
     /// The caller can further configure it (completion table, require-match, default).
-    pub fn read_from_minibuffer(
+    pub(crate) fn read_from_minibuffer(
         &mut self,
         prompt: &str,
         initial: Option<&str>,
@@ -520,7 +520,7 @@ fn compute_common_prefix(strings: &[String]) -> Option<String> {
 /// `(read-from-minibuffer PROMPT &optional INITIAL KEYMAP READ HISTORY DEFAULT INHERIT)`
 ///
 /// Stub: returns INITIAL (or DEFAULT or "").
-pub fn builtin_read_from_minibuffer(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_read_from_minibuffer(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-from-minibuffer", &args, 1)?;
     let _prompt = expect_string(&args[0])?;
 
@@ -546,7 +546,7 @@ pub fn builtin_read_from_minibuffer(args: Vec<Value>) -> EvalResult {
 /// `(read-string PROMPT &optional INITIAL HISTORY DEFAULT INHERIT)`
 ///
 /// Stub: returns INITIAL or DEFAULT or "".
-pub fn builtin_read_string(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_read_string(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-string", &args, 1)?;
     let _prompt = expect_string(&args[0])?;
 
@@ -572,7 +572,7 @@ pub fn builtin_read_string(args: Vec<Value>) -> EvalResult {
 /// `(read-number PROMPT &optional DEFAULT)`
 ///
 /// Stub: returns DEFAULT or 0.
-pub fn builtin_read_number(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_read_number(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-number", &args, 1)?;
     let _prompt = expect_string(&args[0])?;
 
@@ -592,7 +592,7 @@ pub fn builtin_read_number(args: Vec<Value>) -> EvalResult {
 /// `(completing-read PROMPT COLLECTION &optional PREDICATE REQUIRE-MATCH INITIAL HIST DEF INHERIT)`
 ///
 /// Stub: returns INITIAL or DEF or "".
-pub fn builtin_completing_read(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_completing_read(args: Vec<Value>) -> EvalResult {
     expect_min_args("completing-read", &args, 2)?;
     let _prompt = expect_string(&args[0])?;
     // COLLECTION (arg 1) is ignored in stub
@@ -620,7 +620,7 @@ pub fn builtin_completing_read(args: Vec<Value>) -> EvalResult {
 /// `(read-file-name PROMPT &optional DIR DEFAULT MUSTMATCH INITIAL PREDICATE)`
 ///
 /// Stub: returns INITIAL or DEFAULT or "".
-pub fn builtin_read_file_name(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_read_file_name(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-file-name", &args, 1)?;
     let _prompt = expect_string(&args[0])?;
 
@@ -646,7 +646,7 @@ pub fn builtin_read_file_name(args: Vec<Value>) -> EvalResult {
 /// `(read-directory-name PROMPT &optional DIR DEFAULT MUSTMATCH INITIAL)`
 ///
 /// Stub: returns INITIAL or DEFAULT or "".
-pub fn builtin_read_directory_name(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_read_directory_name(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-directory-name", &args, 1)?;
     let _prompt = expect_string(&args[0])?;
 
@@ -672,7 +672,7 @@ pub fn builtin_read_directory_name(args: Vec<Value>) -> EvalResult {
 /// `(read-buffer PROMPT &optional DEFAULT REQUIRE-MATCH PREDICATE)`
 ///
 /// Stub: returns DEFAULT or "".
-pub fn builtin_read_buffer(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_read_buffer(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-buffer", &args, 1)?;
     let _prompt = expect_string(&args[0])?;
 
@@ -690,7 +690,7 @@ pub fn builtin_read_buffer(args: Vec<Value>) -> EvalResult {
 /// `(read-command PROMPT &optional DEFAULT)`
 ///
 /// Stub: returns DEFAULT or "".
-pub fn builtin_read_command(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_read_command(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-command", &args, 1)?;
     let _prompt = expect_string(&args[0])?;
 
@@ -708,7 +708,7 @@ pub fn builtin_read_command(args: Vec<Value>) -> EvalResult {
 /// `(read-variable PROMPT &optional DEFAULT)`
 ///
 /// Stub: returns DEFAULT or "".
-pub fn builtin_read_variable(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_read_variable(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-variable", &args, 1)?;
     let _prompt = expect_string(&args[0])?;
 
@@ -726,7 +726,7 @@ pub fn builtin_read_variable(args: Vec<Value>) -> EvalResult {
 /// `(read-char &optional PROMPT INHERIT SECONDS)`
 ///
 /// Stub: returns ?a (character 97).
-pub fn builtin_read_char(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_read_char(args: Vec<Value>) -> EvalResult {
     // All args optional.
     let _ = &args;
     Ok(Value::Char('a'))
@@ -735,7 +735,7 @@ pub fn builtin_read_char(args: Vec<Value>) -> EvalResult {
 /// `(read-key &optional PROMPT)`
 ///
 /// Stub: returns ?a (character 97).
-pub fn builtin_read_key(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_read_key(args: Vec<Value>) -> EvalResult {
     let _ = &args;
     Ok(Value::Char('a'))
 }
@@ -743,7 +743,7 @@ pub fn builtin_read_key(args: Vec<Value>) -> EvalResult {
 /// `(read-key-sequence PROMPT &optional CONTINUE-ECHO DONT-DOWNCASE-LAST CAN-RETURN-SWITCH-FRAME CMD-LOOP)`
 ///
 /// Stub: returns the empty string.
-pub fn builtin_read_key_sequence(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_read_key_sequence(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-key-sequence", &args, 1)?;
     let _prompt = expect_string(&args[0])?;
     Ok(Value::string(""))
@@ -752,7 +752,7 @@ pub fn builtin_read_key_sequence(args: Vec<Value>) -> EvalResult {
 /// `(y-or-n-p PROMPT)`
 ///
 /// Non-interactive stub: always returns t.
-pub fn builtin_y_or_n_p(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_y_or_n_p(args: Vec<Value>) -> EvalResult {
     expect_args("y-or-n-p", &args, 1)?;
     let _prompt = expect_string(&args[0])?;
     Ok(Value::True)
@@ -761,7 +761,7 @@ pub fn builtin_y_or_n_p(args: Vec<Value>) -> EvalResult {
 /// `(yes-or-no-p PROMPT)`
 ///
 /// Non-interactive stub: always returns t.
-pub fn builtin_yes_or_no_p(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_yes_or_no_p(args: Vec<Value>) -> EvalResult {
     expect_args("yes-or-no-p", &args, 1)?;
     let _prompt = expect_string(&args[0])?;
     Ok(Value::True)
@@ -773,7 +773,7 @@ pub fn builtin_yes_or_no_p(args: Vec<Value>) -> EvalResult {
 /// - `t` if STRING is an exact and unique match
 /// - a string (the longest common prefix) if there are matches
 /// - `nil` if no matches
-pub fn builtin_try_completion(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_try_completion(args: Vec<Value>) -> EvalResult {
     expect_min_args("try-completion", &args, 2)?;
     let string = expect_string(&args[0])?;
     let candidates = value_to_string_list(&args[1]);
@@ -803,7 +803,7 @@ pub fn builtin_try_completion(args: Vec<Value>) -> EvalResult {
 /// `(all-completions STRING COLLECTION &optional PREDICATE)`
 ///
 /// Returns a list of all completions of STRING in COLLECTION.
-pub fn builtin_all_completions(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_all_completions(args: Vec<Value>) -> EvalResult {
     expect_min_args("all-completions", &args, 2)?;
     let string = expect_string(&args[0])?;
     let candidates = value_to_string_list(&args[1]);
@@ -820,7 +820,7 @@ pub fn builtin_all_completions(args: Vec<Value>) -> EvalResult {
 /// `(test-completion STRING COLLECTION &optional PREDICATE)`
 ///
 /// Returns t if STRING is an exact match in COLLECTION, nil otherwise.
-pub fn builtin_test_completion(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_test_completion(args: Vec<Value>) -> EvalResult {
     expect_min_args("test-completion", &args, 2)?;
     let string = expect_string(&args[0])?;
     let candidates = value_to_string_list(&args[1]);
@@ -830,7 +830,7 @@ pub fn builtin_test_completion(args: Vec<Value>) -> EvalResult {
 /// `(minibuffer-prompt)` — returns the current minibuffer prompt or nil.
 ///
 /// Stub: returns nil (no active minibuffer in non-interactive mode).
-pub fn builtin_minibuffer_prompt(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_minibuffer_prompt(args: Vec<Value>) -> EvalResult {
     expect_args("minibuffer-prompt", &args, 0)?;
     Ok(Value::Nil)
 }
@@ -838,7 +838,7 @@ pub fn builtin_minibuffer_prompt(args: Vec<Value>) -> EvalResult {
 /// `(minibuffer-contents)` — returns the current minibuffer contents.
 ///
 /// Stub: returns "".
-pub fn builtin_minibuffer_contents(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_minibuffer_contents(args: Vec<Value>) -> EvalResult {
     expect_args("minibuffer-contents", &args, 0)?;
     Ok(Value::string(""))
 }
@@ -846,7 +846,7 @@ pub fn builtin_minibuffer_contents(args: Vec<Value>) -> EvalResult {
 /// `(minibuffer-depth)` — returns the current recursive minibuffer depth.
 ///
 /// Stub: returns 0.
-pub fn builtin_minibuffer_depth(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_minibuffer_depth(args: Vec<Value>) -> EvalResult {
     expect_args("minibuffer-depth", &args, 0)?;
     Ok(Value::Int(0))
 }
@@ -854,7 +854,7 @@ pub fn builtin_minibuffer_depth(args: Vec<Value>) -> EvalResult {
 /// `(minibufferp &optional BUFFER)` — returns t if BUFFER is a minibuffer.
 ///
 /// Stub: always returns nil.
-pub fn builtin_minibufferp(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_minibufferp(args: Vec<Value>) -> EvalResult {
     // 0 or 1 arg
     if args.len() > 1 {
         return Err(signal(
@@ -868,7 +868,7 @@ pub fn builtin_minibufferp(args: Vec<Value>) -> EvalResult {
 /// `(exit-minibuffer)` — exit the active minibuffer.
 ///
 /// Stub: signals an error if not in a minibuffer.
-pub fn builtin_exit_minibuffer(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_exit_minibuffer(args: Vec<Value>) -> EvalResult {
     expect_args("exit-minibuffer", &args, 0)?;
     // In a real interactive session this would exit the minibuffer.
     // Stub: signal an error since we're non-interactive.
@@ -878,7 +878,7 @@ pub fn builtin_exit_minibuffer(args: Vec<Value>) -> EvalResult {
 /// `(abort-recursive-edit)` — abort the innermost recursive edit.
 ///
 /// Stub: signals 'quit.
-pub fn builtin_abort_recursive_edit(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_abort_recursive_edit(args: Vec<Value>) -> EvalResult {
     expect_args("abort-recursive-edit", &args, 0)?;
     Err(signal("quit", vec![]))
 }
