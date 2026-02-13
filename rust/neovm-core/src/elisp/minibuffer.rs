@@ -791,10 +791,13 @@ pub(crate) fn builtin_exit_minibuffer(args: Vec<Value>) -> EvalResult {
 
 /// `(abort-recursive-edit)` — abort the innermost recursive edit.
 ///
-/// Stub: signals 'quit.
+/// Stub (batch/non-interactive): signals a user-error.
 pub(crate) fn builtin_abort_recursive_edit(args: Vec<Value>) -> EvalResult {
     expect_args("abort-recursive-edit", &args, 0)?;
-    Err(signal("quit", vec![]))
+    Err(signal(
+        "user-error",
+        vec![Value::string("No recursive edit is in progress")],
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -1382,9 +1385,21 @@ mod tests {
     }
 
     #[test]
-    fn builtin_abort_recursive_edit_signals_quit() {
+    fn builtin_abort_recursive_edit_signals_user_error() {
         let result = builtin_abort_recursive_edit(vec![]);
-        assert!(result.is_err());
+        assert!(matches!(
+            result,
+            Err(Flow::Signal(sig)) if sig.symbol == "user-error"
+        ));
+    }
+
+    #[test]
+    fn builtin_abort_recursive_edit_rejects_args() {
+        let result = builtin_abort_recursive_edit(vec![Value::Nil]);
+        assert!(matches!(
+            result,
+            Err(Flow::Signal(sig)) if sig.symbol == "wrong-number-of-arguments"
+        ));
     }
 
     #[test]
