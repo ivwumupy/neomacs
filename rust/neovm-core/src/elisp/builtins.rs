@@ -1669,6 +1669,12 @@ pub(crate) fn builtin_symbol_value(
             return Ok(value.clone());
         }
     }
+    // Check current buffer-local binding.
+    if let Some(buf) = eval.buffers.current_buffer() {
+        if let Some(value) = buf.get_buffer_local(name) {
+            return Ok(value.clone());
+        }
+    }
     eval.obarray()
         .symbol_value(name)
         .cloned()

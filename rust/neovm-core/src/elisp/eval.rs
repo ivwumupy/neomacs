@@ -365,6 +365,13 @@ impl Evaluator {
             }
         }
 
+        // Buffer-local binding on current buffer.
+        if let Some(buf) = self.buffers.current_buffer() {
+            if let Some(value) = buf.get_buffer_local(symbol) {
+                return Ok(value.clone());
+            }
+        }
+
         // Obarray value cell
         if let Some(value) = self.obarray.symbol_value(symbol) {
             return Ok(value.clone());
@@ -1506,6 +1513,23 @@ impl Evaluator {
                 return;
             }
         }
+
+        // Update existing buffer-local binding if present.
+        if let Some(buf) = self.buffers.current_buffer_mut() {
+            if buf.get_buffer_local(name).is_some() {
+                buf.set_buffer_local(name, value);
+                return;
+            }
+        }
+
+        // Auto-local variables become local upon assignment.
+        if self.custom.is_auto_buffer_local(name) {
+            if let Some(buf) = self.buffers.current_buffer_mut() {
+                buf.set_buffer_local(name, value);
+                return;
+            }
+        }
+
         // Fall through to obarray value cell
         self.obarray.set_symbol_value(name, value);
     }
