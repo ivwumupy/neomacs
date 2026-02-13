@@ -62,6 +62,17 @@ make check-all
 make check-all-neovm
 ```
 
+NeoVM-only policy cases (expected to diverge from GNU Emacs oracle baselines)
+can be run separately:
+
+```bash
+cd test/neovm/vm-compat
+make check-all-neovm-only
+```
+
+Current NeoVM-only policy cases include source-only loading behavior such as
+`.elc` rejection and `.neoc` fallback safety.
+
 ## Next step
 
 Add a NeoVM runner that evaluates the same corpus and diffs against this oracle output.

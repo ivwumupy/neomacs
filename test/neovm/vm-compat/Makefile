@@ -1,9 +1,11 @@
 FORMS ?= cases/core.forms
 EXPECTED ?= cases/core.expected.tsv
 NEOVM_OUT ?= cases/core.neovm.tsv
-CASES ?= cases/core cases/bindings cases/pcase cases/seq-position cases/seq-misc cases/seq-uniq cases/seq-slice cases/seq-more cases/seq-concat cases/seq-reverse cases/take cases/match-data cases/search-buffer cases/search-count cases/replace-match cases/load-require cases/load-flags cases/load-suffixes cases/load-relative cases/load-history cases/load-path-order cases/reader-hash
+CASES ?= cases/core cases/bindings cases/pcase cases/seq-position cases/seq-misc cases/seq-uniq cases/seq-slice cases/seq-more cases/seq-concat cases/seq-reverse cases/take cases/match-data cases/search-buffer cases/search-count cases/replace-match cases/load-require cases/load-flags cases/load-relative cases/load-history cases/load-path-order cases/reader-hash
+NEOVM_ONLY_CASES ?= cases/load-suffixes cases/load-policy
+ALL_NEOVM_CASES ?= $(CASES) $(NEOVM_ONLY_CASES)
 
-.PHONY: oracle neovm record check compare check-neovm record-all check-all check-all-neovm
+.PHONY: oracle neovm record check compare check-neovm record-all check-all check-all-neovm check-all-neovm-only
 
 oracle:
 	./run-oracle.sh $(FORMS)
@@ -50,7 +52,14 @@ check-all:
 
 check-all-neovm:
 	@set -e; \
-	for case in $(CASES); do \
+	for case in $(ALL_NEOVM_CASES); do \
+		echo "== $$case =="; \
+		$(MAKE) --no-print-directory check-neovm FORMS="$$case.forms" EXPECTED="$$case.expected.tsv"; \
+	done
+
+check-all-neovm-only:
+	@set -e; \
+	for case in $(NEOVM_ONLY_CASES); do \
 		echo "== $$case =="; \
 		$(MAKE) --no-print-directory check-neovm FORMS="$$case.forms" EXPECTED="$$case.expected.tsv"; \
 	done
