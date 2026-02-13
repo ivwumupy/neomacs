@@ -6,6 +6,7 @@ use super::abbrev::AbbrevManager;
 use super::advice::{AdviceManager, VariableWatcherList};
 use super::autoload::AutoloadManager;
 use super::bookmark::BookmarkManager;
+use super::category::CategoryManager;
 use super::builtins;
 use super::custom::CustomManager;
 use super::error::*;
@@ -14,6 +15,7 @@ use super::interactive::InteractiveRegistry;
 use super::mode::ModeRegistry;
 use super::keymap::KeymapManager;
 use super::kill_ring::KillRing;
+use super::kmacro::KmacroManager;
 use super::network::NetworkManager;
 use super::process::ProcessManager;
 use super::regex::MatchData;
@@ -73,6 +75,10 @@ pub struct Evaluator {
     pub(crate) modes: ModeRegistry,
     /// Thread manager — cooperative threading primitives.
     pub(crate) threads: ThreadManager,
+    /// Category manager — character category tables.
+    pub(crate) category_manager: CategoryManager,
+    /// Keyboard macro manager — recording, playback, macro ring.
+    pub(crate) kmacro: KmacroManager,
     /// Recursion depth counter.
     depth: usize,
     /// Maximum recursion depth.
@@ -138,6 +144,8 @@ impl Evaluator {
             frames: FrameManager::new(),
             modes: ModeRegistry::new(),
             threads: ThreadManager::new(),
+            category_manager: CategoryManager::new(),
+            kmacro: KmacroManager::new(),
             depth: 0,
             max_depth: 200,
         }

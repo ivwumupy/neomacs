@@ -3001,6 +3001,20 @@ pub(crate) fn dispatch_builtin(
         "view-register" => return Some(super::register::builtin_view_register(eval, args)),
         "get-register" => return Some(super::register::builtin_get_register(eval, args)),
         "set-register" => return Some(super::register::builtin_set_register(eval, args)),
+        // Keyboard macro operations (evaluator-dependent)
+        "start-kbd-macro" => return Some(super::kmacro::builtin_start_kbd_macro(eval, args)),
+        "end-kbd-macro" => return Some(super::kmacro::builtin_end_kbd_macro(eval, args)),
+        "call-last-kbd-macro" => return Some(super::kmacro::builtin_call_last_kbd_macro(eval, args)),
+        "execute-kbd-macro" => return Some(super::kmacro::builtin_execute_kbd_macro(eval, args)),
+        "name-last-kbd-macro" => return Some(super::kmacro::builtin_name_last_kbd_macro(eval, args)),
+        "insert-kbd-macro" => return Some(super::kmacro::builtin_insert_kbd_macro(eval, args)),
+        "kbd-macro-query" => return Some(super::kmacro::builtin_kbd_macro_query(eval, args)),
+        "store-kbd-macro-event" => return Some(super::kmacro::builtin_store_kbd_macro_event(eval, args)),
+        "kmacro-set-counter" => return Some(super::kmacro::builtin_kmacro_set_counter(eval, args)),
+        "kmacro-add-counter" => return Some(super::kmacro::builtin_kmacro_add_counter(eval, args)),
+        "kmacro-set-format" => return Some(super::kmacro::builtin_kmacro_set_format(eval, args)),
+        "defining-kbd-macro-p" => return Some(super::kmacro::builtin_defining_kbd_macro_p_eval(eval, args)),
+        "last-kbd-macro" => return Some(super::kmacro::builtin_last_kbd_macro_eval(eval, args)),
         // Bookmark operations (evaluator-dependent)
         "bookmark-set" => return Some(super::bookmark::builtin_bookmark_set(eval, args)),
         "bookmark-jump" => return Some(super::bookmark::builtin_bookmark_jump(eval, args)),
@@ -3216,6 +3230,11 @@ pub(crate) fn dispatch_builtin(
         "make-condition-variable" => return Some(super::threads::builtin_make_condition_variable(eval, args)),
         "condition-wait" => return Some(super::threads::builtin_condition_wait(eval, args)),
         "condition-notify" => return Some(super::threads::builtin_condition_notify(eval, args)),
+
+        // Hash-table / obarray (evaluator-dependent)
+        "maphash" => return Some(super::hashtab::builtin_maphash(eval, args)),
+        "mapatoms" => return Some(super::hashtab::builtin_mapatoms(eval, args)),
+        "unintern" => return Some(super::hashtab::builtin_unintern(eval, args)),
 
         // Char-table (evaluator-dependent — applies function)
         "map-char-table" => return Some(super::chartable::builtin_map_char_table(eval, args)),
@@ -3451,6 +3470,10 @@ pub(crate) fn dispatch_builtin(
         // Register (pure — no evaluator needed)
         "register-to-string" => super::register::builtin_register_to_string(args),
 
+        // Keyboard macro (pure — no evaluator needed)
+        "executing-kbd-macro-p" => super::kmacro::builtin_executing_kbd_macro_p(args),
+        "kmacro-p" => super::kmacro::builtin_kmacro_p(args),
+
         // Character encoding
         "char-width" => crate::encoding::builtin_char_width(args),
         "multibyte-string-p" => crate::encoding::builtin_multibyte_string_p(args),
@@ -3511,6 +3534,16 @@ pub(crate) fn dispatch_builtin(
 
         // Error hierarchy (pure)
         "signal" => super::errors::builtin_signal(args),
+
+        // Hash-table extended (pure)
+        "hash-table-keys" => super::hashtab::builtin_hash_table_keys(args),
+        "hash-table-values" => super::hashtab::builtin_hash_table_values(args),
+        "hash-table-test" => super::hashtab::builtin_hash_table_test(args),
+        "hash-table-size" => super::hashtab::builtin_hash_table_size(args),
+        "hash-table-rehash-size" => super::hashtab::builtin_hash_table_rehash_size(args),
+        "hash-table-rehash-threshold" => super::hashtab::builtin_hash_table_rehash_threshold(args),
+        "hash-table-weakness" => super::hashtab::builtin_hash_table_weakness(args),
+        "copy-hash-table" => super::hashtab::builtin_copy_hash_table(args),
 
         // Threading (pure)
         "threadp" => super::threads::builtin_threadp(args),
@@ -3792,6 +3825,9 @@ pub(crate) fn dispatch_builtin_pure(name: &str, args: Vec<Value>) -> Option<Eval
         "sit-for" => super::timer::builtin_sit_for(args),
         // Register (pure)
         "register-to-string" => super::register::builtin_register_to_string(args),
+        // Keyboard macro (pure)
+        "executing-kbd-macro-p" => super::kmacro::builtin_executing_kbd_macro_p(args),
+        "kmacro-p" => super::kmacro::builtin_kmacro_p(args),
         // Character encoding (pure)
         "char-width" => crate::encoding::builtin_char_width(args),
         "multibyte-string-p" => crate::encoding::builtin_multibyte_string_p(args),
