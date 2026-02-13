@@ -17,7 +17,9 @@ forms_file_abs="$forms_dir/$(basename "$forms_file")"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
-NEOVM_FORMS_FILE="$forms_file_abs" cargo run \
+NEOVM_FORMS_FILE="$forms_file_abs" \
+NEOVM_DISABLE_LOAD_CACHE_WRITE=1 \
+cargo run \
   --manifest-path "$repo_root/rust/neovm-worker/Cargo.toml" \
   --example elisp_compat_runner \
   -- "$forms_file_abs"

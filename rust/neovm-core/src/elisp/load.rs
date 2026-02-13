@@ -278,8 +278,23 @@ fn parse_source_with_cache(
         ))],
     })?;
     // Cache persistence failures must not affect `load` semantics.
-    let _ = write_forms_cache(source_path, source, lexical_binding, &forms);
+    if load_cache_writes_enabled() {
+        let _ = write_forms_cache(source_path, source, lexical_binding, &forms);
+    }
     Ok(forms)
+}
+
+fn load_cache_writes_enabled() -> bool {
+    match std::env::var("NEOVM_DISABLE_LOAD_CACHE_WRITE") {
+        Ok(value) => {
+            let normalized = value.trim().to_ascii_lowercase();
+            !(normalized == "1"
+                || normalized == "true"
+                || normalized == "yes"
+                || normalized == "on")
+        }
+        Err(_) => true,
+    }
 }
 
 fn lexical_binding_enabled_for_source(source: &str) -> bool {
