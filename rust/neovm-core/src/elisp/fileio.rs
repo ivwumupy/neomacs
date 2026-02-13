@@ -12,6 +12,7 @@ use std::collections::VecDeque;
 use regex::Regex;
 
 use super::error::{signal, EvalResult, Flow};
+use super::eval::Evaluator;
 use super::value::Value;
 
 // ===========================================================================
@@ -759,10 +760,42 @@ pub(crate) fn builtin_substitute_in_file_name(args: Vec<Value>) -> EvalResult {
     Ok(Value::string(substitute_in_file_name(&filename)))
 }
 
+fn default_directory_for_eval(eval: &Evaluator) -> Option<String> {
+    for frame in eval.dynamic.iter().rev() {
+        if let Some(value) = frame.get("default-directory") {
+            return match value {
+                Value::Str(s) => Some((**s).clone()),
+                _ => None,
+            };
+        }
+    }
+    match eval.obarray.symbol_value("default-directory") {
+        Some(Value::Str(s)) => Some((**s).clone()),
+        _ => None,
+    }
+}
+
+fn resolve_filename_for_eval(eval: &Evaluator, filename: &str) -> String {
+    if filename.is_empty() || Path::new(filename).is_absolute() {
+        return filename.to_string();
+    }
+    let default_dir = default_directory_for_eval(eval);
+    expand_file_name(filename, default_dir.as_deref())
+}
+
 /// (file-exists-p FILENAME) -> t or nil
 pub(crate) fn builtin_file_exists_p(args: Vec<Value>) -> EvalResult {
     expect_args("file-exists-p", &args, 1)?;
     let filename = expect_string_strict(&args[0])?;
+    Ok(Value::bool(file_exists_p(&filename)))
+}
+
+/// Evaluator-aware variant of `file-exists-p` that resolves relative paths
+/// against dynamic/default `default-directory`.
+pub(crate) fn builtin_file_exists_p_eval(eval: &Evaluator, args: Vec<Value>) -> EvalResult {
+    expect_args("file-exists-p", &args, 1)?;
+    let filename = expect_string_strict(&args[0])?;
+    let filename = resolve_filename_for_eval(eval, &filename);
     Ok(Value::bool(file_exists_p(&filename)))
 }
 
@@ -773,10 +806,28 @@ pub(crate) fn builtin_file_readable_p(args: Vec<Value>) -> EvalResult {
     Ok(Value::bool(file_readable_p(&filename)))
 }
 
+/// Evaluator-aware variant of `file-readable-p` that resolves relative paths
+/// against dynamic/default `default-directory`.
+pub(crate) fn builtin_file_readable_p_eval(eval: &Evaluator, args: Vec<Value>) -> EvalResult {
+    expect_args("file-readable-p", &args, 1)?;
+    let filename = expect_string_strict(&args[0])?;
+    let filename = resolve_filename_for_eval(eval, &filename);
+    Ok(Value::bool(file_readable_p(&filename)))
+}
+
 /// (file-writable-p FILENAME) -> t or nil
 pub(crate) fn builtin_file_writable_p(args: Vec<Value>) -> EvalResult {
     expect_args("file-writable-p", &args, 1)?;
     let filename = expect_string_strict(&args[0])?;
+    Ok(Value::bool(file_writable_p(&filename)))
+}
+
+/// Evaluator-aware variant of `file-writable-p` that resolves relative paths
+/// against dynamic/default `default-directory`.
+pub(crate) fn builtin_file_writable_p_eval(eval: &Evaluator, args: Vec<Value>) -> EvalResult {
+    expect_args("file-writable-p", &args, 1)?;
+    let filename = expect_string_strict(&args[0])?;
+    let filename = resolve_filename_for_eval(eval, &filename);
     Ok(Value::bool(file_writable_p(&filename)))
 }
 
@@ -787,6 +838,15 @@ pub(crate) fn builtin_file_directory_p(args: Vec<Value>) -> EvalResult {
     Ok(Value::bool(file_directory_p(&filename)))
 }
 
+/// Evaluator-aware variant of `file-directory-p` that resolves relative paths
+/// against dynamic/default `default-directory`.
+pub(crate) fn builtin_file_directory_p_eval(eval: &Evaluator, args: Vec<Value>) -> EvalResult {
+    expect_args("file-directory-p", &args, 1)?;
+    let filename = expect_string_strict(&args[0])?;
+    let filename = resolve_filename_for_eval(eval, &filename);
+    Ok(Value::bool(file_directory_p(&filename)))
+}
+
 /// (file-regular-p FILENAME) -> t or nil
 pub(crate) fn builtin_file_regular_p(args: Vec<Value>) -> EvalResult {
     expect_args("file-regular-p", &args, 1)?;
@@ -794,10 +854,28 @@ pub(crate) fn builtin_file_regular_p(args: Vec<Value>) -> EvalResult {
     Ok(Value::bool(file_regular_p(&filename)))
 }
 
+/// Evaluator-aware variant of `file-regular-p` that resolves relative paths
+/// against dynamic/default `default-directory`.
+pub(crate) fn builtin_file_regular_p_eval(eval: &Evaluator, args: Vec<Value>) -> EvalResult {
+    expect_args("file-regular-p", &args, 1)?;
+    let filename = expect_string_strict(&args[0])?;
+    let filename = resolve_filename_for_eval(eval, &filename);
+    Ok(Value::bool(file_regular_p(&filename)))
+}
+
 /// (file-symlink-p FILENAME) -> t or nil
 pub(crate) fn builtin_file_symlink_p(args: Vec<Value>) -> EvalResult {
     expect_args("file-symlink-p", &args, 1)?;
     let filename = expect_string_strict(&args[0])?;
+    Ok(Value::bool(file_symlink_p(&filename)))
+}
+
+/// Evaluator-aware variant of `file-symlink-p` that resolves relative paths
+/// against dynamic/default `default-directory`.
+pub(crate) fn builtin_file_symlink_p_eval(eval: &Evaluator, args: Vec<Value>) -> EvalResult {
+    expect_args("file-symlink-p", &args, 1)?;
+    let filename = expect_string_strict(&args[0])?;
+    let filename = resolve_filename_for_eval(eval, &filename);
     Ok(Value::bool(file_symlink_p(&filename)))
 }
 
@@ -1673,6 +1751,30 @@ mod tests {
         assert!(builtin_file_directory_p(vec![Value::Nil]).is_err());
         assert!(builtin_file_regular_p(vec![Value::Nil]).is_err());
         assert!(builtin_file_symlink_p(vec![Value::Nil]).is_err());
+    }
+
+    #[test]
+    fn test_eval_file_predicates_respect_default_directory() {
+        use super::super::eval::Evaluator;
+
+        let dir = std::env::temp_dir().join("neovm_fileio_eval_default_dir");
+        let subdir = dir.join("subdir");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&subdir).expect("create test subdir");
+
+        let mut eval = Evaluator::new();
+        eval.obarray
+            .set_symbol_value("default-directory", Value::string(dir.to_string_lossy()));
+
+        let is_dir = builtin_file_directory_p_eval(&eval, vec![Value::string("subdir")])
+            .expect("file-directory-p eval");
+        assert!(is_dir.is_truthy());
+
+        let exists = builtin_file_exists_p_eval(&eval, vec![Value::string("subdir")])
+            .expect("file-exists-p eval");
+        assert!(exists.is_truthy());
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

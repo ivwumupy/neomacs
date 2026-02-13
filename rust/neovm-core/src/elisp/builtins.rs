@@ -3754,6 +3754,12 @@ pub(crate) fn dispatch_builtin(
         "file-name-completion" => {
             return Some(super::dired::builtin_file_name_completion_eval(eval, args))
         }
+        "file-exists-p" => return Some(super::fileio::builtin_file_exists_p_eval(eval, args)),
+        "file-readable-p" => return Some(super::fileio::builtin_file_readable_p_eval(eval, args)),
+        "file-writable-p" => return Some(super::fileio::builtin_file_writable_p_eval(eval, args)),
+        "file-directory-p" => return Some(super::fileio::builtin_file_directory_p_eval(eval, args)),
+        "file-regular-p" => return Some(super::fileio::builtin_file_regular_p_eval(eval, args)),
+        "file-symlink-p" => return Some(super::fileio::builtin_file_symlink_p_eval(eval, args)),
         // Keymap operations
         "make-keymap" => return Some(builtin_make_keymap(eval, args)),
         "make-sparse-keymap" => return Some(builtin_make_sparse_keymap(eval, args)),
