@@ -712,6 +712,8 @@ impl LayoutEngine {
         let mut overlay_after_face = FaceDataFFI::default();
         let mut overlay_before_nruns: i32 = 0;
         let mut overlay_after_nruns: i32 = 0;
+        let mut overlay_before_naligns: i32 = 0;
+        let mut overlay_after_naligns: i32 = 0;
 
         // Line number state
         let mut current_line: i64 = if lnum_enabled {
@@ -1131,6 +1133,8 @@ impl LayoutEngine {
                 let mut ovl_right_fringe_bitmap: i32 = 0;
                 let mut ovl_right_fringe_fg: u32 = 0;
                 let mut ovl_right_fringe_bg: u32 = 0;
+                overlay_before_naligns = 0;
+                overlay_after_naligns = 0;
                 neomacs_layout_overlay_strings_at(
                     buffer, window, charpos,
                     overlay_before_buf.as_mut_ptr(),
@@ -1149,6 +1153,8 @@ impl LayoutEngine {
                     &mut ovl_right_fringe_bitmap,
                     &mut ovl_right_fringe_fg,
                     &mut ovl_right_fringe_bg,
+                    &mut overlay_before_naligns,
+                    &mut overlay_after_naligns,
                 );
 
                 // Store fringe bitmaps from overlay display properties
@@ -1174,6 +1180,12 @@ impl LayoutEngine {
                     } else {
                         Vec::new()
                     };
+                    let before_align_entries = if overlay_before_naligns > 0 {
+                        parse_overlay_align_entries(&overlay_before_buf, overlay_before_len as usize, overlay_before_nruns, overlay_before_naligns)
+                    } else {
+                        Vec::new()
+                    };
+                    let mut bcurrent_align = 0usize;
 
                     // Use per-char face runs, overlay face, or resolve face for position
                     if !before_has_runs {
@@ -1200,6 +1212,30 @@ impl LayoutEngine {
                     let mut bi = 0usize;
                     let mut bcurrent_run = 0usize;
                     while bi < bstr.len() && row < max_rows {
+                        // Check for align-to entry at this byte offset
+                        if bcurrent_align < before_align_entries.len()
+                            && bi == before_align_entries[bcurrent_align].byte_offset as usize
+                        {
+                            let target_x = before_align_entries[bcurrent_align].align_to_cols * char_w;
+                            if target_x > x_offset {
+                                let gx = content_x + x_offset;
+                                let gy = row_y[row as usize];
+                                let stretch_w = target_x - x_offset;
+                                Self::add_stretch_for_face(
+                                    &self.face_data, frame_glyphs,
+                                    gx, gy, stretch_w, char_h,
+                                    face_bg, self.face_data.face_id, false,
+                                );
+                                col = before_align_entries[bcurrent_align].align_to_cols.ceil() as i32;
+                                x_offset = target_x;
+                            }
+                            bcurrent_align += 1;
+                            // Skip the character with the display property
+                            let (_bch, blen) = decode_utf8(&bstr[bi..]);
+                            bi += blen;
+                            continue;
+                        }
+
                         // Apply face run if needed
                         if before_has_runs && bcurrent_run < before_face_runs.len() {
                             bcurrent_run = apply_overlay_face_run(
@@ -1474,8 +1510,7 @@ impl LayoutEngine {
                         next_face_check = if next_check > charpos { next_check } else { charpos + 1 };
                     }
 
-                    let target_col = display_prop.align_to.ceil() as i32;
-                    let target_x = target_col as f32 * char_w;
+                    let target_x = display_prop.align_to * char_w;
                     if target_x > x_offset && row < max_rows {
                         let gx = content_x + x_offset;
                         let gy = row_y[row as usize];
@@ -1485,7 +1520,7 @@ impl LayoutEngine {
                             gx, gy, stretch_w, char_h,
                             face_bg, self.face_data.face_id, false,
                         );
-                        col = target_col;
+                        col = display_prop.align_to.ceil() as i32;
                         x_offset = target_x;
                     }
 
@@ -2696,6 +2731,12 @@ impl LayoutEngine {
                 } else {
                     Vec::new()
                 };
+                let after_align_entries = if overlay_after_naligns > 0 {
+                    parse_overlay_align_entries(&overlay_after_buf, overlay_after_len as usize, overlay_after_nruns, overlay_after_naligns)
+                } else {
+                    Vec::new()
+                };
+                let mut acurrent_align = 0usize;
 
                 // Apply overlay face for after-string if no per-char runs
                 if !after_has_runs && overlay_after_face.face_id != 0 {
@@ -2706,6 +2747,29 @@ impl LayoutEngine {
                 let mut ai = 0usize;
                 let mut acurrent_run = 0usize;
                 while ai < astr.len() && row < max_rows {
+                    // Check for align-to entry at this byte offset
+                    if acurrent_align < after_align_entries.len()
+                        && ai == after_align_entries[acurrent_align].byte_offset as usize
+                    {
+                        let target_x = after_align_entries[acurrent_align].align_to_cols * char_w;
+                        if target_x > x_offset {
+                            let gx = content_x + x_offset;
+                            let gy = row_y[row as usize];
+                            let stretch_w = target_x - x_offset;
+                            Self::add_stretch_for_face(
+                                &self.face_data, frame_glyphs,
+                                gx, gy, stretch_w, char_h,
+                                face_bg, self.face_data.face_id, false,
+                            );
+                            col = after_align_entries[acurrent_align].align_to_cols.ceil() as i32;
+                            x_offset = target_x;
+                        }
+                        acurrent_align += 1;
+                        let (_ach, alen) = decode_utf8(&astr[ai..]);
+                        ai += alen;
+                        continue;
+                    }
+
                     // Apply face run if needed
                     if after_has_runs && acurrent_run < after_face_runs.len() {
                         acurrent_run = apply_overlay_face_run(
@@ -2837,6 +2901,8 @@ impl LayoutEngine {
             let mut eob_right_fringe_bitmap: i32 = 0;
             let mut eob_right_fringe_fg: u32 = 0;
             let mut eob_right_fringe_bg: u32 = 0;
+            let mut eob_before_naligns: i32 = 0;
+            let mut eob_after_naligns: i32 = 0;
             neomacs_layout_overlay_strings_at(
                 buffer, window, charpos,
                 overlay_before_buf.as_mut_ptr(),
@@ -2855,6 +2921,8 @@ impl LayoutEngine {
                 &mut eob_right_fringe_bitmap,
                 &mut eob_right_fringe_fg,
                 &mut eob_right_fringe_bg,
+                &mut eob_before_naligns,
+                &mut eob_after_naligns,
             );
 
             // Store fringe bitmaps from overlay display properties at EOB
@@ -2874,6 +2942,12 @@ impl LayoutEngine {
                 } else {
                     Vec::new()
                 };
+                let eob_before_align_entries = if eob_before_naligns > 0 {
+                    parse_overlay_align_entries(&overlay_before_buf, eob_before_len as usize, overlay_before_nruns, eob_before_naligns)
+                } else {
+                    Vec::new()
+                };
+                let mut eob_bcurrent_align = 0usize;
 
                 if !eob_before_has_runs && eob_before_face.face_id != 0 {
                     self.apply_face(&eob_before_face, frame, frame_glyphs);
@@ -2882,6 +2956,29 @@ impl LayoutEngine {
                 let mut bi = 0usize;
                 let mut bcurrent_run = 0usize;
                 while bi < bstr.len() && row < max_rows {
+                    // Check for align-to entry at this byte offset
+                    if eob_bcurrent_align < eob_before_align_entries.len()
+                        && bi == eob_before_align_entries[eob_bcurrent_align].byte_offset as usize
+                    {
+                        let target_x = eob_before_align_entries[eob_bcurrent_align].align_to_cols * char_w;
+                        if target_x > x_offset {
+                            let gx = content_x + x_offset;
+                            let gy = row_y[row as usize];
+                            let stretch_w = target_x - x_offset;
+                            Self::add_stretch_for_face(
+                                &self.face_data, frame_glyphs,
+                                gx, gy, stretch_w, char_h,
+                                face_bg, self.face_data.face_id, false,
+                            );
+                            col = eob_before_align_entries[eob_bcurrent_align].align_to_cols.ceil() as i32;
+                            x_offset = target_x;
+                        }
+                        eob_bcurrent_align += 1;
+                        let (_bch, blen) = decode_utf8(&bstr[bi..]);
+                        bi += blen;
+                        continue;
+                    }
+
                     if eob_before_has_runs && bcurrent_run < eob_before_face_runs.len() {
                         bcurrent_run = apply_overlay_face_run(
                             &eob_before_face_runs, bi, bcurrent_run, frame_glyphs,
@@ -2930,6 +3027,12 @@ impl LayoutEngine {
                 } else {
                     Vec::new()
                 };
+                let eob_after_align_entries = if eob_after_naligns > 0 {
+                    parse_overlay_align_entries(&overlay_after_buf, overlay_after_len as usize, overlay_after_nruns, eob_after_naligns)
+                } else {
+                    Vec::new()
+                };
+                let mut eob_acurrent_align = 0usize;
 
                 if !eob_after_has_runs && overlay_after_face.face_id != 0 {
                     self.apply_face(&overlay_after_face, frame, frame_glyphs);
@@ -2938,6 +3041,29 @@ impl LayoutEngine {
                 let mut ai = 0usize;
                 let mut acurrent_run = 0usize;
                 while ai < astr.len() && row < max_rows {
+                    // Check for align-to entry at this byte offset
+                    if eob_acurrent_align < eob_after_align_entries.len()
+                        && ai == eob_after_align_entries[eob_acurrent_align].byte_offset as usize
+                    {
+                        let target_x = eob_after_align_entries[eob_acurrent_align].align_to_cols * char_w;
+                        if target_x > x_offset {
+                            let gx = content_x + x_offset;
+                            let gy = row_y[row as usize];
+                            let stretch_w = target_x - x_offset;
+                            Self::add_stretch_for_face(
+                                &self.face_data, frame_glyphs,
+                                gx, gy, stretch_w, char_h,
+                                face_bg, self.face_data.face_id, false,
+                            );
+                            col = eob_after_align_entries[eob_acurrent_align].align_to_cols.ceil() as i32;
+                            x_offset = target_x;
+                        }
+                        eob_acurrent_align += 1;
+                        let (_ach, alen) = decode_utf8(&astr[ai..]);
+                        ai += alen;
+                        continue;
+                    }
+
                     if eob_after_has_runs && acurrent_run < eob_after_face_runs.len() {
                         acurrent_run = apply_overlay_face_run(
                             &eob_after_face_runs, ai, acurrent_run, frame_glyphs,

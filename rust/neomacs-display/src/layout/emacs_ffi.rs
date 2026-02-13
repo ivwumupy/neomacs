@@ -269,6 +269,8 @@ extern "C" {
         right_fringe_bitmap_out: *mut c_int,
         right_fringe_fg_out: *mut u32,
         right_fringe_bg_out: *mut u32,
+        before_naligns_out: *mut c_int,
+        after_naligns_out: *mut c_int,
     ) -> c_int;
 
     // ========================================================================

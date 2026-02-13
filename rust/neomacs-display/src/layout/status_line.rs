@@ -41,6 +41,28 @@ pub(crate) fn parse_overlay_face_runs(buf: &[u8], text_len: usize, nruns: i32) -
     runs
 }
 
+/// An align-to entry within an overlay string: byte offset + target column.
+pub(crate) struct OverlayAlignEntry {
+    pub byte_offset: u16,
+    pub align_to_cols: f32,
+}
+
+/// Parse align-to entries appended after face runs in a buffer.
+/// Entries are stored as 6-byte records: u16 byte_offset + f32 align_to_cols.
+pub(crate) fn parse_overlay_align_entries(buf: &[u8], text_len: usize, nruns: i32, naligns: i32) -> Vec<OverlayAlignEntry> {
+    let mut entries = Vec::with_capacity(naligns as usize);
+    let aligns_start = text_len + nruns as usize * 10;
+    for ai in 0..naligns as usize {
+        let off = aligns_start + ai * 6;
+        if off + 6 <= buf.len() {
+            let byte_offset = u16::from_ne_bytes([buf[off], buf[off + 1]]);
+            let align_to_cols = f32::from_ne_bytes([buf[off + 2], buf[off + 3], buf[off + 4], buf[off + 5]]);
+            entries.push(OverlayAlignEntry { byte_offset, align_to_cols });
+        }
+    }
+    entries
+}
+
 /// Apply the face run covering the current byte index.
 /// Returns the updated current_run index.
 pub(crate) fn apply_overlay_face_run(

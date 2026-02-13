@@ -3498,7 +3498,9 @@ extern int neomacs_layout_overlay_strings_at(EmacsBuffer buffer,
                                              uint32_t *leftFringeBgOut,
                                              int *rightFringeBitmapOut,
                                              uint32_t *rightFringeFgOut,
-                                             uint32_t *rightFringeBgOut);
+                                             uint32_t *rightFringeBgOut,
+                                             int *beforeNalignsOut,
+                                             int *afterNalignsOut);
 
 /**
  * Check if a character should display as a glyphless glyph.

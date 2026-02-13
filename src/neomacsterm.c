@@ -3558,13 +3558,53 @@ neomacs_layout_check_display_prop (void *buffer_ptr, void *window_ptr,
             }
           else if (CONSP (align_val))
             {
+              Lisp_Object car = XCAR (align_val);
+
+              /* Handle (+ EXPR...) and (- EXPR...) — symbolic align-to forms
+                 used by marginalia: (+ left N), (+ center N), (+ right N) */
+              if (EQ (car, Qplus) || EQ (car, Qminus))
+                {
+                  struct window *sw = window_ptr ? (struct window *) window_ptr : NULL;
+                  float col_w = sw ? (float) FRAME_COLUMN_WIDTH (XFRAME (WINDOW_FRAME (sw)))
+                                   : 8.0f;
+                  float base_cols = 0;
+                  float offset_cols = 0;
+                  Lisp_Object args = XCDR (align_val);
+
+                  while (CONSP (args))
+                    {
+                      Lisp_Object arg = XCAR (args);
+                      if (EQ (arg, Qleft))
+                        base_cols = 0;
+                      else if (EQ (arg, Qcenter))
+                        {
+                          if (sw && col_w > 0)
+                            base_cols = (float) window_box_width (sw, TEXT_AREA) / (2.0f * col_w);
+                        }
+                      else if (EQ (arg, Qright))
+                        {
+                          if (sw && col_w > 0)
+                            base_cols = (float) window_box_width (sw, TEXT_AREA) / col_w;
+                        }
+                      else if (FIXNUMP (arg))
+                        offset_cols += (float) XFIXNUM (arg);
+                      else if (FLOATP (arg))
+                        offset_cols += (float) XFLOAT_DATA (arg);
+                      args = XCDR (args);
+                    }
+
+                  out->align_to = base_cols + (EQ (car, Qplus) ? offset_cols : -offset_cols);
+                  out->type = 3;
+                  set_buffer_internal_1 (old);
+                  return 0;
+                }
+
               /* (N) or (N . pixel) — pixel-based align-to */
-              Lisp_Object n = XCAR (align_val);
               float pixel_pos = 0;
-              if (FIXNUMP (n))
-                pixel_pos = (float) XFIXNUM (n);
-              else if (FLOATP (n))
-                pixel_pos = (float) XFLOAT_DATA (n);
+              if (FIXNUMP (car))
+                pixel_pos = (float) XFIXNUM (car);
+              else if (FLOATP (car))
+                pixel_pos = (float) XFLOAT_DATA (car);
               struct window *sw = window_ptr ? (struct window *) window_ptr : NULL;
               float col_w = sw ? (float) FRAME_COLUMN_WIDTH (XFRAME (WINDOW_FRAME (sw)))
                                : 8.0f;
@@ -3957,6 +3997,113 @@ neomacs_layout_check_display_prop (void *buffer_ptr, void *window_ptr,
   return 0;
 }
 
+/* Resolve align-to value from a (space :align-to SPEC) display property.
+   Returns the align-to column value, or -1 if not a space align-to spec.
+   Handles simple integers, floats, and symbolic forms like (+ left N). */
+static float
+resolve_space_align_to (Lisp_Object display_val, struct window *w)
+{
+  if (!CONSP (display_val))
+    return -1;
+  Lisp_Object car = XCAR (display_val);
+  if (!EQ (car, Qspace))
+    return -1;
+  Lisp_Object plist = XCDR (display_val);
+  Lisp_Object align_val = Fplist_get (plist, QCalign_to, Qnil);
+  if (NILP (align_val))
+    return -1;
+  if (FIXNUMP (align_val))
+    return (float) XFIXNUM (align_val);
+  if (FLOATP (align_val))
+    return (float) XFLOAT_DATA (align_val);
+  if (CONSP (align_val))
+    {
+      Lisp_Object acar = XCAR (align_val);
+      if (EQ (acar, Qplus) || EQ (acar, Qminus))
+        {
+          float col_w = w ? (float) FRAME_COLUMN_WIDTH (XFRAME (WINDOW_FRAME (w)))
+                          : 8.0f;
+          float base_cols = 0;
+          float offset_cols = 0;
+          Lisp_Object args = XCDR (align_val);
+          while (CONSP (args))
+            {
+              Lisp_Object arg = XCAR (args);
+              if (EQ (arg, Qleft))
+                base_cols = 0;
+              else if (EQ (arg, Qcenter))
+                {
+                  if (w && col_w > 0)
+                    base_cols = (float) window_box_width (w, TEXT_AREA) / (2.0f * col_w);
+                }
+              else if (EQ (arg, Qright))
+                {
+                  if (w && col_w > 0)
+                    base_cols = (float) window_box_width (w, TEXT_AREA) / col_w;
+                }
+              else if (FIXNUMP (arg))
+                offset_cols += (float) XFIXNUM (arg);
+              else if (FLOATP (arg))
+                offset_cols += (float) XFLOAT_DATA (arg);
+              args = XCDR (args);
+            }
+          return base_cols + (EQ (acar, Qplus) ? offset_cols : -offset_cols);
+        }
+      /* (N) pixel form */
+      Lisp_Object n = XCAR (align_val);
+      float pixel_pos = 0;
+      if (FIXNUMP (n))
+        pixel_pos = (float) XFIXNUM (n);
+      else if (FLOATP (n))
+        pixel_pos = (float) XFLOAT_DATA (n);
+      float col_w = w ? (float) FRAME_COLUMN_WIDTH (XFRAME (WINDOW_FRAME (w)))
+                       : 8.0f;
+      return col_w > 0 ? pixel_pos / col_w : 0;
+    }
+  return -1;
+}
+
+/* Scan a Lisp string for display text properties containing
+   (space :align-to ...) and encode them as align-to entries in buf.
+   Each entry is 6 bytes: u16 byte_offset + f32 align_to_cols.
+   Entries are appended starting at buf_offset.
+   Returns the number of entries written. */
+static int
+extract_string_align_entries (Lisp_Object str, struct window *w,
+                              uint8_t *buf, int buf_len,
+                              int buf_offset)
+{
+  ptrdiff_t nchars = SCHARS (str);
+  ptrdiff_t si = 0;
+  int naligns = 0;
+  int max_aligns = (buf_len - buf_offset) / 6;
+
+  while (si < nchars && naligns < max_aligns)
+    {
+      Lisp_Object dp = Fget_text_property (make_fixnum (si), Qdisplay, str);
+      if (!NILP (dp))
+        {
+          float align_to = resolve_space_align_to (dp, w);
+          if (align_to >= 0)
+            {
+              ptrdiff_t byte_off = string_char_to_byte (str, si);
+              uint16_t boff = (uint16_t) byte_off;
+              int off = buf_offset + naligns * 6;
+              memcpy (buf + off, &boff, 2);
+              memcpy (buf + off + 2, &align_to, 4);
+              naligns++;
+            }
+          /* Skip to next change */
+          Lisp_Object nxt = Fnext_single_property_change (
+              make_fixnum (si), Qdisplay, str, Qnil);
+          si = NILP (nxt) ? nchars : XFIXNUM (nxt);
+        }
+      else
+        si++;
+    }
+  return naligns;
+}
+
 /* Collect overlay before-string and after-string at a position.
    Before-strings are from overlays that START at charpos.
    After-strings are from overlays that END at charpos.
@@ -3978,7 +4125,9 @@ neomacs_layout_overlay_strings_at (void *buffer_ptr, void *window_ptr,
                                    uint32_t *left_fringe_bg_out,
                                    int *right_fringe_bitmap_out,
                                    uint32_t *right_fringe_fg_out,
-                                   uint32_t *right_fringe_bg_out)
+                                   uint32_t *right_fringe_bg_out,
+                                   int *before_naligns_out,
+                                   int *after_naligns_out)
 {
   struct buffer *buf = (struct buffer *) buffer_ptr;
   struct window *w = window_ptr ? (struct window *) window_ptr : NULL;
@@ -3993,6 +4142,8 @@ neomacs_layout_overlay_strings_at (void *buffer_ptr, void *window_ptr,
   *right_fringe_bitmap_out = 0;
   *right_fringe_fg_out = 0;
   *right_fringe_bg_out = 0;
+  *before_naligns_out = 0;
+  *after_naligns_out = 0;
 
   if (!buf)
     return -1;
@@ -4195,6 +4346,17 @@ neomacs_layout_overlay_strings_at (void *buffer_ptr, void *window_ptr,
                     }
                   *before_nruns_out = nruns;
                 }
+
+              /* Extract align-to entries from display properties in
+                 before-string.  Stored after face runs: 6 bytes each
+                 (u16 byte_offset + f32 align_to_cols).  */
+              {
+                int align_offset = before_offset
+                  + (*before_nruns_out) * 10;
+                int na = extract_string_align_entries (
+                    bstr, w, before_buf, before_buf_len, align_offset);
+                *before_naligns_out += na;
+              }
                 } /* !skip_before */
             }
         }
@@ -4362,6 +4524,15 @@ neomacs_layout_overlay_strings_at (void *buffer_ptr, void *window_ptr,
                     }
                   *after_nruns_out = nruns;
                 }
+
+              /* Extract align-to entries from after-string. */
+              {
+                int align_offset = after_offset
+                  + (*after_nruns_out) * 10;
+                int na = extract_string_align_entries (
+                    astr, w, after_buf, after_buf_len, align_offset);
+                *after_naligns_out += na;
+              }
                 } /* !skip_after */
             }
         }
