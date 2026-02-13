@@ -131,6 +131,10 @@ Implemented now:
   - `locate-file` and `locate-file-internal` now resolve across path/suffix lists
   - supports symbol predicate filtering through pure builtin dispatch
   - compatibility corpus includes oracle-checked `cases/locate-file`
+- `require`/`feature` hardening:
+  - recursive `require` cycles are detected and signaled as `error` (no deep nesting blowup)
+  - `featurep` / `require` now synchronize against Lisp-visible `features` variable state
+  - compatibility corpus includes oracle-checked `cases/require-recursive` and `cases/features-sync`
 - Source parse cache (`.neoc` sidecar):
   - cache file: `<module>.neoc` beside `<module>.el`
   - key includes schema version, VM version, and lexical-binding mode
