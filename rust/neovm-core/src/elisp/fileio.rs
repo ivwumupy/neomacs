@@ -1123,11 +1123,12 @@ pub(crate) fn builtin_insert_file_contents(
 ) -> EvalResult {
     expect_min_args("insert-file-contents", &args, 1)?;
     let filename = expect_string(&args[0])?;
+    let resolved = resolve_filename_for_eval(eval, &filename);
     let visit = args.get(1).is_some_and(|v| v.is_truthy());
 
     // Read file contents
     let contents =
-        read_file_contents(&filename).map_err(|e| signal("file-error", vec![Value::string(e)]))?;
+        read_file_contents(&resolved).map_err(|e| signal("file-error", vec![Value::string(e)]))?;
 
     let char_count = contents.chars().count() as i64;
 
@@ -1139,14 +1140,12 @@ pub(crate) fn builtin_insert_file_contents(
     buf.insert(&contents);
 
     if visit {
-        let abs_path = expand_file_name(&filename, None);
-        buf.file_name = Some(abs_path.clone());
+        buf.file_name = Some(resolved.clone());
         buf.set_modified(false);
     }
 
-    let abs_filename = expand_file_name(&filename, None);
     Ok(Value::list(vec![
-        Value::string(abs_filename),
+        Value::string(resolved),
         Value::Int(char_count),
     ]))
 }
@@ -1161,6 +1160,7 @@ pub(crate) fn builtin_write_region(
 ) -> EvalResult {
     expect_min_args("write-region", &args, 3)?;
     let filename = expect_string(&args[2])?;
+    let resolved = resolve_filename_for_eval(eval, &filename);
     let append = args.get(3).is_some_and(|v| v.is_truthy());
     let visit = args.get(4).is_some_and(|v| v.is_truthy());
 
@@ -1184,7 +1184,7 @@ pub(crate) fn builtin_write_region(
         buf.buffer_substring(byte_start, byte_end)
     };
 
-    write_string_to_file(&content, &filename, append)
+    write_string_to_file(&content, &resolved, append)
         .map_err(|e| signal("file-error", vec![Value::string(e)]))?;
 
     if visit {
@@ -1193,8 +1193,7 @@ pub(crate) fn builtin_write_region(
             .buffers
             .current_buffer_mut()
             .ok_or_else(|| signal("error", vec![Value::string("No current buffer")]))?;
-        let abs_path = expand_file_name(&filename, None);
-        buf_mut.file_name = Some(abs_path);
+        buf_mut.file_name = Some(resolved);
         buf_mut.set_modified(false);
     }
 
@@ -1212,7 +1211,7 @@ pub(crate) fn builtin_find_file_noselect(
 ) -> EvalResult {
     expect_min_args("find-file-noselect", &args, 1)?;
     let filename = expect_string(&args[0])?;
-    let abs_path = expand_file_name(&filename, None);
+    let abs_path = resolve_filename_for_eval(eval, &filename);
 
     // Check if there's already a buffer visiting this file
     for buf_id in eval.buffers.buffer_list() {
@@ -2072,6 +2071,65 @@ mod tests {
         assert_eq!(written, "hello from file");
 
         // Clean up
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_eval_fileio_relative_paths_respect_default_directory() {
+        use super::super::eval::Evaluator;
+
+        let dir = std::env::temp_dir().join("neovm_eval_fileio_relative");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        let alpha_path = dir.join("alpha.txt");
+        fs::write(&alpha_path, "alpha\n").unwrap();
+        let alpha_str = alpha_path.to_string_lossy().to_string();
+        let out_path = dir.join("out.txt");
+        let out_str = out_path.to_string_lossy().to_string();
+        let default_dir = format!("{}/", dir.to_string_lossy());
+
+        let mut eval_insert = Evaluator::new();
+        eval_insert
+            .obarray
+            .set_symbol_value("default-directory", Value::string(&default_dir));
+        let inserted =
+            builtin_insert_file_contents(&mut eval_insert, vec![Value::string("alpha.txt")])
+                .unwrap();
+        let inserted_parts = list_to_vec(&inserted).unwrap();
+        assert_eq!(inserted_parts[0].as_str(), Some(alpha_str.as_str()));
+        let ibuf = eval_insert.buffers.current_buffer().unwrap();
+        assert_eq!(ibuf.buffer_string(), "alpha\n");
+
+        let mut eval_write = Evaluator::new();
+        eval_write
+            .obarray
+            .set_symbol_value("default-directory", Value::string(&default_dir));
+        eval_write
+            .buffers
+            .current_buffer_mut()
+            .unwrap()
+            .insert("neo");
+        builtin_write_region(
+            &mut eval_write,
+            vec![Value::Nil, Value::Nil, Value::string("out.txt")],
+        )
+        .unwrap();
+        assert_eq!(read_file_contents(&out_str).unwrap(), "neo");
+
+        let mut eval_find = Evaluator::new();
+        eval_find
+            .obarray
+            .set_symbol_value("default-directory", Value::string(&default_dir));
+        let found = builtin_find_file_noselect(&mut eval_find, vec![Value::string("alpha.txt")])
+            .unwrap();
+        let Value::Buffer(buf_id) = found else {
+            panic!("expected Buffer");
+        };
+        let fbuf = eval_find.buffers.get(buf_id).unwrap();
+        assert_eq!(fbuf.buffer_string(), "alpha\n");
+        assert_eq!(fbuf.file_name.as_deref(), Some(alpha_str.as_str()));
+
         let _ = fs::remove_dir_all(&dir);
     }
 

@@ -1,0 +1,21 @@
+; Relative insert/write/find should honor eval-time default-directory.
+(setq vm-fileio-base
+      (let* ((forms-file (getenv "NEOVM_FORMS_FILE"))
+             (base (if forms-file (file-name-directory forms-file) default-directory)))
+        (expand-file-name "directory-files-fixtures/" base)))
+(let ((default-directory vm-fileio-base))
+  (with-temp-buffer
+    (insert-file-contents "alpha.txt")
+    (buffer-size)))
+(let ((default-directory vm-fileio-base))
+  (condition-case err
+      (with-temp-buffer
+        (insert "neo")
+        (write-region nil nil "vm-write.tmp")
+        (prog1 (file-exists-p "vm-write.tmp")
+          (delete-file "vm-write.tmp")))
+    (list 'error (car err) (nth 1 err))))
+(let ((default-directory vm-fileio-base))
+  (let ((buf (find-file-noselect "alpha.txt")))
+    (prog1 (buffer-file-name buf)
+      (kill-buffer buf))))
