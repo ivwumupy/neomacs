@@ -622,12 +622,6 @@ pub(crate) fn builtin_format_seconds(args: Vec<Value>) -> EvalResult {
     // then allocate seconds top-down.
     let chars: Vec<char> = format_str.chars().collect();
 
-    // Collect the directives in order.
-    struct Directive {
-        kind: char, // 'y', 'd', 'h', 'm', 's'
-        value: u64,
-    }
-
     let mut directives: Vec<(usize, char)> = Vec::new(); // (index in chars, kind)
     {
         let mut j = 0;
