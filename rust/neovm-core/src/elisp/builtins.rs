@@ -2880,6 +2880,20 @@ enum PureBuiltinId {
     LogNot,
     #[strum(serialize = "ash")]
     Ash,
+    #[strum(serialize = "null")]
+    Null,
+    #[strum(serialize = "not")]
+    Not,
+    #[strum(serialize = "atom")]
+    Atom,
+    #[strum(serialize = "consp")]
+    Consp,
+    #[strum(serialize = "listp")]
+    Listp,
+    #[strum(serialize = "nlistp")]
+    NListp,
+    #[strum(serialize = "symbolp")]
+    Symbolp,
 }
 
 fn dispatch_builtin_id_pure(id: PureBuiltinId, args: Vec<Value>) -> EvalResult {
@@ -2905,6 +2919,13 @@ fn dispatch_builtin_id_pure(id: PureBuiltinId, args: Vec<Value>) -> EvalResult {
         PureBuiltinId::LogXor => builtin_logxor(args),
         PureBuiltinId::LogNot => builtin_lognot(args),
         PureBuiltinId::Ash => builtin_ash(args),
+        PureBuiltinId::Null => builtin_null(args),
+        PureBuiltinId::Not => builtin_not(args),
+        PureBuiltinId::Atom => builtin_atom(args),
+        PureBuiltinId::Consp => builtin_consp(args),
+        PureBuiltinId::Listp => builtin_listp(args),
+        PureBuiltinId::NListp => builtin_nlistp(args),
+        PureBuiltinId::Symbolp => builtin_symbolp(args),
     }
 }
 
@@ -3417,14 +3438,7 @@ pub(crate) fn dispatch_builtin(
         ">=" => builtin_num_ge(args),
         "/=" => builtin_num_ne(args),
 
-        // Type predicates
-        "null" => builtin_null(args),
-        "not" => builtin_not(args),
-        "atom" => builtin_atom(args),
-        "consp" => builtin_consp(args),
-        "listp" => builtin_listp(args),
-        "nlistp" => builtin_nlistp(args),
-        "symbolp" => builtin_symbolp(args),
+        // Type predicates (typed subset is dispatched above)
         "numberp" => builtin_numberp(args),
         "integerp" => builtin_integerp(args),
         "floatp" => builtin_floatp(args),
