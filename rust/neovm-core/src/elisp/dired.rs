@@ -29,7 +29,7 @@ fn expect_range_args(name: &str, args: &[Value], min: usize, max: usize) -> Resu
     }
 }
 
-fn expect_string(name: &str, value: &Value) -> Result<String, Flow> {
+fn expect_string(_name: &str, value: &Value) -> Result<String, Flow> {
     match value {
         Value::Str(s) => Ok((**s).clone()),
         other => Err(signal(
@@ -925,7 +925,7 @@ pub(crate) fn builtin_file_attributes_lessp(args: Vec<Value>) -> EvalResult {
 }
 
 /// Extract the car of a cons cell as a string.
-fn extract_car_string(name: &str, val: &Value) -> Result<String, Flow> {
+fn extract_car_string(_name: &str, val: &Value) -> Result<String, Flow> {
     match val {
         Value::Cons(cell) => {
             let pair = cell.lock().expect("poisoned");
