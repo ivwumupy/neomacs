@@ -2964,6 +2964,24 @@ enum PureBuiltinId {
     Assq,
     #[strum(serialize = "copy-sequence")]
     CopySequence,
+    #[strum(serialize = "string-equal", serialize = "string=")]
+    StringEqual,
+    #[strum(serialize = "string-lessp", serialize = "string<")]
+    StringLessp,
+    #[strum(serialize = "substring")]
+    Substring,
+    #[strum(serialize = "concat")]
+    Concat,
+    #[strum(serialize = "string-to-number")]
+    StringToNumber,
+    #[strum(serialize = "number-to-string")]
+    NumberToString,
+    #[strum(serialize = "upcase")]
+    Upcase,
+    #[strum(serialize = "downcase")]
+    Downcase,
+    #[strum(serialize = "format")]
+    Format,
 }
 
 fn dispatch_builtin_id_pure(id: PureBuiltinId, args: Vec<Value>) -> EvalResult {
@@ -3031,6 +3049,15 @@ fn dispatch_builtin_id_pure(id: PureBuiltinId, args: Vec<Value>) -> EvalResult {
         PureBuiltinId::Assoc => builtin_assoc(args),
         PureBuiltinId::Assq => builtin_assq(args),
         PureBuiltinId::CopySequence => builtin_copy_sequence(args),
+        PureBuiltinId::StringEqual => builtin_string_equal(args),
+        PureBuiltinId::StringLessp => builtin_string_lessp(args),
+        PureBuiltinId::Substring => builtin_substring(args),
+        PureBuiltinId::Concat => builtin_concat(args),
+        PureBuiltinId::StringToNumber => builtin_string_to_number(args),
+        PureBuiltinId::NumberToString => builtin_number_to_string(args),
+        PureBuiltinId::Upcase => builtin_upcase(args),
+        PureBuiltinId::Downcase => builtin_downcase(args),
+        PureBuiltinId::Format => builtin_format(args),
     }
 }
 
@@ -3570,16 +3597,7 @@ pub(crate) fn dispatch_builtin(
         "assq" => builtin_assq(args),
         "copy-sequence" => builtin_copy_sequence(args),
 
-        // String
-        "string-equal" | "string=" => builtin_string_equal(args),
-        "string-lessp" | "string<" => builtin_string_lessp(args),
-        "substring" => builtin_substring(args),
-        "concat" => builtin_concat(args),
-        "string-to-number" => builtin_string_to_number(args),
-        "number-to-string" => builtin_number_to_string(args),
-        "upcase" => builtin_upcase(args),
-        "downcase" => builtin_downcase(args),
-        "format" => builtin_format(args),
+        // String (typed subset is dispatched above)
 
         // Vector
         "make-vector" => builtin_make_vector(args),
@@ -4603,5 +4621,19 @@ mod tests {
             result,
             Value::list(vec![Value::Int(1), Value::Int(2), Value::Int(3), Value::Int(4)])
         );
+    }
+
+    #[test]
+    fn pure_dispatch_typed_string_equal_aliases_match() {
+        let a = Value::string("neo");
+        let b = Value::string("neo");
+        let full = dispatch_builtin_pure("string-equal", vec![a.clone(), b.clone()])
+            .expect("builtin string-equal should resolve")
+            .expect("builtin string-equal should evaluate");
+        let short = dispatch_builtin_pure("string=", vec![a, b])
+            .expect("builtin string= should resolve")
+            .expect("builtin string= should evaluate");
+        assert_eq!(full, short);
+        assert!(full.is_truthy());
     }
 }
