@@ -19,6 +19,24 @@ if [[ ! -f "$neovm_tsv" ]]; then
 fi
 
 awk -F '\t' '
+function normalize_result(raw, ok_pos, err_pos, pos) {
+  ok_pos = index(raw, "OK ");
+  err_pos = index(raw, "ERR ");
+  if (ok_pos > 0 && err_pos > 0) {
+    pos = (ok_pos < err_pos) ? ok_pos : err_pos;
+  } else if (ok_pos > 0) {
+    pos = ok_pos;
+  } else if (err_pos > 0) {
+    pos = err_pos;
+  } else {
+    pos = 0;
+  }
+  if (pos > 0) {
+    return substr(raw, pos);
+  }
+  return raw;
+}
+
 BEGIN {
   failed = 0;
   strict_form = ENVIRON["STRICT_FORM"] == "1";
@@ -29,7 +47,7 @@ BEGIN {
 FNR == NR {
   idx = $1;
   oracle_form[idx] = $2;
-  oracle_result[idx] = $3;
+  oracle_result[idx] = normalize_result($3);
   oracle_seen[idx] = 1;
   oracle_count++;
   next;
@@ -38,7 +56,7 @@ FNR == NR {
 {
   idx = $1;
   form = $2;
-  result = $3;
+  result = normalize_result($3);
 
   neovm_seen[idx] = 1;
   neovm_count++;
