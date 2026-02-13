@@ -2894,6 +2894,18 @@ enum PureBuiltinId {
     NListp,
     #[strum(serialize = "symbolp")]
     Symbolp,
+    #[strum(serialize = "numberp")]
+    Numberp,
+    #[strum(serialize = "integerp")]
+    Integerp,
+    #[strum(serialize = "floatp")]
+    Floatp,
+    #[strum(serialize = "stringp")]
+    Stringp,
+    #[strum(serialize = "vectorp")]
+    Vectorp,
+    #[strum(serialize = "characterp")]
+    Characterp,
 }
 
 fn dispatch_builtin_id_pure(id: PureBuiltinId, args: Vec<Value>) -> EvalResult {
@@ -2926,6 +2938,12 @@ fn dispatch_builtin_id_pure(id: PureBuiltinId, args: Vec<Value>) -> EvalResult {
         PureBuiltinId::Listp => builtin_listp(args),
         PureBuiltinId::NListp => builtin_nlistp(args),
         PureBuiltinId::Symbolp => builtin_symbolp(args),
+        PureBuiltinId::Numberp => builtin_numberp(args),
+        PureBuiltinId::Integerp => builtin_integerp(args),
+        PureBuiltinId::Floatp => builtin_floatp(args),
+        PureBuiltinId::Stringp => builtin_stringp(args),
+        PureBuiltinId::Vectorp => builtin_vectorp(args),
+        PureBuiltinId::Characterp => builtin_characterp(args),
     }
 }
 
@@ -3439,12 +3457,7 @@ pub(crate) fn dispatch_builtin(
         "/=" => builtin_num_ne(args),
 
         // Type predicates (typed subset is dispatched above)
-        "numberp" => builtin_numberp(args),
-        "integerp" => builtin_integerp(args),
-        "floatp" => builtin_floatp(args),
-        "stringp" => builtin_stringp(args),
-        "vectorp" => builtin_vectorp(args),
-        "characterp" => builtin_characterp(args),
+        // Type predicates (typed subset is dispatched above)
         "functionp" => builtin_functionp(args),
         "keywordp" => builtin_keywordp(args),
         "hash-table-p" => builtin_hash_table_p(args),
@@ -4079,12 +4092,6 @@ pub(crate) fn dispatch_builtin_pure(name: &str, args: Vec<Value>) -> Option<Eval
         "listp" => builtin_listp(args),
         "nlistp" => builtin_nlistp(args),
         "symbolp" => builtin_symbolp(args),
-        "numberp" => builtin_numberp(args),
-        "integerp" => builtin_integerp(args),
-        "floatp" => builtin_floatp(args),
-        "stringp" => builtin_stringp(args),
-        "vectorp" => builtin_vectorp(args),
-        "characterp" => builtin_characterp(args),
         "functionp" => builtin_functionp(args),
         "keywordp" => builtin_keywordp(args),
         "hash-table-p" => builtin_hash_table_p(args),
