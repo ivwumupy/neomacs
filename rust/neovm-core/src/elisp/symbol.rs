@@ -232,6 +232,11 @@ impl Obarray {
     pub fn all_symbols(&self) -> Vec<&str> {
         self.symbols.keys().map(|s| s.as_str()).collect()
     }
+
+    /// Remove a symbol from the obarray.  Returns `true` if it was present.
+    pub fn unintern(&mut self, name: &str) -> bool {
+        self.symbols.remove(name).is_some()
+    }
 }
 
 #[cfg(test)]
