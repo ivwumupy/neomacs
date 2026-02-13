@@ -52,8 +52,6 @@ pub struct BookmarkManager {
     bookmarks: HashMap<String, Bookmark>,
     /// Most recently used bookmark names (most recent first).
     recent: Vec<String>,
-    /// Default file path for save/load.
-    default_file: String,
     /// True if bookmarks have been modified since last save.
     modified: bool,
 }
@@ -70,7 +68,6 @@ impl BookmarkManager {
         Self {
             bookmarks: HashMap::new(),
             recent: Vec::new(),
-            default_file: "~/.emacs.d/bookmarks".to_string(),
             modified: false,
         }
     }
