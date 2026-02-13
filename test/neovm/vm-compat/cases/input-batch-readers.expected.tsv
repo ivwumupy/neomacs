@@ -20,3 +20,5 @@
 20	(condition-case err (progn (setq unread-command-events (list 97)) (read-char)) (error (car err)))	OK 97
 21	(condition-case err (progn (setq unread-command-events (list 97)) (read-key nil)) (error (car err)))	OK 97
 22	(condition-case err (progn (setq unread-command-events (list 97)) (read-key-sequence "")) (error (car err)))	OK "a"
+23	(condition-case err (progn (setq unread-command-events (list 97)) (read-event)) (error (car err)))	OK 97
+24	(condition-case err (progn (setq unread-command-events (list 97)) (read-char-exclusive)) (error (car err)))	OK 97
