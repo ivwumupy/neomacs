@@ -63,6 +63,9 @@ make check-all
 make check-all-neovm
 ```
 
+`run-neovm.sh` sets `NEOVM_DISABLE_LOAD_CACHE_WRITE=1` so compatibility runs do
+not mutate fixture directories with `.neoc` sidecars.
+
 NeoVM-only policy cases (expected to diverge from GNU Emacs oracle baselines)
 can be run separately:
 
