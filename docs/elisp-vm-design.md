@@ -142,7 +142,8 @@ Implemented now:
   - compatibility corpus includes oracle-checked `cases/default-directory`, `cases/load-file-name`, and `cases/load-path-nil`
 - pathname normalization builtins:
   - `file-name-as-directory` and `directory-file-name` mirror GNU Emacs semantics for trailing separator normalization
-  - compatibility corpus includes oracle-checked `cases/directory-file-name`
+  - `file-name-concat` matches GNU Emacs nil/empty filtering and separator insertion behavior
+  - compatibility corpus includes oracle-checked `cases/directory-file-name` and `cases/file-name-concat`
 - Source parse cache (`.neoc` sidecar):
   - cache file: `<module>.neoc` beside `<module>.el`
   - key includes schema version, VM version, and lexical-binding mode
