@@ -603,18 +603,14 @@ mod tests {
     #[test]
     fn manager_current_mut_allows_modification() {
         let mut mgr = CategoryManager::new();
-        mgr.current_mut()
-            .define_category('a', "test")
-            .unwrap();
+        mgr.current_mut().define_category('a', "test").unwrap();
         assert_eq!(mgr.current().category_docstring('a'), Some("test"));
     }
 
     #[test]
     fn manager_standard_and_current_are_same_initially() {
         let mut mgr = CategoryManager::new();
-        mgr.standard_mut()
-            .define_category('z', "zed")
-            .unwrap();
+        mgr.standard_mut().define_category('z', "zed").unwrap();
         // Since current == standard, current should see it too.
         assert_eq!(mgr.current().category_docstring('z'), Some("zed"));
     }
@@ -625,10 +621,8 @@ mod tests {
 
     #[test]
     fn builtin_define_category_basic() {
-        let result = builtin_define_category(vec![
-            Value::Char('a'),
-            Value::string("ASCII letters"),
-        ]);
+        let result =
+            builtin_define_category(vec![Value::Char('a'), Value::string("ASCII letters")]);
         assert!(result.is_ok());
         if let Ok(Value::Str(s)) = &result {
             assert_eq!(**s, "ASCII letters");
@@ -653,19 +647,13 @@ mod tests {
 
     #[test]
     fn builtin_define_category_invalid_char() {
-        let result = builtin_define_category(vec![
-            Value::Char('1'),
-            Value::string("digits"),
-        ]);
+        let result = builtin_define_category(vec![Value::Char('1'), Value::string("digits")]);
         assert!(result.is_err());
     }
 
     #[test]
     fn builtin_define_category_wrong_type_docstring() {
-        let result = builtin_define_category(vec![
-            Value::Char('a'),
-            Value::Int(42),
-        ]);
+        let result = builtin_define_category(vec![Value::Char('a'), Value::Int(42)]);
         assert!(result.is_err());
     }
 
@@ -680,12 +668,9 @@ mod tests {
     #[test]
     fn builtin_category_docstring_wrong_args() {
         assert!(builtin_category_docstring(vec![]).is_err());
-        assert!(builtin_category_docstring(vec![
-            Value::Char('a'),
-            Value::Nil,
-            Value::Nil,
-        ])
-        .is_err());
+        assert!(
+            builtin_category_docstring(vec![Value::Char('a'), Value::Nil, Value::Nil,]).is_err()
+        );
     }
 
     #[test]
@@ -824,11 +809,11 @@ mod tests {
         if let Value::Vector(arc) = &result {
             let vec = arc.lock().unwrap();
             // 'a', 'b', 'c' set; '1' and '!' not set.
-            assert!(matches!(&vec[2 + 97], Value::Int(1)));  // 'a'
-            assert!(matches!(&vec[2 + 98], Value::Int(1)));  // 'b'
-            assert!(matches!(&vec[2 + 99], Value::Int(1)));  // 'c'
-            assert!(matches!(&vec[2 + 49], Value::Int(0)));  // '1'
-            assert!(matches!(&vec[2 + 33], Value::Int(0)));  // '!'
+            assert!(matches!(&vec[2 + 97], Value::Int(1))); // 'a'
+            assert!(matches!(&vec[2 + 98], Value::Int(1))); // 'b'
+            assert!(matches!(&vec[2 + 99], Value::Int(1))); // 'c'
+            assert!(matches!(&vec[2 + 49], Value::Int(0))); // '1'
+            assert!(matches!(&vec[2 + 33], Value::Int(0))); // '!'
         } else {
             panic!("Expected vector result");
         }
@@ -842,11 +827,7 @@ mod tests {
     #[test]
     fn builtin_make_category_set_wrong_args() {
         assert!(builtin_make_category_set(vec![]).is_err());
-        assert!(builtin_make_category_set(vec![
-            Value::string("a"),
-            Value::string("b"),
-        ])
-        .is_err());
+        assert!(builtin_make_category_set(vec![Value::string("a"), Value::string("b"),]).is_err());
     }
 
     // -----------------------------------------------------------------------

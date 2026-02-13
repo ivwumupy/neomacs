@@ -178,8 +178,7 @@ mod tests {
     #[test]
     fn compose_string_internal_returns_string() {
         let s = Value::string("hello");
-        let result =
-            builtin_compose_string_internal(vec![s.clone(), Value::Int(0), Value::Int(5)]);
+        let result = builtin_compose_string_internal(vec![s.clone(), Value::Int(0), Value::Int(5)]);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().as_str(), Some("hello"));
     }
@@ -200,8 +199,7 @@ mod tests {
 
     #[test]
     fn compose_string_internal_too_few_args() {
-        let result =
-            builtin_compose_string_internal(vec![Value::string("hi"), Value::Int(0)]);
+        let result = builtin_compose_string_internal(vec![Value::string("hi"), Value::Int(0)]);
         assert!(result.is_err());
     }
 

@@ -45,8 +45,7 @@ const BV_SIZE: usize = 1; // Value::Int — logical length
 pub fn is_char_table(v: &Value) -> bool {
     if let Value::Vector(arc) = v {
         let vec = arc.lock().expect("poisoned");
-        vec.len() >= CT_EXTRA_START
-            && matches!(&vec[0], Value::Symbol(s) if s == CHAR_TABLE_TAG)
+        vec.len() >= CT_EXTRA_START && matches!(&vec[0], Value::Symbol(s) if s == CHAR_TABLE_TAG)
     } else {
         false
     }
@@ -56,8 +55,7 @@ pub fn is_char_table(v: &Value) -> bool {
 pub fn is_bool_vector(v: &Value) -> bool {
     if let Value::Vector(arc) = v {
         let vec = arc.lock().expect("poisoned");
-        vec.len() >= 2
-            && matches!(&vec[0], Value::Symbol(s) if s == BOOL_VECTOR_TAG)
+        vec.len() >= 2 && matches!(&vec[0], Value::Symbol(s) if s == BOOL_VECTOR_TAG)
     } else {
         false
     }
@@ -105,7 +103,10 @@ fn expect_max_args(name: &str, args: &[Value], max: usize) -> Result<(), Flow> {
 
 /// Signal `wrong-type-argument` with a predicate name.
 fn wrong_type(pred: &str, got: &Value) -> Flow {
-    signal("wrong-type-argument", vec![Value::symbol(pred), got.clone()])
+    signal(
+        "wrong-type-argument",
+        vec![Value::symbol(pred), got.clone()],
+    )
 }
 
 /// Extract an integer (Int or Char), signal otherwise.
@@ -135,13 +136,17 @@ pub(crate) fn builtin_make_char_table(args: Vec<Value>) -> EvalResult {
     expect_min_args("make-char-table", &args, 1)?;
     expect_max_args("make-char-table", &args, 2)?;
     let sub_type = args[0].clone();
-    let default = if args.len() > 1 { args[1].clone() } else { Value::Nil };
+    let default = if args.len() > 1 {
+        args[1].clone()
+    } else {
+        Value::Nil
+    };
     let vec = vec![
         Value::Symbol(CHAR_TABLE_TAG.to_string()),
-        default,        // CT_DEFAULT
-        Value::Nil,     // CT_PARENT
-        sub_type,       // CT_SUBTYPE
-        Value::Int(0),  // CT_EXTRA_COUNT
+        default,       // CT_DEFAULT
+        Value::Nil,    // CT_PARENT
+        sub_type,      // CT_SUBTYPE
+        Value::Int(0), // CT_EXTRA_COUNT
     ];
     Ok(Value::vector(vec))
 }
@@ -200,10 +205,7 @@ pub(crate) fn builtin_set_char_table_range(args: Vec<Value>) -> EvalResult {
         _ => {
             return Err(signal(
                 "wrong-type-argument",
-                vec![
-                    Value::symbol("char-table-range"),
-                    range.clone(),
-                ],
+                vec![Value::symbol("char-table-range"), range.clone()],
             ));
         }
     }
@@ -340,10 +342,7 @@ pub(crate) fn builtin_set_char_table_parent(args: Vec<Value>) -> EvalResult {
 /// `(map-char-table FUNCTION CHAR-TABLE)` -- call FUNCTION for each
 /// explicitly set entry.  FUNCTION receives `(CHAR VALUE)`.
 /// Returns nil.
-pub(crate) fn builtin_map_char_table(
-    eval: &mut Evaluator,
-    args: Vec<Value>,
-) -> EvalResult {
+pub(crate) fn builtin_map_char_table(eval: &mut Evaluator, args: Vec<Value>) -> EvalResult {
     expect_args("map-char-table", &args, 2)?;
     let func = args[0].clone();
     let table = &args[1];
@@ -468,10 +467,7 @@ pub(crate) fn builtin_make_bool_vector(args: Vec<Value>) -> EvalResult {
     expect_args("make-bool-vector", &args, 2)?;
     let length = expect_int(&args[0])?;
     if length < 0 {
-        return Err(signal(
-            "args-out-of-range",
-            vec![args[0].clone()],
-        ));
+        return Err(signal("args-out-of-range", vec![args[0].clone()]));
     }
     let init_val = if args[1].is_truthy() {
         Value::Int(1)
@@ -528,11 +524,7 @@ pub(crate) fn builtin_bool_vector_count_population(args: Vec<Value>) -> EvalResu
 }
 
 /// Helper to extract two bool-vectors of equal length, returning their bits.
-fn extract_bv_pair(
-    name: &str,
-    a: &Value,
-    b: &Value,
-) -> Result<(Vec<bool>, Vec<bool>, i64), Flow> {
+fn extract_bv_pair(name: &str, a: &Value, b: &Value) -> Result<(Vec<bool>, Vec<bool>, i64), Flow> {
     let arc_a = match a {
         Value::Vector(arc) if is_bool_vector(a) => arc,
         _ => return Err(wrong_type("bool-vector-p", a)),
@@ -575,7 +567,11 @@ pub(crate) fn builtin_bool_vector_intersection(args: Vec<Value>) -> EvalResult {
     expect_min_args("bool-vector-intersection", &args, 2)?;
     expect_max_args("bool-vector-intersection", &args, 3)?;
     let (bits_a, bits_b, len) = extract_bv_pair("bool-vector-intersection", &args[0], &args[1])?;
-    let result_bits: Vec<bool> = bits_a.iter().zip(bits_b.iter()).map(|(&a, &b)| a && b).collect();
+    let result_bits: Vec<bool> = bits_a
+        .iter()
+        .zip(bits_b.iter())
+        .map(|(&a, &b)| a && b)
+        .collect();
 
     if args.len() == 3 {
         store_bv_result(&args[2], &result_bits)?;
@@ -590,7 +586,11 @@ pub(crate) fn builtin_bool_vector_union(args: Vec<Value>) -> EvalResult {
     expect_min_args("bool-vector-union", &args, 2)?;
     expect_max_args("bool-vector-union", &args, 3)?;
     let (bits_a, bits_b, _len) = extract_bv_pair("bool-vector-union", &args[0], &args[1])?;
-    let result_bits: Vec<bool> = bits_a.iter().zip(bits_b.iter()).map(|(&a, &b)| a || b).collect();
+    let result_bits: Vec<bool> = bits_a
+        .iter()
+        .zip(bits_b.iter())
+        .map(|(&a, &b)| a || b)
+        .collect();
 
     if args.len() == 3 {
         store_bv_result(&args[2], &result_bits)?;
@@ -604,9 +604,12 @@ pub(crate) fn builtin_bool_vector_union(args: Vec<Value>) -> EvalResult {
 pub(crate) fn builtin_bool_vector_exclusive_or(args: Vec<Value>) -> EvalResult {
     expect_min_args("bool-vector-exclusive-or", &args, 2)?;
     expect_max_args("bool-vector-exclusive-or", &args, 3)?;
-    let (bits_a, bits_b, _len) =
-        extract_bv_pair("bool-vector-exclusive-or", &args[0], &args[1])?;
-    let result_bits: Vec<bool> = bits_a.iter().zip(bits_b.iter()).map(|(&a, &b)| a ^ b).collect();
+    let (bits_a, bits_b, _len) = extract_bv_pair("bool-vector-exclusive-or", &args[0], &args[1])?;
+    let result_bits: Vec<bool> = bits_a
+        .iter()
+        .zip(bits_b.iter())
+        .map(|(&a, &b)| a ^ b)
+        .collect();
 
     if args.len() == 3 {
         store_bv_result(&args[2], &result_bits)?;
@@ -688,11 +691,8 @@ mod tests {
 
     #[test]
     fn make_char_table_with_default() {
-        let ct = builtin_make_char_table(vec![
-            Value::symbol("syntax-table"),
-            Value::Int(42),
-        ])
-        .unwrap();
+        let ct =
+            builtin_make_char_table(vec![Value::symbol("syntax-table"), Value::Int(42)]).unwrap();
         assert!(is_char_table(&ct));
         // Default lookup should return the default.
         let def = builtin_char_table_range(vec![ct.clone(), Value::True]).unwrap();
@@ -760,8 +760,12 @@ mod tests {
     #[test]
     fn parent_chain_lookup() {
         let parent = builtin_make_char_table(vec![Value::symbol("test"), Value::Nil]).unwrap();
-        builtin_set_char_table_range(vec![parent.clone(), Value::Int(65), Value::symbol("from-parent")])
-            .unwrap();
+        builtin_set_char_table_range(vec![
+            parent.clone(),
+            Value::Int(65),
+            Value::symbol("from-parent"),
+        ])
+        .unwrap();
         let child = builtin_make_char_table(vec![Value::symbol("test"), Value::Nil]).unwrap();
         builtin_set_char_table_parent(vec![child.clone(), parent.clone()]).unwrap();
 
@@ -770,8 +774,12 @@ mod tests {
         assert!(matches!(val, Value::Symbol(ref s) if s == "from-parent"));
 
         // Child override takes priority.
-        builtin_set_char_table_range(vec![child.clone(), Value::Int(65), Value::symbol("child-val")])
-            .unwrap();
+        builtin_set_char_table_range(vec![
+            child.clone(),
+            Value::Int(65),
+            Value::symbol("child-val"),
+        ])
+        .unwrap();
         let val = builtin_char_table_range(vec![child.clone(), Value::Int(65)]).unwrap();
         assert!(matches!(val, Value::Symbol(ref s) if s == "child-val"));
     }
@@ -892,11 +900,9 @@ mod tests {
     #[test]
     fn parent_default_fallback() {
         // Parent has default but no explicit entry.
-        let parent = builtin_make_char_table(vec![
-            Value::symbol("test"),
-            Value::symbol("parent-default"),
-        ])
-        .unwrap();
+        let parent =
+            builtin_make_char_table(vec![Value::symbol("test"), Value::symbol("parent-default")])
+                .unwrap();
         let child = builtin_make_char_table(vec![Value::symbol("test"), Value::Nil]).unwrap();
         builtin_set_char_table_parent(vec![child.clone(), parent.clone()]).unwrap();
 
@@ -1080,11 +1086,8 @@ mod tests {
     #[test]
     fn char_table_range_invalid_range_type() {
         let ct = builtin_make_char_table(vec![Value::symbol("test")]).unwrap();
-        let result = builtin_set_char_table_range(vec![
-            ct.clone(),
-            Value::string("invalid"),
-            Value::Int(1),
-        ]);
+        let result =
+            builtin_set_char_table_range(vec![ct.clone(), Value::string("invalid"), Value::Int(1)]);
         assert!(result.is_err());
     }
 

@@ -79,7 +79,10 @@ pub(crate) fn builtin_ccl_execute_on_string(args: Vec<Value>) -> EvalResult {
         Value::Nil => Ok(Value::Nil), // Allow nil as empty string
         other => {
             // Type error: STRING must be a string or nil
-            Err(signal("wrong-type-argument", vec![Value::symbol("stringp"), other.clone()]))
+            Err(signal(
+                "wrong-type-argument",
+                vec![Value::symbol("stringp"), other.clone()],
+            ))
         }
     }
 }

@@ -280,10 +280,7 @@ pub(crate) fn builtin_charset_plist(args: Vec<Value>) -> EvalResult {
         }
         None => Err(signal(
             "error",
-            vec![
-                Value::string("Invalid charset"),
-                Value::symbol(name),
-            ],
+            vec![Value::string("Invalid charset"), Value::symbol(name)],
         )),
     }
 }
@@ -336,10 +333,7 @@ pub(crate) fn builtin_decode_char(args: Vec<Value>) -> EvalResult {
     if !reg.contains(&name) {
         return Err(signal(
             "error",
-            vec![
-                Value::string("Invalid charset"),
-                Value::symbol(name),
-            ],
+            vec![Value::string("Invalid charset"), Value::symbol(name)],
         ));
     }
     drop(reg);
@@ -375,10 +369,7 @@ pub(crate) fn builtin_encode_char(args: Vec<Value>) -> EvalResult {
     if !reg.contains(&name) {
         return Err(signal(
             "error",
-            vec![
-                Value::string("Invalid charset"),
-                Value::symbol(name),
-            ],
+            vec![Value::string("Invalid charset"), Value::symbol(name)],
         ));
     }
     drop(reg);
@@ -544,11 +535,9 @@ mod tests {
 
     #[test]
     fn set_charset_priority_stub() {
-        let r = builtin_set_charset_priority(vec![
-            Value::symbol("ascii"),
-            Value::symbol("unicode"),
-        ])
-        .unwrap();
+        let r =
+            builtin_set_charset_priority(vec![Value::symbol("ascii"), Value::symbol("unicode")])
+                .unwrap();
         assert!(r.is_nil());
     }
 
@@ -702,12 +691,9 @@ mod tests {
     #[test]
     fn find_charset_string_wrong_arg_count() {
         assert!(builtin_find_charset_string(vec![]).is_err());
-        assert!(builtin_find_charset_string(vec![
-            Value::string("a"),
-            Value::Nil,
-            Value::Nil,
-        ])
-        .is_err());
+        assert!(
+            builtin_find_charset_string(vec![Value::string("a"), Value::Nil, Value::Nil,]).is_err()
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -741,8 +727,7 @@ mod tests {
 
     #[test]
     fn decode_char_out_of_range() {
-        let r =
-            builtin_decode_char(vec![Value::symbol("unicode"), Value::Int(0x110000)]).unwrap();
+        let r = builtin_decode_char(vec![Value::symbol("unicode"), Value::Int(0x110000)]).unwrap();
         assert!(r.is_nil());
     }
 
@@ -754,8 +739,7 @@ mod tests {
     #[test]
     fn decode_char_wrong_type() {
         assert!(
-            builtin_decode_char(vec![Value::symbol("ascii"), Value::string("not an int")])
-                .is_err()
+            builtin_decode_char(vec![Value::symbol("ascii"), Value::string("not an int")]).is_err()
         );
     }
 
@@ -791,16 +775,13 @@ mod tests {
 
     #[test]
     fn encode_char_unknown_charset() {
-        assert!(
-            builtin_encode_char(vec![Value::Int(65), Value::symbol("nonexistent")]).is_err()
-        );
+        assert!(builtin_encode_char(vec![Value::Int(65), Value::symbol("nonexistent")]).is_err());
     }
 
     #[test]
     fn encode_char_wrong_type() {
         assert!(
-            builtin_encode_char(vec![Value::string("not a char"), Value::symbol("ascii")])
-                .is_err()
+            builtin_encode_char(vec![Value::string("not a char"), Value::symbol("ascii")]).is_err()
         );
     }
 
@@ -868,16 +849,23 @@ mod tests {
     fn decode_encode_round_trip() {
         // decode-char then encode-char should give the same code-point.
         let code = 0x00E9_i64; // e-acute
-        let decoded = builtin_decode_char(vec![Value::symbol("unicode"), Value::Int(code)]).unwrap();
+        let decoded =
+            builtin_decode_char(vec![Value::symbol("unicode"), Value::Int(code)]).unwrap();
         let cp = decoded.as_int().unwrap();
-        let encoded =
-            builtin_encode_char(vec![Value::Int(cp), Value::symbol("unicode")]).unwrap();
+        let encoded = builtin_encode_char(vec![Value::Int(cp), Value::symbol("unicode")]).unwrap();
         assert!(matches!(encoded, Value::Int(n) if n == code));
     }
 
     #[test]
     fn charsetp_all_standard() {
-        for name in &["ascii", "unicode", "unicode-bmp", "latin-iso8859-1", "emacs", "eight-bit"] {
+        for name in &[
+            "ascii",
+            "unicode",
+            "unicode-bmp",
+            "latin-iso8859-1",
+            "emacs",
+            "eight-bit",
+        ] {
             let r = builtin_charsetp(vec![Value::symbol(*name)]).unwrap();
             assert!(
                 matches!(r, Value::True),

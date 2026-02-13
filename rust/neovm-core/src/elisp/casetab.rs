@@ -161,7 +161,10 @@ fn expect_args(name: &str, args: &[Value], n: usize) -> Result<(), Flow> {
 
 /// Signal `wrong-type-argument` with a predicate name.
 fn wrong_type(pred: &str, got: &Value) -> Flow {
-    signal("wrong-type-argument", vec![Value::symbol(pred), got.clone()])
+    signal(
+        "wrong-type-argument",
+        vec![Value::symbol(pred), got.clone()],
+    )
 }
 
 /// Extract a character from a Value (Int or Char), signal otherwise.
@@ -261,8 +264,7 @@ const CASE_TABLE_TAG: &str = "--case-table--";
 pub fn is_case_table(v: &Value) -> bool {
     if let Value::Vector(arc) = v {
         let vec = arc.lock().expect("poisoned");
-        vec.len() >= 5
-            && matches!(&vec[0], Value::Symbol(s) if s == CASE_TABLE_TAG)
+        vec.len() >= 5 && matches!(&vec[0], Value::Symbol(s) if s == CASE_TABLE_TAG)
     } else {
         false
     }
@@ -618,10 +620,7 @@ mod tests {
     #[test]
     fn is_case_table_on_short_vector() {
         // A vector too short to be a case table.
-        let v = Value::vector(vec![
-            Value::Symbol(CASE_TABLE_TAG.to_string()),
-            Value::Nil,
-        ]);
+        let v = Value::vector(vec![Value::Symbol(CASE_TABLE_TAG.to_string()), Value::Nil]);
         assert!(!is_case_table(&v));
     }
 

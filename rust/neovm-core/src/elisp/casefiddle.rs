@@ -796,12 +796,9 @@ mod tests {
 
     #[test]
     fn string_width_with_range() {
-        let result = builtin_string_width(vec![
-            Value::string("hello"),
-            Value::Int(1),
-            Value::Int(3),
-        ])
-        .unwrap();
+        let result =
+            builtin_string_width(vec![Value::string("hello"), Value::Int(1), Value::Int(3)])
+                .unwrap();
         // chars[1..3] = "el" = width 2
         assert_eq!(result.as_int(), Some(2));
     }
@@ -914,8 +911,7 @@ mod tests {
     fn upcase_initials_region_stub() {
         let mut eval = super::super::eval::Evaluator::new();
         let result =
-            builtin_upcase_initials_region(&mut eval, vec![Value::Int(1), Value::Int(10)])
-                .unwrap();
+            builtin_upcase_initials_region(&mut eval, vec![Value::Int(1), Value::Int(10)]).unwrap();
         assert!(result.is_nil());
     }
 
