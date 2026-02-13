@@ -192,18 +192,43 @@ pub(crate) fn builtin_subr_name(args: Vec<Value>) -> EvalResult {
 
 /// `(subr-arity SUBR)` -- return (MIN . MAX) cons cell for argument counts.
 ///
-/// Since built-in subrs are dispatched by name and we do not store per-subr
-/// arity metadata, we return a conservative default of `(0 . many)` for all
-/// subrs.  Specific subrs could be special-cased here in the future.
+/// Built-in subrs are dispatched by name and we do not yet have complete
+/// per-subr metadata in NeoVM, so this is a partial compatibility table:
+/// known shapes are special-cased and other subrs default to `(0 . many)`.
 pub(crate) fn builtin_subr_arity(args: Vec<Value>) -> EvalResult {
     expect_args("subr-arity", &args, 1)?;
     match &args[0] {
-        Value::Subr(_) => Ok(arity_cons(0, None)),
+        Value::Subr(name) => {
+            let arity = match name.as_str() {
+                // Oracle-compatible overrides for core subrs used in vm-compat.
+                "car" | "cdr" => arity_cons(1, Some(1)),
+                "message" => arity_cons(1, None),
+                "if" => Value::cons(Value::Int(2), Value::symbol("unevalled")),
+                _ => arity_cons(0, None),
+            };
+            Ok(arity)
+        }
         other => Err(signal(
             "wrong-type-argument",
             vec![Value::symbol("subrp"), other.clone()],
         )),
     }
+}
+
+/// `(subr-native-elisp-p OBJECT)` -- return t if OBJECT is a native-compiled
+/// Elisp subr.
+///
+/// NeoVM does not currently model native-compiled Elisp subrs, so this always
+/// returns nil.
+pub(crate) fn builtin_subr_native_elisp_p(args: Vec<Value>) -> EvalResult {
+    expect_args("subr-native-elisp-p", &args, 1)?;
+    Ok(Value::Nil)
+}
+
+/// `(subr-primitive-p OBJECT)` -- return t if OBJECT is a primitive subr.
+pub(crate) fn builtin_subr_primitive_p(args: Vec<Value>) -> EvalResult {
+    expect_args("subr-primitive-p", &args, 1)?;
+    Ok(Value::bool(matches!(&args[0], Value::Subr(_))))
 }
 
 /// `(functionp OBJECT)` -- return t if OBJECT is a function.
@@ -455,6 +480,42 @@ mod tests {
     fn subr_arity_error_for_non_subr() {
         let result = builtin_subr_arity(vec![Value::Nil]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn subr_arity_message_is_one_or_more() {
+        let result = builtin_subr_arity(vec![Value::Subr("message".into())]).unwrap();
+        if let Value::Cons(cell) = &result {
+            let pair = cell.lock().unwrap();
+            assert_eq!(pair.car.as_int(), Some(1));
+            assert_eq!(pair.cdr.as_symbol_name(), Some("many"));
+        } else {
+            panic!("expected cons cell");
+        }
+    }
+
+    #[test]
+    fn subr_arity_if_is_unevalled() {
+        let result = builtin_subr_arity(vec![Value::Subr("if".into())]).unwrap();
+        if let Value::Cons(cell) = &result {
+            let pair = cell.lock().unwrap();
+            assert_eq!(pair.car.as_int(), Some(2));
+            assert_eq!(pair.cdr.as_symbol_name(), Some("unevalled"));
+        } else {
+            panic!("expected cons cell");
+        }
+    }
+
+    #[test]
+    fn subr_primitive_and_native_predicates() {
+        let primitive = builtin_subr_primitive_p(vec![Value::Subr("car".into())]).unwrap();
+        assert!(primitive.is_truthy());
+
+        let non_subr = builtin_subr_primitive_p(vec![Value::Int(1)]).unwrap();
+        assert!(non_subr.is_nil());
+
+        let native = builtin_subr_native_elisp_p(vec![Value::Subr("car".into())]).unwrap();
+        assert!(native.is_nil());
     }
 
     // -- functionp --

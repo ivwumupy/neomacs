@@ -565,11 +565,7 @@ pub(crate) fn builtin_compiled_function_p(args: Vec<Value>) -> EvalResult {
 /// `(closurep OBJ)` -> t if closure.
 pub(crate) fn builtin_closurep(args: Vec<Value>) -> EvalResult {
     expect_args("closurep", &args, 1)?;
-    let is_closure = match &args[0] {
-        Value::Lambda(l) => l.env.is_some(),
-        _ => false,
-    };
-    Ok(Value::bool(is_closure))
+    Ok(Value::bool(matches!(&args[0], Value::Lambda(_))))
 }
 
 /// `(commandp OBJ)` -> t if OBJ can be used as a command.
@@ -757,6 +753,8 @@ pub(crate) fn builtin_symbol_name(args: Vec<Value>) -> EvalResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::elisp::value::{LambdaData, LambdaParams};
+    use std::sync::Arc;
 
     #[test]
     fn remove_from_list() {
@@ -843,6 +841,18 @@ mod tests {
             Value::True,
         ));
         assert!(builtin_proper_list_p(vec![Value::Int(5)]).unwrap().is_nil(),);
+    }
+
+    #[test]
+    fn closurep_true_for_lambda_values() {
+        let lambda = Value::Lambda(Arc::new(LambdaData {
+            params: LambdaParams::simple(vec!["x".to_string()]),
+            body: vec![],
+            env: None,
+            docstring: None,
+        }));
+        assert!(builtin_closurep(vec![lambda]).unwrap().is_truthy());
+        assert!(builtin_closurep(vec![Value::Int(1)]).unwrap().is_nil());
     }
 
     #[test]

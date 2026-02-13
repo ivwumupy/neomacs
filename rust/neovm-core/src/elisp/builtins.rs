@@ -477,6 +477,35 @@ pub(crate) fn builtin_functionp(args: Vec<Value>) -> EvalResult {
     Ok(Value::bool(args[0].is_function()))
 }
 
+fn is_lambda_form_list(value: &Value) -> bool {
+    match value {
+        Value::Cons(cell) => {
+            let pair = cell.lock().expect("poisoned");
+            pair.car.as_symbol_name() == Some("lambda")
+        }
+        _ => false,
+    }
+}
+
+pub(crate) fn builtin_functionp_eval(
+    eval: &mut super::eval::Evaluator,
+    args: Vec<Value>,
+) -> EvalResult {
+    expect_args("functionp", &args, 1)?;
+    let is_function = match &args[0] {
+        Value::Lambda(_) | Value::Subr(_) | Value::ByteCode(_) => true,
+        Value::Symbol(name) => {
+            eval.obarray().fboundp(name)
+                || super::subr_info::is_special_form(name)
+                || super::builtin_registry::is_dispatch_builtin_name(name)
+                || name.parse::<PureBuiltinId>().is_ok()
+        }
+        Value::Cons(_) => is_lambda_form_list(&args[0]),
+        _ => false,
+    };
+    Ok(Value::bool(is_function))
+}
+
 pub(crate) fn builtin_keywordp(args: Vec<Value>) -> EvalResult {
     expect_args("keywordp", &args, 1)?;
     Ok(Value::bool(args[0].is_keyword()))
@@ -3802,6 +3831,7 @@ pub(crate) fn dispatch_builtin(
         "mapcar" => return Some(builtin_mapcar(eval, args)),
         "mapc" => return Some(builtin_mapc(eval, args)),
         "sort" => return Some(builtin_sort(eval, args)),
+        "functionp" => return Some(builtin_functionp_eval(eval, args)),
         // Symbol/obarray
         "boundp" => return Some(builtin_boundp(eval, args)),
         "fboundp" => return Some(builtin_fboundp(eval, args)),
@@ -5010,6 +5040,8 @@ pub(crate) fn dispatch_builtin(
         // Subr introspection (pure)
         "subr-name" => super::subr_info::builtin_subr_name(args),
         "subr-arity" => super::subr_info::builtin_subr_arity(args),
+        "subr-native-elisp-p" => super::subr_info::builtin_subr_native_elisp_p(args),
+        "subr-primitive-p" => super::subr_info::builtin_subr_primitive_p(args),
         "interpreted-function-p" => super::subr_info::builtin_interpreted_function_p(args),
         "special-form-p" => super::subr_info::builtin_special_form_p(args),
         "macrop" => super::subr_info::builtin_macrop(args),
@@ -6326,6 +6358,39 @@ mod tests {
         let random = builtin_fboundp(&mut eval, vec![Value::symbol("random")])
             .expect("fboundp should succeed for random");
         assert!(random.is_truthy());
+    }
+
+    #[test]
+    fn functionp_eval_matches_symbol_and_lambda_form_semantics() {
+        let mut eval = crate::elisp::eval::Evaluator::new();
+
+        let builtin_symbol = builtin_functionp_eval(&mut eval, vec![Value::symbol("message")])
+            .expect("functionp should accept builtin symbol");
+        assert!(builtin_symbol.is_truthy());
+
+        let quoted_lambda = Value::list(vec![
+            Value::symbol("lambda"),
+            Value::list(vec![Value::symbol("x")]),
+            Value::symbol("x"),
+        ]);
+        let lambda_result = builtin_functionp_eval(&mut eval, vec![quoted_lambda])
+            .expect("functionp should accept quoted lambda list");
+        assert!(lambda_result.is_truthy());
+
+        let improper_lambda = Value::cons(Value::symbol("lambda"), Value::Int(1));
+        let improper_result = builtin_functionp_eval(&mut eval, vec![improper_lambda])
+            .expect("functionp should accept improper lambda forms");
+        assert!(improper_result.is_truthy());
+
+        let quoted_closure = Value::list(vec![
+            Value::symbol("closure"),
+            Value::list(vec![Value::True]),
+            Value::list(vec![Value::symbol("x")]),
+            Value::symbol("x"),
+        ]);
+        let closure_result = builtin_functionp_eval(&mut eval, vec![quoted_closure])
+            .expect("functionp should reject quoted closure lists");
+        assert!(closure_result.is_nil());
     }
 
     #[test]

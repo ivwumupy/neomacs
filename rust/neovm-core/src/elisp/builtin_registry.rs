@@ -748,6 +748,8 @@ const DISPATCH_BUILTIN_NAMES: &[&str] = &[
     "string-version-lessp",
     "subr-arity",
     "subr-name",
+    "subr-native-elisp-p",
+    "subr-primitive-p",
     "subrp",
     "subst-char-in-string",
     "substitute-command-keys",
