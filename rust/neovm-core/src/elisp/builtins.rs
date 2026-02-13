@@ -3651,8 +3651,6 @@ pub(crate) fn dispatch_builtin(
         "symbol-file" => super::autoload::builtin_symbol_file(args),
 
         // Time/date (pure)
-        "current-time" => super::timefns::builtin_current_time(args),
-        "float-time" => super::timefns::builtin_float_time(args),
         "time-add" => super::timefns::builtin_time_add(args),
         "time-subtract" => super::timefns::builtin_time_subtract(args),
         "time-less-p" => super::timefns::builtin_time_less_p(args),
