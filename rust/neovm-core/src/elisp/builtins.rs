@@ -3352,6 +3352,54 @@ pub(crate) fn dispatch_builtin(
         // Undo (evaluator-dependent)
         "undo" => return Some(super::undo::builtin_undo(eval, args)),
 
+        // Search (evaluator-dependent)
+        "search-forward" => return Some(super::search::builtin_search_forward(eval, args)),
+        "search-backward" => return Some(super::search::builtin_search_backward(eval, args)),
+        "re-search-forward" => return Some(super::search::builtin_re_search_forward(eval, args)),
+        "re-search-backward" => return Some(super::search::builtin_re_search_backward(eval, args)),
+        "posix-search-forward" => return Some(super::search::builtin_posix_search_forward(eval, args)),
+        "posix-search-backward" => return Some(super::search::builtin_posix_search_backward(eval, args)),
+        "replace-match" => return Some(super::search::builtin_replace_match(eval, args)),
+        "word-search-forward" => return Some(super::search::builtin_word_search_forward(eval, args)),
+        "word-search-backward" => return Some(super::search::builtin_word_search_backward(eval, args)),
+
+        // Lread (evaluator-dependent)
+        "intern" => return Some(super::lread::builtin_intern(eval, args)),
+        "intern-soft" => return Some(super::lread::builtin_intern_soft(eval, args)),
+        "read" => return Some(super::lread::builtin_read(eval, args)),
+        "read-from-string" => return Some(super::lread::builtin_read_from_string(eval, args)),
+        "eval-buffer" => return Some(super::lread::builtin_eval_buffer(eval, args)),
+        "eval-region" => return Some(super::lread::builtin_eval_region(eval, args)),
+        "read-char" => return Some(super::lread::builtin_read_char(eval, args)),
+        "read-event" => return Some(super::lread::builtin_read_event(eval, args)),
+        "read-char-exclusive" => return Some(super::lread::builtin_read_char_exclusive(eval, args)),
+        "load" => return Some(super::lread::builtin_load(eval, args)),
+
+        // Editfns (evaluator-dependent)
+        "point" => return Some(super::editfns::builtin_point(eval, args)),
+        "point-min" => return Some(super::editfns::builtin_point_min(eval, args)),
+        "point-max" => return Some(super::editfns::builtin_point_max(eval, args)),
+        "goto-char" => return Some(super::editfns::builtin_goto_char(eval, args)),
+        "char-after" => return Some(super::editfns::builtin_char_after(eval, args)),
+        "char-before" => return Some(super::editfns::builtin_char_before(eval, args)),
+        "insert" => return Some(super::editfns::builtin_insert(eval, args)),
+        "insert-before-markers" => return Some(super::editfns::builtin_insert_before_markers(eval, args)),
+        "delete-region" => return Some(super::editfns::builtin_delete_region(eval, args)),
+        "delete-char" => return Some(super::editfns::builtin_delete_char(eval, args)),
+        "buffer-substring" => return Some(super::editfns::builtin_buffer_substring(eval, args)),
+        "buffer-substring-no-properties" => return Some(super::editfns::builtin_buffer_substring_no_properties(eval, args)),
+        "buffer-string" => return Some(super::editfns::builtin_buffer_string(eval, args)),
+        "region-beginning" => return Some(super::editfns::builtin_region_beginning(eval, args)),
+        "region-end" => return Some(super::editfns::builtin_region_end(eval, args)),
+        "mark" => return Some(super::editfns::builtin_mark(eval, args)),
+        "set-mark" => return Some(super::editfns::builtin_set_mark(eval, args)),
+        "bobp" => return Some(super::editfns::builtin_bobp(eval, args)),
+        "eobp" => return Some(super::editfns::builtin_eobp(eval, args)),
+        "bolp" => return Some(super::editfns::builtin_bolp(eval, args)),
+        "eolp" => return Some(super::editfns::builtin_eolp(eval, args)),
+        "following-char" => return Some(super::editfns::builtin_following_char(eval, args)),
+        "preceding-char" => return Some(super::editfns::builtin_preceding_char(eval, args)),
+
         _ => {}
     }
 
@@ -3779,10 +3827,6 @@ pub(crate) fn dispatch_builtin(
         "system-users" => super::dired::builtin_system_users(args),
         "system-groups" => super::dired::builtin_system_groups(args),
 
-        // Undo (pure)
-        "undo-boundary" => super::undo::builtin_undo_boundary(args),
-        "primitive-undo" => super::undo::builtin_primitive_undo(args),
-
         // Display engine (pure)
         "format-mode-line" => super::xdisp::builtin_format_mode_line(args),
         "invisible-p" => super::xdisp::builtin_invisible_p(args),
@@ -3999,6 +4043,35 @@ pub(crate) fn dispatch_builtin(
         "json-parse-string" => super::cl_lib::builtin_json_parse_string(args),
         "json-serialize" => super::cl_lib::builtin_json_serialize(args),
 
+        // Search (pure)
+        "string-match" => super::search::builtin_string_match(args),
+        "string-match-p" => super::search::builtin_string_match_p(args),
+        "regexp-quote" => super::search::builtin_regexp_quote(args),
+        "match-beginning" => super::search::builtin_match_beginning(args),
+        "match-end" => super::search::builtin_match_end(args),
+        "match-data" => super::search::builtin_match_data(args),
+        "set-match-data" => super::search::builtin_set_match_data(args),
+        "looking-at" => super::search::builtin_looking_at(args),
+        "replace-regexp-in-string" => super::search::builtin_replace_regexp_in_string(args),
+
+        // Lread (pure)
+        "get-load-suffixes" => super::lread::builtin_get_load_suffixes(args),
+        "locate-file" => super::lread::builtin_locate_file(args),
+        "locate-file-internal" => super::lread::builtin_locate_file_internal(args),
+        "read-coding-system" => super::lread::builtin_read_coding_system(args),
+        "read-non-nil-coding-system" => super::lread::builtin_read_non_nil_coding_system(args),
+
+        // Editfns (pure)
+        "user-login-name" => super::editfns::builtin_user_login_name(args),
+        "user-real-login-name" => super::editfns::builtin_user_real_login_name(args),
+        "user-uid" => super::editfns::builtin_user_uid(args),
+        "user-real-uid" => super::editfns::builtin_user_real_uid(args),
+        "user-full-name" => super::editfns::builtin_user_full_name(args),
+        "system-name" => super::editfns::builtin_system_name(args),
+        "emacs-pid" => super::editfns::builtin_emacs_pid(args),
+        "group-gid" => super::editfns::builtin_group_gid(args),
+        "group-real-gid" => super::editfns::builtin_group_real_gid(args),
+
         _ => return None,
     })
 }
@@ -4187,6 +4260,9 @@ pub(crate) fn dispatch_builtin_pure(name: &str, args: Vec<Value>) -> Option<Eval
         "sit-for" => super::timer::builtin_sit_for(args),
         // Register (pure)
         "register-to-string" => super::register::builtin_register_to_string(args),
+        // Undo system (pure)
+        "undo-boundary" => super::undo::builtin_undo_boundary(args),
+        "primitive-undo" => super::undo::builtin_primitive_undo(args),
         // Keyboard macro (pure)
         "executing-kbd-macro-p" => super::kmacro::builtin_executing_kbd_macro_p(args),
         "kmacro-p" => super::kmacro::builtin_kmacro_p(args),
