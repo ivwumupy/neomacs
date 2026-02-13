@@ -392,8 +392,9 @@ impl<'a> Parser<'a> {
                 Ok(Expr::List(vec![Expr::Symbol("function".into()), expr]))
             }
             '(' => {
-                // #(...) — Emacs uses this for byte-code, treat as vector for now
-                self.parse_vector_paren()
+                // #(...) — historical compiled-function literal.
+                let vector = self.parse_vector_paren()?;
+                Ok(Expr::List(vec![Expr::Symbol("quote".into()), vector]))
             }
             '[' => {
                 // #[...] — compiled-function literal in .elc.
@@ -800,6 +801,26 @@ mod tests {
     #[test]
     fn parse_bytecode_literal_vector_is_quoted() {
         let forms = parse_forms("#[(x) \"\\bT\\207\" [x] 1 (#$ . 83)]").unwrap();
+        assert_eq!(forms.len(), 1);
+        let Expr::List(items) = &forms[0] else {
+            panic!("expected quoted literal");
+        };
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0], Expr::Symbol("quote".into()));
+
+        let Expr::Vector(values) = &items[1] else {
+            panic!("expected vector body");
+        };
+        let Expr::DottedList(cons_items, cdr) = &values[4] else {
+            panic!("expected source-loc dotted pair");
+        };
+        assert_eq!(cons_items, &vec![Expr::Symbol("load-file-name".into())]);
+        assert_eq!(**cdr, Expr::Int(83));
+    }
+
+    #[test]
+    fn parse_paren_bytecode_literal_vector_is_quoted() {
+        let forms = parse_forms("#((x) \"\\bT\\207\" [x] 1 (#$ . 83))").unwrap();
         assert_eq!(forms.len(), 1);
         let Expr::List(items) = &forms[0] else {
             panic!("expected quoted literal");
