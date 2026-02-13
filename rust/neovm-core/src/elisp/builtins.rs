@@ -3300,16 +3300,10 @@ pub(crate) fn dispatch_builtin(
         "word-search-backward" => return Some(super::search::builtin_word_search_backward(eval, args)),
 
         // Lread (evaluator-dependent)
-        "intern" => return Some(super::lread::builtin_intern(eval, args)),
-        "intern-soft" => return Some(super::lread::builtin_intern_soft(eval, args)),
-        "read" => return Some(super::lread::builtin_read(eval, args)),
-        "read-from-string" => return Some(super::lread::builtin_read_from_string(eval, args)),
         "eval-buffer" => return Some(super::lread::builtin_eval_buffer(eval, args)),
         "eval-region" => return Some(super::lread::builtin_eval_region(eval, args)),
-        "read-char" => return Some(super::lread::builtin_read_char(eval, args)),
         "read-event" => return Some(super::lread::builtin_read_event(eval, args)),
         "read-char-exclusive" => return Some(super::lread::builtin_read_char_exclusive(eval, args)),
-        "load" => return Some(super::lread::builtin_load(eval, args)),
 
         // Editfns (evaluator-dependent)
         "point" => return Some(super::editfns::builtin_point(eval, args)),
