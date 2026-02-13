@@ -3761,6 +3761,7 @@ pub(crate) fn dispatch_builtin(
         "file-name-all-completions" => {
             return Some(super::dired::builtin_file_name_all_completions_eval(eval, args))
         }
+        "file-attributes" => return Some(super::dired::builtin_file_attributes_eval(eval, args)),
         "file-exists-p" => return Some(super::fileio::builtin_file_exists_p_eval(eval, args)),
         "file-readable-p" => return Some(super::fileio::builtin_file_readable_p_eval(eval, args)),
         "file-writable-p" => return Some(super::fileio::builtin_file_writable_p_eval(eval, args)),

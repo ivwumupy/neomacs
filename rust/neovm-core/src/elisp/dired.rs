@@ -952,6 +952,23 @@ pub(crate) fn builtin_file_attributes(args: Vec<Value>) -> EvalResult {
     }
 }
 
+/// Evaluator-backed variant of `file-attributes`.
+/// Resolves relative FILENAME against dynamic/default `default-directory`.
+pub(crate) fn builtin_file_attributes_eval(eval: &Evaluator, args: Vec<Value>) -> EvalResult {
+    expect_range_args("file-attributes", &args, 1, 2)?;
+
+    let filename = super::fileio::resolve_filename_for_eval(
+        eval,
+        &expect_string("file-attributes", &args[0])?,
+    );
+    let id_format_string = args.get(1).is_some_and(|v| v.is_truthy());
+
+    match build_file_attributes(&filename, id_format_string) {
+        Some(attrs) => Ok(attrs),
+        None => Ok(Value::Nil),
+    }
+}
+
 /// (file-attributes-lessp F1 F2)
 ///
 /// Return t if the first element (filename) of F1 is less than that of F2.
@@ -1680,6 +1697,26 @@ mod tests {
         assert!(items[2].is_string());
         // GID (index 3) should be a string.
         assert!(items[3].is_string());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_file_attributes_eval_respects_default_directory() {
+        let (dir, dir_str) = make_test_dir("fa_eval");
+        create_file(&dir, "alpha.txt", "x");
+
+        let mut eval = Evaluator::new();
+        eval.obarray.set_symbol_value(
+            "default-directory",
+            Value::string(ensure_trailing_slash(&dir_str)),
+        );
+
+        let result = builtin_file_attributes_eval(&eval, vec![Value::string("alpha.txt")]).unwrap();
+        let items = list_to_vec(&result).unwrap();
+        assert_eq!(items.len(), 12);
+        assert!(items[0].is_nil());
+        assert_eq!(items[7].as_int(), Some(1));
 
         let _ = fs::remove_dir_all(&dir);
     }

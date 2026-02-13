@@ -15,3 +15,5 @@
 (file-attributes "/nonexistent_path_neovm_compat_12345")
 (condition-case err (file-attributes) (car err))
 (condition-case err (file-attributes vm-fa-file nil nil) (car err))
+(let ((default-directory (file-name-directory vm-fa-file)))
+  (listp (file-attributes (file-name-nondirectory vm-fa-file))))
