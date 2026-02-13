@@ -62,14 +62,12 @@ fn expect_string(val: &Value) -> Result<String, Flow> {
 fn expect_char(val: &Value) -> Result<char, Flow> {
     match val {
         Value::Char(c) => Ok(*c),
-        Value::Int(n) => {
-            char::from_u32(*n as u32).ok_or_else(|| {
-                signal(
-                    "wrong-type-argument",
-                    vec![Value::symbol("characterp"), val.clone()],
-                )
-            })
-        }
+        Value::Int(n) => char::from_u32(*n as u32).ok_or_else(|| {
+            signal(
+                "wrong-type-argument",
+                vec![Value::symbol("characterp"), val.clone()],
+            )
+        }),
         other => Err(signal(
             "wrong-type-argument",
             vec![Value::symbol("characterp"), other.clone()],
@@ -82,10 +80,7 @@ fn expect_char(val: &Value) -> Result<char, Flow> {
 // ===========================================================================
 
 /// `(prog2 FORM1 FORM2 BODY...)` -- evaluate all forms, return result of FORM2.
-pub(crate) fn sf_prog2(
-    eval: &mut super::eval::Evaluator,
-    tail: &[Expr],
-) -> EvalResult {
+pub(crate) fn sf_prog2(eval: &mut super::eval::Evaluator, tail: &[Expr]) -> EvalResult {
     if tail.len() < 2 {
         return Err(signal("wrong-number-of-arguments", vec![]));
     }
@@ -102,10 +97,7 @@ pub(crate) fn sf_prog2(
 
 /// `(with-temp-buffer BODY...)` -- create a temp buffer, make it current,
 /// execute BODY, kill the buffer, restore previous buffer, return last result.
-pub(crate) fn sf_with_temp_buffer(
-    eval: &mut super::eval::Evaluator,
-    tail: &[Expr],
-) -> EvalResult {
+pub(crate) fn sf_with_temp_buffer(eval: &mut super::eval::Evaluator, tail: &[Expr]) -> EvalResult {
     // Save current buffer
     let saved_buf = eval.buffers.current_buffer().map(|b| b.id);
 
@@ -141,19 +133,13 @@ pub(crate) fn sf_save_current_buffer(
 
 /// `(track-mouse BODY...)` -- stub: just evaluates body forms.
 /// In real Emacs this enables mouse tracking; we skip that for now.
-pub(crate) fn sf_track_mouse(
-    eval: &mut super::eval::Evaluator,
-    tail: &[Expr],
-) -> EvalResult {
+pub(crate) fn sf_track_mouse(eval: &mut super::eval::Evaluator, tail: &[Expr]) -> EvalResult {
     eval.sf_progn(tail)
 }
 
 /// `(with-syntax-table TABLE BODY...)` -- stub: evaluates TABLE (discards),
 /// then evaluates BODY. Syntax table switching not yet implemented.
-pub(crate) fn sf_with_syntax_table(
-    eval: &mut super::eval::Evaluator,
-    tail: &[Expr],
-) -> EvalResult {
+pub(crate) fn sf_with_syntax_table(eval: &mut super::eval::Evaluator, tail: &[Expr]) -> EvalResult {
     if tail.is_empty() {
         return Err(signal("wrong-number-of-arguments", vec![]));
     }
@@ -374,7 +360,10 @@ pub(crate) fn builtin_subst_char_in_string(args: Vec<Value>) -> EvalResult {
     let from_char = expect_char(&args[0])?;
     let to_char = expect_char(&args[1])?;
     let s = expect_string(&args[2])?;
-    let result: String = s.chars().map(|c| if c == from_char { to_char } else { c }).collect();
+    let result: String = s
+        .chars()
+        .map(|c| if c == from_char { to_char } else { c })
+        .collect();
     Ok(Value::string(result))
 }
 
@@ -405,7 +394,8 @@ pub(crate) fn builtin_replace_regexp_in_string(args: Vec<Value>) -> EvalResult {
     };
 
     let result = if literal {
-        re.replace_all(search_region, regex::NoExpand(&rep)).into_owned()
+        re.replace_all(search_region, regex::NoExpand(&rep))
+            .into_owned()
     } else {
         // Translate Emacs-style back-references (\1, \2, etc.) to regex crate style ($1, $2)
         let rust_rep = rep
@@ -419,7 +409,8 @@ pub(crate) fn builtin_replace_regexp_in_string(args: Vec<Value>) -> EvalResult {
             .replace("\\7", "${7}")
             .replace("\\8", "${8}")
             .replace("\\9", "${9}");
-        re.replace_all(search_region, rust_rep.as_str()).into_owned()
+        re.replace_all(search_region, rust_rep.as_str())
+            .into_owned()
     };
 
     if start > 0 && start < s.len() {
@@ -748,9 +739,7 @@ mod tests {
 
     #[test]
     fn rassoc_not_found() {
-        let alist = Value::list(vec![
-            Value::cons(Value::symbol("a"), Value::Int(1)),
-        ]);
+        let alist = Value::list(vec![Value::cons(Value::symbol("a"), Value::Int(1))]);
         let result = builtin_rassoc(vec![Value::Int(99), alist]).unwrap();
         assert!(result.is_nil());
     }
@@ -772,9 +761,7 @@ mod tests {
 
     #[test]
     fn rassq_not_found() {
-        let alist = Value::list(vec![
-            Value::cons(Value::symbol("a"), Value::Int(1)),
-        ]);
+        let alist = Value::list(vec![Value::cons(Value::symbol("a"), Value::Int(1))]);
         let result = builtin_rassq(vec![Value::Int(99), alist]).unwrap();
         assert!(result.is_nil());
     }
@@ -783,18 +770,14 @@ mod tests {
 
     #[test]
     fn assoc_default_found() {
-        let alist = Value::list(vec![
-            Value::cons(Value::string("key"), Value::Int(42)),
-        ]);
+        let alist = Value::list(vec![Value::cons(Value::string("key"), Value::Int(42))]);
         let result = builtin_assoc_default(vec![Value::string("key"), alist]).unwrap();
         assert!(eq_value(&result, &Value::Int(42)));
     }
 
     #[test]
     fn assoc_default_not_found_uses_default() {
-        let alist = Value::list(vec![
-            Value::cons(Value::string("key"), Value::Int(42)),
-        ]);
+        let alist = Value::list(vec![Value::cons(Value::string("key"), Value::Int(42))]);
         let result = builtin_assoc_default(vec![
             Value::string("missing"),
             alist,
@@ -807,15 +790,9 @@ mod tests {
 
     #[test]
     fn assoc_default_eq_test() {
-        let alist = Value::list(vec![
-            Value::cons(Value::symbol("foo"), Value::Int(10)),
-        ]);
-        let result = builtin_assoc_default(vec![
-            Value::symbol("foo"),
-            alist,
-            Value::symbol("eq"),
-        ])
-        .unwrap();
+        let alist = Value::list(vec![Value::cons(Value::symbol("foo"), Value::Int(10))]);
+        let result =
+            builtin_assoc_default(vec![Value::symbol("foo"), alist, Value::symbol("eq")]).unwrap();
         assert!(eq_value(&result, &Value::Int(10)));
     }
 
@@ -908,8 +885,8 @@ mod tests {
             Value::string("o"),
             Value::string("$0"),
             Value::string("foo"),
-            Value::Nil,           // fixedcase
-            Value::True,          // literal
+            Value::Nil,  // fixedcase
+            Value::True, // literal
         ])
         .unwrap();
         assert_eq!(result.as_str().unwrap(), "f$0$0");
@@ -919,22 +896,16 @@ mod tests {
 
     #[test]
     fn string_match_p_found() {
-        let result = builtin_string_match_p(vec![
-            Value::string("ba."),
-            Value::string("foobar"),
-        ])
-        .unwrap();
+        let result =
+            builtin_string_match_p(vec![Value::string("ba."), Value::string("foobar")]).unwrap();
         // Should find "bar" starting at position 3
         assert!(eq_value(&result, &Value::Int(3)));
     }
 
     #[test]
     fn string_match_p_not_found() {
-        let result = builtin_string_match_p(vec![
-            Value::string("xyz"),
-            Value::string("foobar"),
-        ])
-        .unwrap();
+        let result =
+            builtin_string_match_p(vec![Value::string("xyz"), Value::string("foobar")]).unwrap();
         assert!(result.is_nil());
     }
 

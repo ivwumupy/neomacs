@@ -64,7 +64,10 @@ pub(crate) fn builtin_hash_table_keys(args: Vec<Value>) -> EvalResult {
             let keys: Vec<Value> = table.data.keys().map(hash_key_to_value).collect();
             Ok(Value::list(keys))
         }
-        other => Err(signal("wrong-type-argument", vec![Value::symbol("hash-table-p"), other.clone()])),
+        other => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("hash-table-p"), other.clone()],
+        )),
     }
 }
 
@@ -77,7 +80,10 @@ pub(crate) fn builtin_hash_table_values(args: Vec<Value>) -> EvalResult {
             let vals: Vec<Value> = table.data.values().cloned().collect();
             Ok(Value::list(vals))
         }
-        other => Err(signal("wrong-type-argument", vec![Value::symbol("hash-table-p"), other.clone()])),
+        other => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("hash-table-p"), other.clone()],
+        )),
     }
 }
 
@@ -94,7 +100,10 @@ pub(crate) fn builtin_hash_table_test(args: Vec<Value>) -> EvalResult {
             };
             Ok(Value::symbol(sym))
         }
-        other => Err(signal("wrong-type-argument", vec![Value::symbol("hash-table-p"), other.clone()])),
+        other => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("hash-table-p"), other.clone()],
+        )),
     }
 }
 
@@ -106,7 +115,10 @@ pub(crate) fn builtin_hash_table_size(args: Vec<Value>) -> EvalResult {
             let table = ht.lock().expect("poisoned");
             Ok(Value::Int(table.data.capacity() as i64))
         }
-        other => Err(signal("wrong-type-argument", vec![Value::symbol("hash-table-p"), other.clone()])),
+        other => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("hash-table-p"), other.clone()],
+        )),
     }
 }
 
@@ -115,7 +127,10 @@ pub(crate) fn builtin_hash_table_rehash_size(args: Vec<Value>) -> EvalResult {
     expect_args("hash-table-rehash-size", &args, 1)?;
     match &args[0] {
         Value::HashTable(_) => Ok(Value::Float(1.5)),
-        other => Err(signal("wrong-type-argument", vec![Value::symbol("hash-table-p"), other.clone()])),
+        other => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("hash-table-p"), other.clone()],
+        )),
     }
 }
 
@@ -124,7 +139,10 @@ pub(crate) fn builtin_hash_table_rehash_threshold(args: Vec<Value>) -> EvalResul
     expect_args("hash-table-rehash-threshold", &args, 1)?;
     match &args[0] {
         Value::HashTable(_) => Ok(Value::Float(0.8125)),
-        other => Err(signal("wrong-type-argument", vec![Value::symbol("hash-table-p"), other.clone()])),
+        other => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("hash-table-p"), other.clone()],
+        )),
     }
 }
 
@@ -133,7 +151,10 @@ pub(crate) fn builtin_hash_table_weakness(args: Vec<Value>) -> EvalResult {
     expect_args("hash-table-weakness", &args, 1)?;
     match &args[0] {
         Value::HashTable(_) => Ok(Value::Nil),
-        other => Err(signal("wrong-type-argument", vec![Value::symbol("hash-table-p"), other.clone()])),
+        other => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("hash-table-p"), other.clone()],
+        )),
     }
 }
 
@@ -144,9 +165,14 @@ pub(crate) fn builtin_copy_hash_table(args: Vec<Value>) -> EvalResult {
         Value::HashTable(ht) => {
             let table = ht.lock().expect("poisoned");
             let new_table = table.clone();
-            Ok(Value::HashTable(std::sync::Arc::new(std::sync::Mutex::new(new_table))))
+            Ok(Value::HashTable(std::sync::Arc::new(
+                std::sync::Mutex::new(new_table),
+            )))
         }
-        other => Err(signal("wrong-type-argument", vec![Value::symbol("hash-table-p"), other.clone()])),
+        other => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("hash-table-p"), other.clone()],
+        )),
     }
 }
 
@@ -155,19 +181,23 @@ pub(crate) fn builtin_copy_hash_table(args: Vec<Value>) -> EvalResult {
 // ---------------------------------------------------------------------------
 
 /// (maphash FUNCTION TABLE) — call FUNCTION with each (KEY VALUE) pair.
-pub(crate) fn builtin_maphash(
-    eval: &mut super::eval::Evaluator,
-    args: Vec<Value>,
-) -> EvalResult {
+pub(crate) fn builtin_maphash(eval: &mut super::eval::Evaluator, args: Vec<Value>) -> EvalResult {
     expect_args("maphash", &args, 2)?;
     let func = args[0].clone();
     let entries: Vec<(Value, Value)> = match &args[1] {
         Value::HashTable(ht) => {
             let table = ht.lock().expect("poisoned");
-            table.data.iter().map(|(k, v)| (hash_key_to_value(k), v.clone())).collect()
+            table
+                .data
+                .iter()
+                .map(|(k, v)| (hash_key_to_value(k), v.clone()))
+                .collect()
         }
         other => {
-            return Err(signal("wrong-type-argument", vec![Value::symbol("hash-table-p"), other.clone()]));
+            return Err(signal(
+                "wrong-type-argument",
+                vec![Value::symbol("hash-table-p"), other.clone()],
+            ));
         }
     };
     for (key, val) in entries {
@@ -177,14 +207,16 @@ pub(crate) fn builtin_maphash(
 }
 
 /// (mapatoms FUNCTION &optional OBARRAY) — call FUNCTION with each interned symbol.
-pub(crate) fn builtin_mapatoms(
-    eval: &mut super::eval::Evaluator,
-    args: Vec<Value>,
-) -> EvalResult {
+pub(crate) fn builtin_mapatoms(eval: &mut super::eval::Evaluator, args: Vec<Value>) -> EvalResult {
     expect_min_args("mapatoms", &args, 1)?;
     let func = args[0].clone();
     // Collect symbol names to avoid borrowing obarray during eval
-    let symbols: Vec<String> = eval.obarray.all_symbols().iter().map(|s| s.to_string()).collect();
+    let symbols: Vec<String> = eval
+        .obarray
+        .all_symbols()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     for sym in symbols {
         eval.apply(func.clone(), vec![Value::symbol(sym)])?;
     }
@@ -192,10 +224,7 @@ pub(crate) fn builtin_mapatoms(
 }
 
 /// (unintern NAME &optional OBARRAY) — remove symbol from obarray.
-pub(crate) fn builtin_unintern(
-    eval: &mut super::eval::Evaluator,
-    args: Vec<Value>,
-) -> EvalResult {
+pub(crate) fn builtin_unintern(eval: &mut super::eval::Evaluator, args: Vec<Value>) -> EvalResult {
     expect_min_args("unintern", &args, 1)?;
     let name = match &args[0] {
         Value::Symbol(s) => s.clone(),

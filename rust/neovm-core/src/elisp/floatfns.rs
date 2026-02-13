@@ -410,10 +410,7 @@ fn divide_for_rounding(name: &str, args: &[Value]) -> Result<(f64, bool), Flow> 
     if args.len() == 2 {
         let divisor = extract_float(name, &args[1])?;
         if divisor == 0.0 {
-            return Err(signal(
-                "arith-error",
-                vec![Value::symbol(name)],
-            ));
+            return Err(signal("arith-error", vec![Value::symbol(name)]));
         }
         let both_int = is_int_division && matches!(args[1], Value::Int(_));
         Ok((x / divisor, both_int))

@@ -32,12 +32,7 @@ fn expect_args(name: &str, args: &[Value], n: usize) -> Result<(), Flow> {
     }
 }
 
-fn expect_min_max_args(
-    name: &str,
-    args: &[Value],
-    min: usize,
-    max: usize,
-) -> Result<(), Flow> {
+fn expect_min_max_args(name: &str, args: &[Value], min: usize, max: usize) -> Result<(), Flow> {
     if args.len() < min || args.len() > max {
         Err(signal(
             "wrong-number-of-arguments",
@@ -120,9 +115,7 @@ pub(crate) fn builtin_format_spec(args: Vec<Value>) -> EvalResult {
             Value::Cons(cell) => {
                 let pair = cell.lock().expect("poisoned");
                 let ch = match &pair.car {
-                    Value::Int(n) => {
-                        char::from_u32(*n as u32).unwrap_or('?')
-                    }
+                    Value::Int(n) => char::from_u32(*n as u32).unwrap_or('?'),
                     Value::Char(c) => *c,
                     _ => continue,
                 };
@@ -282,7 +275,13 @@ fn is_leap_year(y: i64) -> bool {
 fn days_in_month(y: i64, m: u32) -> u32 {
     match m {
         1 => 31,
-        2 => if is_leap_year(y) { 29 } else { 28 },
+        2 => {
+            if is_leap_year(y) {
+                29
+            } else {
+                28
+            }
+        }
         3 => 31,
         4 => 30,
         5 => 31,
@@ -377,19 +376,34 @@ fn unix_to_broken_down(timestamp: i64) -> BrokenDownTime {
 }
 
 const DAY_NAMES: [&str; 7] = [
-    "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
 ];
 
 const DAY_ABBREVS: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const MONTH_NAMES: [&str; 12] = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
 ];
 
 const MONTH_ABBREVS: [&str; 12] = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
 /// `(format-time-string FORMAT-STRING &optional TIME ZONE)` -- format time
@@ -516,7 +530,13 @@ fn format_time(fmt: &str, tm: &BrokenDownTime) -> String {
                 }
                 'k' => result.push_str(&format!("{:2}", tm.hour)),
                 'I' => {
-                    let h12 = if tm.hour == 0 { 12 } else if tm.hour > 12 { tm.hour - 12 } else { tm.hour };
+                    let h12 = if tm.hour == 0 {
+                        12
+                    } else if tm.hour > 12 {
+                        tm.hour - 12
+                    } else {
+                        tm.hour
+                    };
                     if suppress_pad {
                         result.push_str(&h12.to_string());
                     } else {
@@ -524,7 +544,13 @@ fn format_time(fmt: &str, tm: &BrokenDownTime) -> String {
                     }
                 }
                 'l' => {
-                    let h12 = if tm.hour == 0 { 12 } else if tm.hour > 12 { tm.hour - 12 } else { tm.hour };
+                    let h12 = if tm.hour == 0 {
+                        12
+                    } else if tm.hour > 12 {
+                        tm.hour - 12
+                    } else {
+                        tm.hour
+                    };
                     result.push_str(&format!("{:2}", h12));
                 }
                 'M' => {
@@ -544,7 +570,9 @@ fn format_time(fmt: &str, tm: &BrokenDownTime) -> String {
                 'A' => result.push_str(DAY_NAMES[tm.weekday as usize % 7]),
                 'a' => result.push_str(DAY_ABBREVS[tm.weekday as usize % 7]),
                 'B' => result.push_str(MONTH_NAMES[(tm.month as usize).saturating_sub(1) % 12]),
-                'b' | 'h' => result.push_str(MONTH_ABBREVS[(tm.month as usize).saturating_sub(1) % 12]),
+                'b' | 'h' => {
+                    result.push_str(MONTH_ABBREVS[(tm.month as usize).saturating_sub(1) % 12])
+                }
                 'p' => result.push_str(if tm.hour < 12 { "AM" } else { "PM" }),
                 'P' => result.push_str(if tm.hour < 12 { "am" } else { "pm" }),
                 'Z' => result.push_str("UTC"),
@@ -565,9 +593,16 @@ fn format_time(fmt: &str, tm: &BrokenDownTime) -> String {
                 'n' => result.push('\n'),
                 't' => result.push('\t'),
                 'R' => result.push_str(&format!("{:02}:{:02}", tm.hour, tm.minute)),
-                'T' => result.push_str(&format!("{:02}:{:02}:{:02}", tm.hour, tm.minute, tm.second)),
+                'T' => {
+                    result.push_str(&format!("{:02}:{:02}:{:02}", tm.hour, tm.minute, tm.second))
+                }
                 'F' => result.push_str(&format!("{:04}-{:02}-{:02}", tm.year, tm.month, tm.day)),
-                'D' => result.push_str(&format!("{:02}/{:02}/{:02}", tm.month, tm.day, tm.year % 100)),
+                'D' => result.push_str(&format!(
+                    "{:02}/{:02}/{:02}",
+                    tm.month,
+                    tm.day,
+                    tm.year % 100
+                )),
                 other => {
                     // Unknown directive -- emit as-is.
                     result.push('%');
@@ -998,10 +1033,7 @@ mod tests {
             Value::cons(Value::Char('n'), Value::string("Bob")),
             Value::cons(Value::Char('a'), Value::string("21")),
         ]);
-        let result = builtin_format_spec(vec![
-            Value::string("%n is %a"),
-            spec_alist,
-        ]);
+        let result = builtin_format_spec(vec![Value::string("%n is %a"), spec_alist]);
         assert_eq!(result.unwrap().as_str().unwrap(), "Bob is 21");
     }
 
@@ -1016,59 +1048,39 @@ mod tests {
 
     #[test]
     fn format_spec_width_right_align() {
-        let spec_alist = Value::list(vec![
-            Value::cons(Value::Char('n'), Value::string("hi")),
-        ]);
-        let result = builtin_format_spec(vec![
-            Value::string("[%10n]"),
-            spec_alist,
-        ]);
+        let spec_alist = Value::list(vec![Value::cons(Value::Char('n'), Value::string("hi"))]);
+        let result = builtin_format_spec(vec![Value::string("[%10n]"), spec_alist]);
         assert_eq!(result.unwrap().as_str().unwrap(), "[        hi]");
     }
 
     #[test]
     fn format_spec_width_left_align() {
-        let spec_alist = Value::list(vec![
-            Value::cons(Value::Char('n'), Value::string("hi")),
-        ]);
-        let result = builtin_format_spec(vec![
-            Value::string("[%-10n]"),
-            spec_alist,
-        ]);
+        let spec_alist = Value::list(vec![Value::cons(Value::Char('n'), Value::string("hi"))]);
+        let result = builtin_format_spec(vec![Value::string("[%-10n]"), spec_alist]);
         assert_eq!(result.unwrap().as_str().unwrap(), "[hi        ]");
     }
 
     #[test]
     fn format_spec_zero_pad() {
-        let spec_alist = Value::list(vec![
-            Value::cons(Value::Char('n'), Value::string("42")),
-        ]);
-        let result = builtin_format_spec(vec![
-            Value::string("[%05n]"),
-            spec_alist,
-        ]);
+        let spec_alist = Value::list(vec![Value::cons(Value::Char('n'), Value::string("42"))]);
+        let result = builtin_format_spec(vec![Value::string("[%05n]"), spec_alist]);
         assert_eq!(result.unwrap().as_str().unwrap(), "[00042]");
     }
 
     #[test]
     fn format_spec_no_match_passthrough() {
-        let result = builtin_format_spec(vec![
-            Value::string("hello %x world"),
-            Value::Nil,
-        ]);
+        let result = builtin_format_spec(vec![Value::string("hello %x world"), Value::Nil]);
         assert_eq!(result.unwrap().as_str().unwrap(), "hello %x world");
     }
 
     #[test]
     fn format_spec_int_keys() {
         // Use integers instead of chars for the spec keys.
-        let spec_alist = Value::list(vec![
-            Value::cons(Value::Int('n' as i64), Value::string("Alice")),
-        ]);
-        let result = builtin_format_spec(vec![
-            Value::string("Name: %n"),
-            spec_alist,
-        ]);
+        let spec_alist = Value::list(vec![Value::cons(
+            Value::Int('n' as i64),
+            Value::string("Alice"),
+        )]);
+        let result = builtin_format_spec(vec![Value::string("Name: %n"), spec_alist]);
         assert_eq!(result.unwrap().as_str().unwrap(), "Name: Alice");
     }
 
@@ -1085,95 +1097,63 @@ mod tests {
     #[test]
     fn format_time_string_epoch() {
         // Unix epoch: 1970-01-01 00:00:00 UTC (Thursday)
-        let result = builtin_format_time_string(vec![
-            Value::string("%Y-%m-%d %H:%M:%S"),
-            Value::Int(0),
-        ]);
-        assert_eq!(
-            result.unwrap().as_str().unwrap(),
-            "1970-01-01 00:00:00"
-        );
+        let result =
+            builtin_format_time_string(vec![Value::string("%Y-%m-%d %H:%M:%S"), Value::Int(0)]);
+        assert_eq!(result.unwrap().as_str().unwrap(), "1970-01-01 00:00:00");
     }
 
     #[test]
     fn format_time_string_day_name() {
         // 1970-01-01 is a Thursday.
-        let result = builtin_format_time_string(vec![
-            Value::string("%A"),
-            Value::Int(0),
-        ]);
+        let result = builtin_format_time_string(vec![Value::string("%A"), Value::Int(0)]);
         assert_eq!(result.unwrap().as_str().unwrap(), "Thursday");
     }
 
     #[test]
     fn format_time_string_month_name() {
-        let result = builtin_format_time_string(vec![
-            Value::string("%B"),
-            Value::Int(0),
-        ]);
+        let result = builtin_format_time_string(vec![Value::string("%B"), Value::Int(0)]);
         assert_eq!(result.unwrap().as_str().unwrap(), "January");
     }
 
     #[test]
     fn format_time_string_known_date() {
         // 2000-01-01 00:00:00 UTC = 946684800
-        let result = builtin_format_time_string(vec![
-            Value::string("%Y-%m-%d %A"),
-            Value::Int(946684800),
-        ]);
-        assert_eq!(
-            result.unwrap().as_str().unwrap(),
-            "2000-01-01 Saturday"
-        );
+        let result =
+            builtin_format_time_string(vec![Value::string("%Y-%m-%d %A"), Value::Int(946684800)]);
+        assert_eq!(result.unwrap().as_str().unwrap(), "2000-01-01 Saturday");
     }
 
     #[test]
     fn format_time_string_literal_percent() {
-        let result = builtin_format_time_string(vec![
-            Value::string("100%%"),
-            Value::Int(0),
-        ]);
+        let result = builtin_format_time_string(vec![Value::string("100%%"), Value::Int(0)]);
         assert_eq!(result.unwrap().as_str().unwrap(), "100%");
     }
 
     #[test]
     fn format_time_string_timezone() {
-        let result = builtin_format_time_string(vec![
-            Value::string("%Z"),
-            Value::Int(0),
-        ]);
+        let result = builtin_format_time_string(vec![Value::string("%Z"), Value::Int(0)]);
         assert_eq!(result.unwrap().as_str().unwrap(), "UTC");
     }
 
     #[test]
     fn format_time_string_iso_format() {
-        let result = builtin_format_time_string(vec![
-            Value::string("%F %T"),
-            Value::Int(946684800),
-        ]);
-        assert_eq!(
-            result.unwrap().as_str().unwrap(),
-            "2000-01-01 00:00:00"
-        );
+        let result =
+            builtin_format_time_string(vec![Value::string("%F %T"), Value::Int(946684800)]);
+        assert_eq!(result.unwrap().as_str().unwrap(), "2000-01-01 00:00:00");
     }
 
     #[test]
     fn format_time_string_ampm() {
         // 2000-01-01 15:30:00 UTC = 946684800 + 15*3600 + 30*60 = 946740600
-        let result = builtin_format_time_string(vec![
-            Value::string("%I:%M %p"),
-            Value::Int(946740600),
-        ]);
+        let result =
+            builtin_format_time_string(vec![Value::string("%I:%M %p"), Value::Int(946740600)]);
         assert_eq!(result.unwrap().as_str().unwrap(), "03:30 PM");
     }
 
     #[test]
     fn format_time_string_no_time_uses_current() {
         // Should not error when TIME is nil.
-        let result = builtin_format_time_string(vec![
-            Value::string("%Y"),
-            Value::Nil,
-        ]);
+        let result = builtin_format_time_string(vec![Value::string("%Y"), Value::Nil]);
         assert!(result.is_ok());
         // Should return a 4-digit year.
         let year_str = result.unwrap();
@@ -1187,38 +1167,27 @@ mod tests {
     #[test]
     fn format_seconds_basic() {
         // 3661 seconds = 1 hour, 1 minute, 1 second
-        let result = builtin_format_seconds(vec![
-            Value::string("%h:%m:%s"),
-            Value::Int(3661),
-        ]);
+        let result = builtin_format_seconds(vec![Value::string("%h:%m:%s"), Value::Int(3661)]);
         assert_eq!(result.unwrap().as_str().unwrap(), "1:1:1");
     }
 
     #[test]
     fn format_seconds_days() {
         // 90061 = 1 day + 1 hour + 1 minute + 1 second
-        let result = builtin_format_seconds(vec![
-            Value::string("%d days, %h:%m:%s"),
-            Value::Int(90061),
-        ]);
+        let result =
+            builtin_format_seconds(vec![Value::string("%d days, %h:%m:%s"), Value::Int(90061)]);
         assert_eq!(result.unwrap().as_str().unwrap(), "1 days, 1:1:1");
     }
 
     #[test]
     fn format_seconds_zero() {
-        let result = builtin_format_seconds(vec![
-            Value::string("%h:%m:%s"),
-            Value::Int(0),
-        ]);
+        let result = builtin_format_seconds(vec![Value::string("%h:%m:%s"), Value::Int(0)]);
         assert_eq!(result.unwrap().as_str().unwrap(), "0:0:0");
     }
 
     #[test]
     fn format_seconds_literal_percent() {
-        let result = builtin_format_seconds(vec![
-            Value::string("100%%"),
-            Value::Int(0),
-        ]);
+        let result = builtin_format_seconds(vec![Value::string("100%%"), Value::Int(0)]);
         assert_eq!(result.unwrap().as_str().unwrap(), "100%");
     }
 
@@ -1228,10 +1197,7 @@ mod tests {
 
     #[test]
     fn string_pad_right() {
-        let result = builtin_string_pad(vec![
-            Value::string("hi"),
-            Value::Int(5),
-        ]);
+        let result = builtin_string_pad(vec![Value::string("hi"), Value::Int(5)]);
         assert_eq!(result.unwrap().as_str().unwrap(), "hi   ");
     }
 
@@ -1259,19 +1225,13 @@ mod tests {
 
     #[test]
     fn string_pad_truncate() {
-        let result = builtin_string_pad(vec![
-            Value::string("hello world"),
-            Value::Int(5),
-        ]);
+        let result = builtin_string_pad(vec![Value::string("hello world"), Value::Int(5)]);
         assert_eq!(result.unwrap().as_str().unwrap(), "hello");
     }
 
     #[test]
     fn string_pad_exact_length() {
-        let result = builtin_string_pad(vec![
-            Value::string("hello"),
-            Value::Int(5),
-        ]);
+        let result = builtin_string_pad(vec![Value::string("hello"), Value::Int(5)]);
         assert_eq!(result.unwrap().as_str().unwrap(), "hello");
     }
 
@@ -1327,10 +1287,7 @@ mod tests {
 
     #[test]
     fn string_lines_omit_nulls() {
-        let result = builtin_string_lines(vec![
-            Value::string("a\n\nb\n"),
-            Value::True,
-        ]);
+        let result = builtin_string_lines(vec![Value::string("a\n\nb\n"), Value::True]);
         let items = list_to_vec(&result.unwrap()).unwrap();
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].as_str().unwrap(), "a");
@@ -1351,22 +1308,19 @@ mod tests {
 
     #[test]
     fn string_clean_whitespace_basic() {
-        let result =
-            builtin_string_clean_whitespace(vec![Value::string("  hello   world  ")]);
+        let result = builtin_string_clean_whitespace(vec![Value::string("  hello   world  ")]);
         assert_eq!(result.unwrap().as_str().unwrap(), "hello world");
     }
 
     #[test]
     fn string_clean_whitespace_tabs_and_newlines() {
-        let result =
-            builtin_string_clean_whitespace(vec![Value::string("a\t\tb\n\nc")]);
+        let result = builtin_string_clean_whitespace(vec![Value::string("a\t\tb\n\nc")]);
         assert_eq!(result.unwrap().as_str().unwrap(), "a b c");
     }
 
     #[test]
     fn string_clean_whitespace_no_change() {
-        let result =
-            builtin_string_clean_whitespace(vec![Value::string("hello world")]);
+        let result = builtin_string_clean_whitespace(vec![Value::string("hello world")]);
         assert_eq!(result.unwrap().as_str().unwrap(), "hello world");
     }
 
@@ -1378,8 +1332,7 @@ mod tests {
 
     #[test]
     fn string_clean_whitespace_only_spaces() {
-        let result =
-            builtin_string_clean_whitespace(vec![Value::string("   ")]);
+        let result = builtin_string_clean_whitespace(vec![Value::string("   ")]);
         assert_eq!(result.unwrap().as_str().unwrap(), "");
     }
 
@@ -1389,10 +1342,8 @@ mod tests {
 
     #[test]
     fn string_fill_basic() {
-        let result = builtin_string_fill(vec![
-            Value::string("hello world foo bar"),
-            Value::Int(10),
-        ]);
+        let result =
+            builtin_string_fill(vec![Value::string("hello world foo bar"), Value::Int(10)]);
         let filled = result.unwrap();
         let s = filled.as_str().unwrap();
         // "hello" + " " + "world" = 11 > 10, so "world" goes to next line.
@@ -1403,10 +1354,7 @@ mod tests {
 
     #[test]
     fn string_fill_short_text() {
-        let result = builtin_string_fill(vec![
-            Value::string("hi"),
-            Value::Int(80),
-        ]);
+        let result = builtin_string_fill(vec![Value::string("hi"), Value::Int(80)]);
         assert_eq!(result.unwrap().as_str().unwrap(), "hi");
     }
 
@@ -1426,10 +1374,7 @@ mod tests {
 
     #[test]
     fn string_limit_from_start() {
-        let result = builtin_string_limit(vec![
-            Value::string("hello world"),
-            Value::Int(5),
-        ]);
+        let result = builtin_string_limit(vec![Value::string("hello world"), Value::Int(5)]);
         assert_eq!(result.unwrap().as_str().unwrap(), "hello");
     }
 
@@ -1445,20 +1390,14 @@ mod tests {
 
     #[test]
     fn string_limit_no_truncation() {
-        let result = builtin_string_limit(vec![
-            Value::string("hi"),
-            Value::Int(10),
-        ]);
+        let result = builtin_string_limit(vec![Value::string("hi"), Value::Int(10)]);
         assert_eq!(result.unwrap().as_str().unwrap(), "hi");
     }
 
     #[test]
     fn string_limit_unicode() {
         // Unicode chars should be counted by character, not byte.
-        let result = builtin_string_limit(vec![
-            Value::string("cafe\u{0301}"),
-            Value::Int(4),
-        ]);
+        let result = builtin_string_limit(vec![Value::string("cafe\u{0301}"), Value::Int(4)]);
         let s = result.unwrap();
         // "cafe\u{0301}" has 5 chars (c, a, f, e, combining accent).
         assert_eq!(s.as_str().unwrap().chars().count(), 4);
@@ -1515,44 +1454,35 @@ mod tests {
 
     #[test]
     fn string_equal_ignore_case_equal() {
-        let result = builtin_string_equal_ignore_case(vec![
-            Value::string("Hello"),
-            Value::string("hello"),
-        ]);
+        let result =
+            builtin_string_equal_ignore_case(vec![Value::string("Hello"), Value::string("hello")]);
         assert!(result.unwrap().is_truthy());
     }
 
     #[test]
     fn string_equal_ignore_case_not_equal() {
-        let result = builtin_string_equal_ignore_case(vec![
-            Value::string("Hello"),
-            Value::string("world"),
-        ]);
+        let result =
+            builtin_string_equal_ignore_case(vec![Value::string("Hello"), Value::string("world")]);
         assert!(result.unwrap().is_nil());
     }
 
     #[test]
     fn string_equal_ignore_case_identical() {
-        let result = builtin_string_equal_ignore_case(vec![
-            Value::string("abc"),
-            Value::string("abc"),
-        ]);
+        let result =
+            builtin_string_equal_ignore_case(vec![Value::string("abc"), Value::string("abc")]);
         assert!(result.unwrap().is_truthy());
     }
 
     #[test]
     fn string_equal_ignore_case_empty() {
-        let result = builtin_string_equal_ignore_case(vec![
-            Value::string(""),
-            Value::string(""),
-        ]);
+        let result = builtin_string_equal_ignore_case(vec![Value::string(""), Value::string("")]);
         assert!(result.unwrap().is_truthy());
     }
 
     #[test]
     fn string_equal_ignore_case_unicode() {
         let result = builtin_string_equal_ignore_case(vec![
-            Value::string("\u{00DF}"),  // German sharp s
+            Value::string("\u{00DF}"), // German sharp s
             Value::string("\u{00DF}"),
         ]);
         assert!(result.unwrap().is_truthy());
@@ -1560,10 +1490,7 @@ mod tests {
 
     #[test]
     fn string_equal_ignore_case_wrong_type() {
-        let result = builtin_string_equal_ignore_case(vec![
-            Value::Int(42),
-            Value::string("hello"),
-        ]);
+        let result = builtin_string_equal_ignore_case(vec![Value::Int(42), Value::string("hello")]);
         assert!(result.is_err());
     }
 
