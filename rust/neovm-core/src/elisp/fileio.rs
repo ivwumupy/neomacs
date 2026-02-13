@@ -109,6 +109,9 @@ pub fn file_name_nondirectory(filename: &str) -> String {
 /// When PERIOD is nil, returns extension without the leading dot, or nil if missing.
 /// When PERIOD is non-nil, returns extension with the leading dot, or an empty string if missing.
 pub fn file_name_extension(filename: &str, period: bool) -> Option<String> {
+    if filename.ends_with('/') {
+        return if period { Some(String::new()) } else { None };
+    }
     let path = Path::new(filename);
     let extension = path.extension().map(|e| e.to_string_lossy().into_owned());
     if period {
@@ -1053,6 +1056,8 @@ mod tests {
         assert_eq!(file_name_extension("..x", true), Some(".x".to_string()));
         assert_eq!(file_name_extension("a.", false), Some("".to_string()));
         assert_eq!(file_name_extension("a.", true), Some(".".to_string()));
+        assert_eq!(file_name_extension("foo.bar/", false), None);
+        assert_eq!(file_name_extension("foo.bar/", true), Some("".to_string()));
         assert_eq!(
             file_name_extension("archive.tar.gz", false),
             Some("gz".to_string())
