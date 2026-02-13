@@ -11,6 +11,25 @@
   (insert "abc")
   (list (call-process-region (point-min) (point-max) "cat" nil 3 nil)
         (buffer-string)))
+(progn
+  (get-buffer-create "cp-src")
+  (get-buffer-create "cp-dst")
+  (with-current-buffer "cp-src" (erase-buffer))
+  (with-current-buffer "cp-dst" (erase-buffer))
+  (with-current-buffer "cp-src"
+    (list (call-process "echo" nil "cp-dst" nil "hello")
+          (buffer-string)
+          (with-current-buffer "cp-dst"
+            (string-prefix-p "hello" (buffer-string))))))
+(progn
+  (get-buffer-create "cpr-src")
+  (get-buffer-create "cpr-dst")
+  (with-current-buffer "cpr-src" (erase-buffer) (insert "abc"))
+  (with-current-buffer "cpr-dst" (erase-buffer))
+  (with-current-buffer "cpr-src"
+    (list (call-process-region (point-min) (point-max) "cat" nil "cpr-dst" nil)
+          (buffer-string)
+          (with-current-buffer "cpr-dst" (buffer-string)))))
 (condition-case err
     (call-process "/nonexistent/neovm-vm-compat-missing-prog")
   (error (car err)))

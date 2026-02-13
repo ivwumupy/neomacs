@@ -245,6 +245,39 @@ fn classify_call_process_destination(destination: &Value) -> CallProcessDestinat
     }
 }
 
+fn insert_process_output(
+    eval: &mut super::eval::Evaluator,
+    destination: &Value,
+    output: &str,
+) -> Result<(), Flow> {
+    match destination {
+        Value::Str(name) => {
+            let id = eval
+                .buffers
+                .find_buffer_by_name(name)
+                .unwrap_or_else(|| eval.buffers.create_buffer(name));
+            let buf = eval.buffers.get_mut(id).ok_or_else(|| {
+                signal("error", vec![Value::string("No such live buffer for process output")])
+            })?;
+            buf.insert(output);
+            Ok(())
+        }
+        Value::Buffer(id) => {
+            let buf = eval.buffers.get_mut(*id).ok_or_else(|| {
+                signal("error", vec![Value::string("Selecting deleted buffer")])
+            })?;
+            buf.insert(output);
+            Ok(())
+        }
+        _ => {
+            if let Some(buf) = eval.buffers.current_buffer_mut() {
+                buf.insert(output);
+            }
+            Ok(())
+        }
+    }
+}
+
 /// Resolve a process argument: either a ProcessId integer or a name string.
 fn resolve_process(eval: &super::eval::Evaluator, value: &Value) -> Result<ProcessId, Flow> {
     match value {
@@ -379,9 +412,7 @@ pub(crate) fn builtin_call_process(
 
             let exit_code = output.status.code().unwrap_or(-1);
             let stdout_str = String::from_utf8_lossy(&output.stdout).into_owned();
-            if let Some(buf) = eval.buffers.current_buffer_mut() {
-                buf.insert(&stdout_str);
-            }
+            insert_process_output(eval, destination, &stdout_str)?;
             Ok(Value::Int(exit_code as i64))
         }
     }
@@ -462,9 +493,7 @@ pub(crate) fn builtin_call_process_region(
 
             let exit_code = output.status.code().unwrap_or(-1);
             let stdout_str = String::from_utf8_lossy(&output.stdout).into_owned();
-            if let Some(buf) = eval.buffers.current_buffer_mut() {
-                buf.insert(&stdout_str);
-            }
+            insert_process_output(eval, destination, &stdout_str)?;
 
             Ok(Value::Int(exit_code as i64))
         }
@@ -879,6 +908,26 @@ mod tests {
     }
 
     #[test]
+    fn call_process_destination_buffer_name_inserts_there() {
+        let echo = find_bin("echo");
+        let results = eval_all(&format!(
+            r#"(get-buffer-create "cp-src")
+               (get-buffer-create "cp-dst")
+               (set-buffer "cp-src")
+               (erase-buffer)
+               (set-buffer "cp-dst")
+               (erase-buffer)
+               (set-buffer "cp-src")
+               (call-process "{echo}" nil "cp-dst" nil "hello")
+               (list
+                 (with-current-buffer "cp-src" (buffer-string))
+                 (with-current-buffer "cp-dst" (buffer-string)))"#,
+        ));
+        assert_eq!(results[7], "OK 0");
+        assert_eq!(results[8], r#"OK ("" "hello\n")"#);
+    }
+
+    #[test]
     fn call_process_integer_destination_returns_nil() {
         let echo = find_bin("echo");
         // Any integer destination behaves like 0: discard and return nil.
@@ -914,6 +963,24 @@ mod tests {
         assert_eq!(results[3], "OK 0");
         // Buffer should contain original text plus piped output
         assert!(results[4].contains("hello world"));
+    }
+
+    #[test]
+    fn call_process_region_destination_buffer_name_inserts_there() {
+        let cat = find_bin("cat");
+        let results = eval_all(&format!(
+            r#"(get-buffer-create "cpr-src")
+               (get-buffer-create "cpr-dst")
+               (with-current-buffer "cpr-src" (erase-buffer) (insert "abc"))
+               (with-current-buffer "cpr-dst" (erase-buffer))
+               (with-current-buffer "cpr-src"
+                 (call-process-region (point-min) (point-max) "{cat}" nil "cpr-dst" nil))
+               (list
+                 (with-current-buffer "cpr-src" (buffer-string))
+                 (with-current-buffer "cpr-dst" (buffer-string)))"#,
+        ));
+        assert_eq!(results[4], "OK 0");
+        assert_eq!(results[5], r#"OK ("abc" "abc")"#);
     }
 
     #[test]
