@@ -74,6 +74,8 @@ const DISPATCH_BUILTIN_NAMES: &[&str] = &[
     "bool-vector-union",
     "boundp",
     "bounds-of-thing-at-point",
+    "buffer-disable-undo",
+    "buffer-enable-undo",
     "buffer-file-name",
     "buffer-hash",
     "buffer-list",

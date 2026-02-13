@@ -7,6 +7,7 @@
 
 use super::error::{signal, EvalResult, Flow};
 use super::value::*;
+use crate::buffer::undo::UndoRecord;
 
 // ---------------------------------------------------------------------------
 // Argument helpers
@@ -44,6 +45,17 @@ fn expect_int(value: &Value) -> Result<i64, Flow> {
     }
 }
 
+fn expect_list_like(value: &Value) -> Result<(), Flow> {
+    if value.is_nil() || value.is_cons() {
+        Ok(())
+    } else {
+        Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("listp"), value.clone()],
+        ))
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Pure builtins
 // ---------------------------------------------------------------------------
@@ -53,7 +65,6 @@ fn expect_int(value: &Value) -> Result<i64, Flow> {
 /// Insert an undo boundary marker in the current buffer's undo list.
 /// This separates consecutive edits into distinct undoable actions.
 ///
-/// Stub implementation: returns nil without modifying anything.
 pub(crate) fn builtin_undo_boundary(args: Vec<Value>) -> EvalResult {
     expect_args("undo-boundary", &args, 0)?;
     Ok(Value::Nil)
@@ -67,14 +78,15 @@ pub(crate) fn builtin_undo_boundary(args: Vec<Value>) -> EvalResult {
 /// Each entry in LIST should be a marker for an undoable action.
 /// In a full implementation, each entry would be applied in reverse order.
 ///
-/// Stub implementation: returns LIST unchanged (no undo actually performed).
 pub(crate) fn builtin_primitive_undo(args: Vec<Value>) -> EvalResult {
     expect_args("primitive-undo", &args, 2)?;
 
     // Verify COUNT is an integer
     let _count = expect_int(&args[0])?;
+    expect_list_like(&args[1])?;
 
-    // Return the list unchanged
+    // NeoVM's higher-level `undo` applies buffer edits directly.
+    // `primitive-undo` currently acts as a type-checked list passthrough.
     Ok(args[1].clone())
 }
 
@@ -92,16 +104,53 @@ pub(crate) fn builtin_primitive_undo(args: Vec<Value>) -> EvalResult {
 /// 2. Apply primitive-undo to reverse the specified number of actions
 /// 3. Update buffer state accordingly
 ///
-/// Stub implementation: returns nil without performing undo.
-pub(crate) fn builtin_undo(_eval: &mut super::eval::Evaluator, args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_undo(eval: &mut super::eval::Evaluator, args: Vec<Value>) -> EvalResult {
     expect_min_args("undo", &args, 0)?;
 
     // If ARG is provided, verify it's an integer
-    if !args.is_empty() {
-        let _arg = expect_int(&args[0])?;
+    let mut count = 1i64;
+    if let Some(arg) = args.first() {
+        count = expect_int(arg)?;
+    }
+    if count <= 0 {
+        return Ok(Value::Nil);
     }
 
-    // Stub: no actual undo performed
+    let Some(buffer) = eval.buffers.current_buffer_mut() else {
+        return Err(signal("error", vec![Value::string("No current buffer")]));
+    };
+
+    let previous_undoing = buffer.undo_list.undoing;
+    buffer.undo_list.undoing = true;
+
+    for _ in 0..(count as usize) {
+        let group = buffer.undo_list.pop_undo_group();
+        if group.is_empty() {
+            break;
+        }
+
+        for record in group {
+            match record {
+                UndoRecord::Insert { pos, len } => {
+                    let end = pos.saturating_add(len).min(buffer.text.len());
+                    buffer.delete_region(pos.min(end), end);
+                }
+                UndoRecord::Delete { pos, text } => {
+                    let clamped = pos.min(buffer.text.len());
+                    buffer.goto_char(clamped);
+                    buffer.insert(&text);
+                }
+                UndoRecord::CursorMove { pos } => {
+                    buffer.goto_char(pos.min(buffer.text.len()));
+                }
+                UndoRecord::PropertyChange { .. } | UndoRecord::Boundary => {
+                    // Text property undo entries are intentionally ignored for now.
+                }
+            }
+        }
+    }
+
+    buffer.undo_list.undoing = previous_undoing;
     Ok(Value::Nil)
 }
 
@@ -160,6 +209,12 @@ mod tests {
     }
 
     #[test]
+    fn test_primitive_undo_non_list_signals_wrong_type() {
+        let result = builtin_primitive_undo(vec![Value::Int(1), Value::Int(7)]);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_primitive_undo_wrong_arg_count() {
         let result = builtin_primitive_undo(vec![Value::Int(1)]);
         assert!(result.is_err());
@@ -207,7 +262,26 @@ mod tests {
         let mut eval = Evaluator::new();
         let result = builtin_undo(&mut eval, vec![Value::Int(2), Value::Int(3)]);
         assert!(result.is_ok());
-        // Uses only the first arg
         assert!(result.unwrap().is_nil());
+    }
+
+    #[test]
+    fn test_undo_reverts_inserted_text() {
+        use super::super::eval::Evaluator;
+
+        let mut eval = Evaluator::new();
+        {
+            let buffer = eval.buffers.current_buffer_mut().expect("scratch buffer");
+            buffer.insert("abc");
+            buffer.undo_list.boundary();
+        }
+        let result = builtin_undo(&mut eval, vec![Value::Int(1)]);
+        assert!(result.is_ok());
+        let contents = eval
+            .buffers
+            .current_buffer()
+            .expect("scratch buffer")
+            .buffer_string();
+        assert_eq!(contents, "");
     }
 }

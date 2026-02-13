@@ -3091,6 +3091,70 @@ pub(crate) fn builtin_erase_buffer(
     Ok(Value::Nil)
 }
 
+/// (buffer-enable-undo &optional BUFFER) -> nil
+pub(crate) fn builtin_buffer_enable_undo(
+    eval: &mut super::eval::Evaluator,
+    args: Vec<Value>,
+) -> EvalResult {
+    if args.len() > 1 {
+        return Err(signal(
+            "wrong-number-of-arguments",
+            vec![
+                Value::symbol("buffer-enable-undo"),
+                Value::Int(args.len() as i64),
+            ],
+        ));
+    }
+
+    let id = if args.is_empty() || matches!(args[0], Value::Nil) {
+        eval.buffers
+            .current_buffer()
+            .ok_or_else(|| signal("error", vec![Value::string("No current buffer")]))?
+            .id
+    } else {
+        expect_buffer_id(&args[0])?
+    };
+    let buf = eval
+        .buffers
+        .get_mut(id)
+        .ok_or_else(|| signal("error", vec![Value::string("No such live buffer")]))?;
+    buf.undo_list.set_enabled(true);
+    buf.set_buffer_local("buffer-undo-list", Value::Nil);
+    Ok(Value::Nil)
+}
+
+/// (buffer-disable-undo &optional BUFFER) -> t
+pub(crate) fn builtin_buffer_disable_undo(
+    eval: &mut super::eval::Evaluator,
+    args: Vec<Value>,
+) -> EvalResult {
+    if args.len() > 1 {
+        return Err(signal(
+            "wrong-number-of-arguments",
+            vec![
+                Value::symbol("buffer-disable-undo"),
+                Value::Int(args.len() as i64),
+            ],
+        ));
+    }
+
+    let id = if args.is_empty() || matches!(args[0], Value::Nil) {
+        eval.buffers
+            .current_buffer()
+            .ok_or_else(|| signal("error", vec![Value::string("No current buffer")]))?
+            .id
+    } else {
+        expect_buffer_id(&args[0])?
+    };
+    let buf = eval
+        .buffers
+        .get_mut(id)
+        .ok_or_else(|| signal("error", vec![Value::string("No such live buffer")]))?;
+    buf.undo_list.set_enabled(false);
+    buf.set_buffer_local("buffer-undo-list", Value::True);
+    Ok(Value::True)
+}
+
 /// (buffer-size &optional BUFFER) → integer
 pub(crate) fn builtin_buffer_size(
     eval: &mut super::eval::Evaluator,
@@ -4007,6 +4071,8 @@ pub(crate) fn dispatch_builtin(
         "insert" => return Some(builtin_insert(eval, args)),
         "delete-region" => return Some(builtin_delete_region(eval, args)),
         "erase-buffer" => return Some(builtin_erase_buffer(eval, args)),
+        "buffer-enable-undo" => return Some(builtin_buffer_enable_undo(eval, args)),
+        "buffer-disable-undo" => return Some(builtin_buffer_disable_undo(eval, args)),
         "buffer-size" => return Some(builtin_buffer_size(eval, args)),
         "narrow-to-region" => return Some(builtin_narrow_to_region(eval, args)),
         "widen" => return Some(builtin_widen(eval, args)),
