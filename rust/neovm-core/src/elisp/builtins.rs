@@ -4182,16 +4182,7 @@ pub(crate) fn dispatch_builtin_pure(name: &str, args: Vec<Value>) -> Option<Eval
         // Arithmetic (typed subset is dispatched above)
         // Type predicates and equality (typed subset is dispatched above)
         // Cons/List (typed subset is dispatched above)
-        // String
-        "string-equal" | "string=" => builtin_string_equal(args),
-        "string-lessp" | "string<" => builtin_string_lessp(args),
-        "substring" => builtin_substring(args),
-        "concat" => builtin_concat(args),
-        "string-to-number" => builtin_string_to_number(args),
-        "number-to-string" => builtin_number_to_string(args),
-        "upcase" => builtin_upcase(args),
-        "downcase" => builtin_downcase(args),
-        "format" => builtin_format(args),
+        // String (typed subset is dispatched above)
         // Vector
         "make-vector" => builtin_make_vector(args),
         "vector" => builtin_vector(args),
