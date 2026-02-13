@@ -191,6 +191,30 @@ impl Evaluator {
         })
     }
 
+    /// Keep the Lisp-visible `features` variable in sync with the evaluator's
+    /// internal feature set.
+    fn sync_features_variable(&mut self) {
+        let values: Vec<Value> = self
+            .features
+            .iter()
+            .map(|name| Value::symbol(name.clone()))
+            .collect();
+        self.obarray.set_symbol_value("features", Value::list(values));
+    }
+
+    fn has_feature(&self, name: &str) -> bool {
+        self.features.iter().any(|f| f == name)
+    }
+
+    fn add_feature(&mut self, name: &str) {
+        if self.has_feature(name) {
+            return;
+        }
+        // Emacs pushes newly-provided features at the front.
+        self.features.insert(0, name.to_string());
+        self.sync_features_variable();
+    }
+
     /// Access the obarray (for builtins that need it).
     pub fn obarray(&self) -> &Obarray {
         &self.obarray
@@ -971,9 +995,7 @@ impl Evaluator {
                 ))
             }
         };
-        if !self.features.contains(&name) {
-            self.features.push(name);
-        }
+        self.add_feature(&name);
         Ok(feature)
     }
 
@@ -991,7 +1013,7 @@ impl Evaluator {
                 ))
             }
         };
-        if self.features.contains(&name) {
+        if self.has_feature(&name) {
             return Ok(Value::symbol(name));
         }
 
@@ -1010,11 +1032,11 @@ impl Evaluator {
             Some(path) => {
                 self.load_file_internal(&path)?;
                 // After loading, check if feature was provided
-                if self.features.contains(&name) {
+                if self.has_feature(&name) {
                     Ok(Value::symbol(name))
                 } else {
                     Err(signal(
-                        "file-missing",
+                        "error",
                         vec![Value::string(format!(
                             "Required feature '{}' was not provided",
                             name
@@ -1358,9 +1380,19 @@ impl Evaluator {
             self.dynamic.push(frame);
             None
         };
+        let saved_lexical_mode = if lambda.env.is_some() {
+            let old = self.lexical_binding();
+            self.set_lexical_binding(true);
+            Some(old)
+        } else {
+            None
+        };
 
         let result = self.sf_progn(&lambda.body);
 
+        if let Some(old_mode) = saved_lexical_mode {
+            self.set_lexical_binding(old_mode);
+        }
         if let Some(old_lexenv) = saved_lexenv {
             self.lexenv = old_lexenv;
         } else {

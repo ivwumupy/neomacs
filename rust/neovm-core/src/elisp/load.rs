@@ -60,41 +60,47 @@ pub fn load_file(eval: &mut super::eval::Evaluator, path: &Path) -> Result<Value
         ))],
     })?;
 
-    // Check for lexical-binding file variable
+    // Save dynamic loader context and restore it even on parse/eval errors.
+    let old_lexical = eval.lexical_binding();
+    let old_load_file = eval.obarray().symbol_value("load-file-name").cloned();
+
+    // Check for lexical-binding file variable in file-local line.
     let first_line: &str = content.lines().next().unwrap_or("");
     if first_line.contains("lexical-binding: t") {
         eval.set_lexical_binding(true);
     }
 
-    // Save and set load-file-name
-    let old_load_file = eval.obarray().symbol_value("load-file-name").cloned();
     eval.set_variable(
         "load-file-name",
         Value::string(path.to_string_lossy().to_string()),
     );
 
-    let forms = super::parser::parse_forms(&content).map_err(|e| EvalError::Signal {
-        symbol: "invalid-read-syntax".to_string(),
-        data: vec![Value::string(format!(
-            "Parse error in {}: {:?}",
-            path.display(),
-            e
-        ))],
-    })?;
+    let result = (|| -> Result<Value, EvalError> {
+        let forms = super::parser::parse_forms(&content).map_err(|e| EvalError::Signal {
+            symbol: "invalid-read-syntax".to_string(),
+            data: vec![Value::string(format!(
+                "Parse error in {}: {:?}",
+                path.display(),
+                e
+            ))],
+        })?;
 
-    let mut last = Value::Nil;
-    for form in &forms {
-        last = eval.eval_expr(form)?;
-    }
+        for form in &forms {
+            let _ = eval.eval_expr(form)?;
+        }
 
-    // Restore load-file-name
+        // Emacs `load` returns non-nil on success (typically `t`).
+        Ok(Value::True)
+    })();
+
+    eval.set_lexical_binding(old_lexical);
     if let Some(old) = old_load_file {
         eval.set_variable("load-file-name", old);
     } else {
         eval.set_variable("load-file-name", Value::Nil);
     }
 
-    Ok(last)
+    result
 }
 
 #[cfg(test)]
