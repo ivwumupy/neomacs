@@ -775,6 +775,14 @@ impl<'a> Vm<'a> {
                 }
                 return Ok(Value::Nil);
             }
+            "%%unimplemented-elc-bytecode" => {
+                return Err(signal(
+                    "error",
+                    vec![Value::string(
+                        "Compiled .elc bytecode execution is not implemented yet",
+                    )],
+                ));
+            }
             _ => {}
         }
 

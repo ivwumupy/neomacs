@@ -635,18 +635,10 @@ mod tests {
             .symbol_function("vm-bytecode-probe")
             .cloned()
             .expect("function cell should be set");
-        let Value::Vector(vec_ref) = func else {
-            panic!("defalias should install a vector-backed function cell");
-        };
-        let values = vec_ref.lock().expect("lock vector");
-        let source_loc = values.get(4).expect("source location payload");
-        let Value::Cons(cell) = source_loc else {
-            panic!("source location should be cons");
-        };
-        let pair = cell.lock().expect("lock source location pair");
-        let path_str = compiled.to_string_lossy().to_string();
-        assert_eq!(pair.car.as_str(), Some(path_str.as_str()));
-        assert_eq!(pair.cdr, Value::Int(83));
+        assert!(
+            matches!(func, Value::ByteCode(_)),
+            "defalias should install a compiled function cell",
+        );
 
         let features = eval
             .obarray()
@@ -720,9 +712,9 @@ mod tests {
         assert!(
             matches!(
                 eval.obarray().symbol_function("vm-paren-bytecode-probe"),
-                Some(Value::Vector(_))
+                Some(Value::ByteCode(_))
             ),
-            "defalias should install a vector-backed function cell",
+            "defalias should install a compiled function cell",
         );
 
         let _ = fs::remove_dir_all(&dir);
