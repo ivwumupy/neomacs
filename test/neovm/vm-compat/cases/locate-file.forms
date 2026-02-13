@@ -9,3 +9,9 @@
 
 (file-name-nondirectory (locate-file-internal "vm-locate-probe" (list vm-locate-dir) '(".xelc")))
 (locate-file-internal "vm-locate-missing" (list vm-locate-dir) '(".el"))
+
+(file-name-nondirectory (locate-file "vm-locate-probe" (list vm-locate-dir) '(".el") 'file-regular-p))
+(locate-file "vm-locate-probe" (list vm-locate-dir) '(".el") 'file-directory-p)
+(condition-case err
+    (locate-file "vm-locate-probe" (list vm-locate-dir) '(".el") 'definitely-not-a-real-predicate)
+  (error (car err)))
