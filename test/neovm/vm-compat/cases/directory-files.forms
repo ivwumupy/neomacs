@@ -1,0 +1,16 @@
+; directory-files semantics: dot entries, regex matching, and optional NOSORT/COUNT args.
+(setq vm-df-dir
+      (let* ((forms-file (getenv "NEOVM_FORMS_FILE"))
+             (base (if forms-file (file-name-directory forms-file) default-directory)))
+        (expand-file-name "directory-files-fixtures" base)))
+(directory-files vm-df-dir)
+(directory-files vm-df-dir t)
+(directory-files vm-df-dir nil "\\.el$")
+(directory-files vm-df-dir nil "^[^.]")
+(sort (copy-sequence (directory-files vm-df-dir nil nil t)) #'string<)
+(directory-files vm-df-dir nil nil nil 0)
+(directory-files vm-df-dir nil nil t 2)
+(directory-files vm-df-dir nil nil nil 2)
+(condition-case err (directory-files vm-df-dir nil nil nil -1) (error (car err)))
+(condition-case err (directory-files vm-df-dir nil nil nil "x") (error (car err)))
+(condition-case err (directory-files vm-df-dir nil nil nil 0 nil) (error (car err)))
