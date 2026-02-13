@@ -3,3 +3,6 @@
 (symbol-function 'load)
 (symbol-function 'if)
 (symbol-function 'car)
+(symbol-function 'read-key)
+(symbol-function 'read-event)
+(symbol-function 'read-char-exclusive)
