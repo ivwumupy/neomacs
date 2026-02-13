@@ -1,0 +1,7 @@
+; batch-mode reader input behavior should signal end-of-file.
+(condition-case err (read-number "" 7) (error (car err)))
+(condition-case err (read-number "") (error (car err)))
+(condition-case err (read-file-name "") (error (car err)))
+(condition-case err (read-buffer "") (error (car err)))
+(condition-case err (read-command "") (error (car err)))
+(condition-case err (read-variable "") (error (car err)))
