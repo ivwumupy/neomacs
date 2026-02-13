@@ -623,6 +623,7 @@ const DISPATCH_BUILTIN_NAMES: &[&str] = &[
     "read-file-name",
     "read-from-minibuffer",
     "read-from-string",
+    "read-key",
     "read-key-sequence",
     "read-non-nil-coding-system",
     "read-number",
