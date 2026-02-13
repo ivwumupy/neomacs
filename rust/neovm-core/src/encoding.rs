@@ -230,7 +230,7 @@ fn expect_string(val: &Value) -> Result<String, crate::elisp::error::Flow> {
 }
 
 /// `(char-width CHAR)` -> integer
-pub fn builtin_char_width(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_char_width(args: Vec<Value>) -> EvalResult {
     expect_args("char-width", &args, 1)?;
     let c = match &args[0] {
         Value::Char(c) => *c,
@@ -246,28 +246,28 @@ pub fn builtin_char_width(args: Vec<Value>) -> EvalResult {
 }
 
 /// `(string-width STRING)` — already exists, but this provides the backing impl.
-pub fn builtin_string_width(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_string_width(args: Vec<Value>) -> EvalResult {
     expect_args("string-width", &args, 1)?;
     let s = expect_string(&args[0])?;
     Ok(Value::Int(string_width(&s) as i64))
 }
 
 /// `(multibyte-string-p STRING)` -> t or nil
-pub fn builtin_multibyte_string_p(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_multibyte_string_p(args: Vec<Value>) -> EvalResult {
     expect_args("multibyte-string-p", &args, 1)?;
     let s = expect_string(&args[0])?;
     Ok(Value::bool(is_multibyte_string(&s)))
 }
 
 /// `(unibyte-string-p STRING)` -> t or nil
-pub fn builtin_unibyte_string_p(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_unibyte_string_p(args: Vec<Value>) -> EvalResult {
     expect_args("unibyte-string-p", &args, 1)?;
     let s = expect_string(&args[0])?;
     Ok(Value::bool(is_ascii_string(&s)))
 }
 
 /// `(encode-coding-string STRING CODING-SYSTEM)` -> string
-pub fn builtin_encode_coding_string(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_encode_coding_string(args: Vec<Value>) -> EvalResult {
     expect_min_args("encode-coding-string", &args, 2)?;
     let s = expect_string(&args[0])?;
     let coding = match &args[1] {
@@ -287,7 +287,7 @@ pub fn builtin_encode_coding_string(args: Vec<Value>) -> EvalResult {
 }
 
 /// `(decode-coding-string STRING CODING-SYSTEM)` -> string
-pub fn builtin_decode_coding_string(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_decode_coding_string(args: Vec<Value>) -> EvalResult {
     expect_min_args("decode-coding-string", &args, 2)?;
     let s = expect_string(&args[0])?;
     let coding = match &args[1] {
@@ -306,7 +306,7 @@ pub fn builtin_decode_coding_string(args: Vec<Value>) -> EvalResult {
 }
 
 /// `(char-or-string-p OBJ)` -> t or nil
-pub fn builtin_char_or_string_p(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_char_or_string_p(args: Vec<Value>) -> EvalResult {
     expect_args("char-or-string-p", &args, 1)?;
     Ok(Value::bool(matches!(
         &args[0],
@@ -315,7 +315,7 @@ pub fn builtin_char_or_string_p(args: Vec<Value>) -> EvalResult {
 }
 
 /// `(max-char)` -> integer
-pub fn builtin_max_char(args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_max_char(args: Vec<Value>) -> EvalResult {
     let _ = args; // 0 args
     Ok(Value::Int(0x10FFFF))
 }
