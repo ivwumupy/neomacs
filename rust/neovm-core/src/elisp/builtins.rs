@@ -3050,6 +3050,26 @@ enum PureBuiltinId {
     Random,
     #[strum(serialize = "isnan")]
     Isnan,
+    #[strum(serialize = "string-prefix-p")]
+    StringPrefixP,
+    #[strum(serialize = "string-suffix-p")]
+    StringSuffixP,
+    #[strum(serialize = "string-join")]
+    StringJoin,
+    #[strum(serialize = "split-string")]
+    SplitString,
+    #[strum(serialize = "string-trim")]
+    StringTrim,
+    #[strum(serialize = "string-trim-left")]
+    StringTrimLeft,
+    #[strum(serialize = "string-trim-right")]
+    StringTrimRight,
+    #[strum(serialize = "make-string")]
+    MakeString,
+    #[strum(serialize = "string-to-list")]
+    StringToList,
+    #[strum(serialize = "string-width")]
+    StringWidth,
 }
 
 fn dispatch_builtin_id_pure(id: PureBuiltinId, args: Vec<Value>) -> EvalResult {
@@ -3160,6 +3180,16 @@ fn dispatch_builtin_id_pure(id: PureBuiltinId, args: Vec<Value>) -> EvalResult {
         PureBuiltinId::Expt => builtin_expt(args),
         PureBuiltinId::Random => builtin_random(args),
         PureBuiltinId::Isnan => builtin_isnan(args),
+        PureBuiltinId::StringPrefixP => builtin_string_prefix_p(args),
+        PureBuiltinId::StringSuffixP => builtin_string_suffix_p(args),
+        PureBuiltinId::StringJoin => builtin_string_join(args),
+        PureBuiltinId::SplitString => builtin_split_string(args),
+        PureBuiltinId::StringTrim => builtin_string_trim(args),
+        PureBuiltinId::StringTrimLeft => builtin_string_trim_left(args),
+        PureBuiltinId::StringTrimRight => builtin_string_trim_right(args),
+        PureBuiltinId::MakeString => builtin_make_string(args),
+        PureBuiltinId::StringToList => builtin_string_to_list(args),
+        PureBuiltinId::StringWidth => builtin_string_width(args),
     }
 }
 
@@ -3717,17 +3747,7 @@ pub(crate) fn dispatch_builtin(
 
         // Math (typed subset is dispatched above)
 
-        // Extended string
-        "string-prefix-p" => builtin_string_prefix_p(args),
-        "string-suffix-p" => builtin_string_suffix_p(args),
-        "string-join" => builtin_string_join(args),
-        "split-string" => builtin_split_string(args),
-        "string-trim" => builtin_string_trim(args),
-        "string-trim-left" => builtin_string_trim_left(args),
-        "string-trim-right" => builtin_string_trim_right(args),
-        "make-string" => builtin_make_string(args),
-        "string-to-list" => builtin_string_to_list(args),
-        "string-width" => builtin_string_width(args),
+        // Extended string (typed subset is dispatched above)
 
         // Extended list
         "last" => builtin_last(args),
@@ -4764,5 +4784,26 @@ mod tests {
             .expect("builtin isnan should resolve")
             .expect("builtin isnan should evaluate");
         assert!(nan_check.is_truthy());
+    }
+
+    #[test]
+    fn pure_dispatch_typed_extended_string_ops_work() {
+        let prefix = dispatch_builtin_pure(
+            "string-prefix-p",
+            vec![Value::string("neo"), Value::string("neovm")],
+        )
+        .expect("builtin string-prefix-p should resolve")
+        .expect("builtin string-prefix-p should evaluate");
+        assert!(prefix.is_truthy());
+
+        let trimmed = dispatch_builtin_pure("string-trim", vec![Value::string("  vm  ")])
+            .expect("builtin string-trim should resolve")
+            .expect("builtin string-trim should evaluate");
+        assert_eq!(trimmed, Value::string("vm"));
+
+        let width = dispatch_builtin_pure("string-width", vec![Value::string("ab")])
+            .expect("builtin string-width should resolve")
+            .expect("builtin string-width should evaluate");
+        assert_eq!(width, Value::Int(2));
     }
 }
