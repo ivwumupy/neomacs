@@ -822,7 +822,7 @@ fn non_character_input_event_error() -> Flow {
 pub(crate) fn builtin_y_or_n_p(args: Vec<Value>) -> EvalResult {
     expect_min_args("y-or-n-p", &args, 1)?;
     match &args[0] {
-        Value::Str(_) | Value::Vector(_) | Value::Cons(_) | Value::Nil => {}
+        Value::Str(_) | Value::Vector(_) | Value::Nil => {}
         other => {
             return Err(signal(
                 "wrong-type-argument",
@@ -1462,6 +1462,32 @@ mod tests {
     fn y_or_n_p_rejects_non_sequence_prompt() {
         let result = builtin_y_or_n_p(vec![Value::Int(123)]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn y_or_n_p_accepts_nil_and_vector_prompts() {
+        let nil_prompt = builtin_y_or_n_p(vec![Value::Nil]);
+        assert!(nil_prompt.is_err());
+
+        let vector_prompt = builtin_y_or_n_p(vec![Value::vector(vec![
+            Value::Int(121),
+            Value::Int(47),
+            Value::Int(110),
+        ])]);
+        assert!(vector_prompt.is_err());
+    }
+
+    #[test]
+    fn y_or_n_p_rejects_list_prompt() {
+        let result = builtin_y_or_n_p(vec![Value::list(vec![
+            Value::Int(121),
+            Value::Int(47),
+            Value::Int(110),
+        ])]);
+        assert!(matches!(
+            result,
+            Err(Flow::Signal(sig)) if sig.symbol == "wrong-type-argument"
+        ));
     }
 
     #[test]
