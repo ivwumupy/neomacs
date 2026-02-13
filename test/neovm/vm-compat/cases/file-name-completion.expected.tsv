@@ -20,3 +20,4 @@
 20	(file-name-all-completions "sub" vm-fnc-dir)	OK ("subdir/")
 21	(file-name-all-completions "subdir/" vm-fnc-dir)	OK nil
 22	(file-name-all-completions "./" vm-fnc-dir)	OK nil
+23	(file-name-all-completions "" vm-fnc-dir #'file-directory-p)	ERR (wrong-number-of-arguments (file-name-all-completions 3))

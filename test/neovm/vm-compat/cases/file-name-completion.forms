@@ -24,3 +24,4 @@
 (file-name-all-completions "sub" vm-fnc-dir)
 (file-name-all-completions "subdir/" vm-fnc-dir)
 (file-name-all-completions "./" vm-fnc-dir)
+(file-name-all-completions "" vm-fnc-dir #'file-directory-p)
