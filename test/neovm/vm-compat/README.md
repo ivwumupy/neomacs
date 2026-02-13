@@ -73,6 +73,9 @@ make check-all-neovm-only
 Current NeoVM-only policy cases include source-only loading behavior such as
 `.elc` rejection and `.neoc` fallback safety.
 
-## Next step
+You can also precompile source files into NeoVM cache sidecars ahead of load:
 
-Add a NeoVM runner that evaluates the same corpus and diffs against this oracle output.
+```bash
+cargo run --manifest-path rust/neovm-core/Cargo.toml --example precompile_neoc -- \
+  path/to/file.el [path/to/another.el ...]
+```
