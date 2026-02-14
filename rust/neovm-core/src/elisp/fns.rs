@@ -80,6 +80,31 @@ fn require_int_or_marker(val: &Value) -> Result<i64, Flow> {
     }
 }
 
+fn md5_known_coding_system(name: &str) -> bool {
+    super::coding::CodingSystemManager::new().is_known(name)
+}
+
+fn validate_md5_coding_system_arg(args: &[Value]) -> Result<(), Flow> {
+    let Some(coding_system) = args.get(3) else {
+        return Ok(());
+    };
+    if coding_system.is_nil() {
+        return Ok(());
+    }
+
+    let noerror = args.get(4).is_some_and(|v| v.is_truthy());
+    let valid = match coding_system {
+        Value::Symbol(name) => md5_known_coding_system(name),
+        _ => false,
+    };
+
+    if valid || noerror {
+        Ok(())
+    } else {
+        Err(signal("coding-system-error", vec![coding_system.clone()]))
+    }
+}
+
 fn bytes_to_hex(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut out = String::with_capacity(bytes.len() * 2);
@@ -248,6 +273,7 @@ pub(crate) fn builtin_base64url_decode_string(args: Vec<Value>) -> EvalResult {
 /// Supports string objects and Emacs-compatible range/error semantics.
 pub(crate) fn builtin_md5(args: Vec<Value>) -> EvalResult {
     expect_range_args("md5", &args, 1, 5)?;
+    validate_md5_coding_system_arg(&args)?;
     let object = &args[0];
     match object {
         Value::Str(_) => Ok(Value::string(md5_hex_for_string(
@@ -273,6 +299,7 @@ pub(crate) fn builtin_md5_eval(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_range_args("md5", &args, 1, 5)?;
+    validate_md5_coding_system_arg(&args)?;
     let object = &args[0];
     match object {
         Value::Str(_) => Ok(Value::string(md5_hex_for_string(
@@ -1258,6 +1285,46 @@ mod tests {
                 assert_eq!(sig.data.get(1), Some(&Value::string("nil")));
             }
             other => panic!("expected error signal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn md5_unknown_coding_system_errors() {
+        match builtin_md5(vec![
+            Value::string("abc"),
+            Value::Nil,
+            Value::Nil,
+            Value::symbol("no-such"),
+        ]) {
+            Err(Flow::Signal(sig)) => {
+                assert_eq!(sig.symbol, "coding-system-error");
+                assert_eq!(sig.data, vec![Value::symbol("no-such")]);
+            }
+            other => panic!("expected coding-system-error signal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn md5_unknown_coding_system_ignored_with_noerror() {
+        let r = builtin_md5(vec![
+            Value::string("abc"),
+            Value::Nil,
+            Value::Nil,
+            Value::symbol("no-such"),
+            Value::True,
+        ])
+        .unwrap();
+        assert_eq!(r.as_str(), Some("900150983cd24fb0d6963f7d28e17f72"));
+    }
+
+    #[test]
+    fn md5_non_symbol_coding_system_errors() {
+        match builtin_md5(vec![Value::string("abc"), Value::Nil, Value::Nil, Value::Int(1)]) {
+            Err(Flow::Signal(sig)) => {
+                assert_eq!(sig.symbol, "coding-system-error");
+                assert_eq!(sig.data, vec![Value::Int(1)]);
+            }
+            other => panic!("expected coding-system-error signal, got {other:?}"),
         }
     }
 
