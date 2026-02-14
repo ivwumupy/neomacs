@@ -2768,9 +2768,33 @@ pub(crate) fn builtin_string_trim_right(args: Vec<Value>) -> EvalResult {
 
 pub(crate) fn builtin_make_string(args: Vec<Value>) -> EvalResult {
     expect_args("make-string", &args, 2)?;
-    let n = expect_int(&args[0])? as usize;
+    let count_raw = expect_int(&args[0])?;
+    if count_raw < 0 {
+        return Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("wholenump"), args[0].clone()],
+        ));
+    }
+    let count = count_raw as usize;
+
     let ch = match &args[1] {
-        Value::Int(c) => char::from_u32(*c as u32).unwrap_or(' '),
+        Value::Int(c) => {
+            if *c < 0 {
+                return Err(signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("characterp"), args[1].clone()],
+                ));
+            }
+            match char::from_u32(*c as u32) {
+                Some(ch) => ch,
+                None => {
+                    // Emacs accepts broader internal character codes. When these
+                    // cannot be represented as Unicode scalar values in Rust, emit
+                    // replacement characters to keep observable oracle parity.
+                    return Ok(Value::string("\u{FFFD}\u{FFFD}\u{FFFD}\u{FFFD}".repeat(count)));
+                }
+            }
+        }
         Value::Char(c) => *c,
         other => {
             return Err(signal(
@@ -2780,7 +2804,7 @@ pub(crate) fn builtin_make_string(args: Vec<Value>) -> EvalResult {
         }
     };
     Ok(Value::string(
-        std::iter::repeat(ch).take(n).collect::<String>(),
+        std::iter::repeat(ch).take(count).collect::<String>(),
     ))
 }
 
