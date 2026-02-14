@@ -233,6 +233,8 @@ Post-freeze updates:
   - `cases/fset-nil-function-cell-semantics`
 - Added explicit `fset` non-callable function-cell compatibility case:
   - `cases/fset-noncallable-function-cell-semantics`
+- Added explicit `fset` on symbol `t` function-cell compatibility case:
+  - `cases/fset-t-function-cell-semantics`
 - Added bytecode literal reader compatibility case (legacy opt-in):
   - `cases/bytecode-literal-reader-semantics`
 - Added bytecode literal execution compatibility case (legacy opt-in):
