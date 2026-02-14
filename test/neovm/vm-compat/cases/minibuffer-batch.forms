@@ -22,5 +22,7 @@
 (condition-case err (minibuffer-prompt nil) (error (car err)))
 (condition-case err (minibuffer-contents nil) (error (car err)))
 (condition-case err (exit-minibuffer nil) (error (car err)))
+(condition-case err (exit-minibuffer) (error (car err)))
+(condition-case err (exit-minibuffer) (no-catch err))
 (condition-case err (abort-recursive-edit) (error (car err)))
 (condition-case err (abort-recursive-edit nil) (error (car err)))

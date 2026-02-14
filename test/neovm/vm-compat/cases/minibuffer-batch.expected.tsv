@@ -21,5 +21,7 @@
 21	(condition-case err (minibuffer-prompt nil) (error (car err)))	OK wrong-number-of-arguments
 22	(condition-case err (minibuffer-contents nil) (error (car err)))	OK wrong-number-of-arguments
 23	(condition-case err (exit-minibuffer nil) (error (car err)))	OK wrong-number-of-arguments
-24	(condition-case err (abort-recursive-edit) (error (car err)))	OK user-error
-25	(condition-case err (abort-recursive-edit nil) (error (car err)))	OK wrong-number-of-arguments
+24	(condition-case err (exit-minibuffer) (error (car err)))	OK no-catch
+25	(condition-case err (exit-minibuffer) (no-catch err))	OK (no-catch exit nil)
+26	(condition-case err (abort-recursive-edit) (error (car err)))	OK user-error
+27	(condition-case err (abort-recursive-edit nil) (error (car err)))	OK wrong-number-of-arguments
