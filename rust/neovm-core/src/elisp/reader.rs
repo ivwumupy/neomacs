@@ -60,8 +60,8 @@ fn print_value_no_escape(value: &Value) -> String {
         Value::Symbol(s) => s.clone(),
         Value::Nil => "nil".to_string(),
         Value::True => "t".to_string(),
-        // Emacs chars are integer values, so print as codepoint.
-        Value::Char(c) => (*c as u32).to_string(),
+        // NOESCAPE should behave like `princ` and emit the glyph directly.
+        Value::Char(c) => c.to_string(),
         other => super::print::print_value(other),
     }
 }
