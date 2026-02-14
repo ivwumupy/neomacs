@@ -1951,8 +1951,41 @@ pub(crate) fn builtin_fset(eval: &mut super::eval::Evaluator, args: Vec<Value>) 
         )
     })?;
     let def = super::compiled_literal::maybe_coerce_compiled_literal_function(args[1].clone());
+    if would_create_function_alias_cycle(eval, name, &def) {
+        return Err(signal(
+            "cyclic-function-indirection",
+            vec![Value::symbol(name)],
+        ));
+    }
     eval.obarray_mut().set_symbol_function(name, def.clone());
     Ok(def)
+}
+
+fn would_create_function_alias_cycle(
+    eval: &super::eval::Evaluator,
+    target_name: &str,
+    def: &Value,
+) -> bool {
+    let mut current = match def.as_symbol_name() {
+        Some(name) => name.to_string(),
+        None => return false,
+    };
+    let mut seen = HashSet::new();
+
+    loop {
+        if current == target_name {
+            return true;
+        }
+        if !seen.insert(current.clone()) {
+            return true;
+        }
+
+        let next = match eval.obarray().symbol_function(&current) {
+            Some(Value::Symbol(next)) => next.clone(),
+            _ => return false,
+        };
+        current = next;
+    }
 }
 
 pub(crate) fn builtin_makunbound(
@@ -7231,6 +7264,63 @@ mod tests {
             builtin_indirect_function(&mut eval, vec![Value::symbol("vm-test-deep-alias-0")])
                 .expect("indirect-function should resolve deep alias chains");
         assert_eq!(resolved, Value::Subr("car".to_string()));
+    }
+
+    #[test]
+    fn fset_rejects_self_alias_cycle() {
+        let mut eval = crate::elisp::eval::Evaluator::new();
+
+        let err = builtin_fset(
+            &mut eval,
+            vec![
+                Value::symbol("vm-test-fset-cycle-self"),
+                Value::symbol("vm-test-fset-cycle-self"),
+            ],
+        )
+        .expect_err("fset should reject self-referential alias cycles");
+        match err {
+            Flow::Signal(sig) => {
+                assert_eq!(sig.symbol, "cyclic-function-indirection");
+                assert_eq!(sig.data, vec![Value::symbol("vm-test-fset-cycle-self")]);
+            }
+            other => panic!("unexpected flow: {other:?}"),
+        }
+
+        let unresolved =
+            builtin_indirect_function(&mut eval, vec![Value::symbol("vm-test-fset-cycle-self")])
+                .expect("indirect-function should still resolve");
+        assert!(unresolved.is_nil());
+    }
+
+    #[test]
+    fn fset_rejects_two_node_alias_cycle() {
+        let mut eval = crate::elisp::eval::Evaluator::new();
+
+        let first = builtin_fset(
+            &mut eval,
+            vec![
+                Value::symbol("vm-test-fset-cycle-a"),
+                Value::symbol("vm-test-fset-cycle-b"),
+            ],
+        )
+        .expect("first alias should be accepted");
+        assert_eq!(first, Value::symbol("vm-test-fset-cycle-b"));
+
+        let err = builtin_fset(
+            &mut eval,
+            vec![
+                Value::symbol("vm-test-fset-cycle-b"),
+                Value::symbol("vm-test-fset-cycle-a"),
+            ],
+        )
+        .expect_err("fset should reject second edge that closes alias cycle");
+        match err {
+            Flow::Signal(sig) => {
+                assert_eq!(sig.symbol, "cyclic-function-indirection");
+                assert_eq!(sig.data, vec![Value::symbol("vm-test-fset-cycle-b")]);
+            }
+            other => panic!("unexpected flow: {other:?}"),
+        }
     }
 
     #[test]
