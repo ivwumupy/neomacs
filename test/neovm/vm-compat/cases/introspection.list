@@ -17,6 +17,7 @@ cases/fset-special-form-override-boundary
 cases/fset-evaluator-callable-override-boundary
 cases/fset-nil-function-cell-semantics
 cases/fset-noncallable-function-cell-semantics
+cases/fset-t-function-cell-semantics
 cases/special-form-edges
 cases/special-form-arity-errors
 cases/special-form-type-errors
