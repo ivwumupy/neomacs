@@ -7,10 +7,11 @@ use super::error::{signal, Flow};
 use super::value::{list_to_vec, LambdaParams, Value};
 
 /// Convert parsed Emacs compiled-function literal vectors into typed
-/// `Value::ByteCode` functions.
+/// `Value::ByteCode` functions when legacy `.elc` compatibility is enabled.
 ///
-/// For now we decode a compatibility subset of GNU Emacs bytecode opcodes.
-/// Unknown opcode streams still coerce to an explicit placeholder that raises.
+/// This path is intentionally non-default behind the `legacy-elc-literal`
+/// Cargo feature.
+#[cfg(feature = "legacy-elc-literal")]
 pub(crate) fn maybe_coerce_compiled_literal_function(value: Value) -> Value {
     let Value::Vector(items_ref) = &value else {
         return value;
@@ -21,8 +22,16 @@ pub(crate) fn maybe_coerce_compiled_literal_function(value: Value) -> Value {
     Value::ByteCode(std::sync::Arc::new(bytecode))
 }
 
+/// Default policy: keep parsed `#[...]` values as vectors and do not coerce
+/// GNU Emacs `.elc` literal payloads into executable byte-code objects.
+#[cfg(not(feature = "legacy-elc-literal"))]
+pub(crate) fn maybe_coerce_compiled_literal_function(value: Value) -> Value {
+    value
+}
+
 /// Build a typed placeholder from a `(byte-code BYTESTR CONSTS MAXDEPTH ...)`
 /// form used by some `.elc` payloads.
+#[cfg(feature = "legacy-elc-literal")]
 pub(crate) fn placeholder_from_byte_code_form(args: &[Value]) -> Result<Value, Flow> {
     if args.len() < 3 {
         return Err(signal(
@@ -83,6 +92,18 @@ pub(crate) fn placeholder_from_byte_code_form(args: &[Value]) -> Result<Value, F
             vec![Value::string("Invalid byte-code object")],
         ))
     }
+}
+
+/// Source-only default policy: `(byte-code ...)` forms are unsupported unless
+/// legacy `.elc` compatibility is explicitly enabled.
+#[cfg(not(feature = "legacy-elc-literal"))]
+pub(crate) fn placeholder_from_byte_code_form(_args: &[Value]) -> Result<Value, Flow> {
+    Err(signal(
+        "error",
+        vec![Value::string(
+            "Compiled .elc byte-code literal compatibility is disabled",
+        )],
+    ))
 }
 
 fn compiled_literal_vector_to_bytecode(
@@ -739,7 +760,7 @@ fn parse_compiled_literal_params(value: &Value) -> Option<LambdaParams> {
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "legacy-elc-literal"))]
 mod tests {
     use super::*;
 
@@ -1810,6 +1831,45 @@ mod tests {
             Flow::Signal(sig) => {
                 assert_eq!(sig.symbol, "wrong-type-argument")
             }
+            other => panic!("unexpected error: {other:?}"),
+        }
+    }
+}
+
+#[cfg(all(test, not(feature = "legacy-elc-literal")))]
+mod default_policy_tests {
+    use super::*;
+
+    #[test]
+    fn non_vector_passthrough() {
+        let v = Value::Int(42);
+        assert_eq!(maybe_coerce_compiled_literal_function(v.clone()), v);
+    }
+
+    #[test]
+    fn vector_literal_passthrough() {
+        let literal = Value::vector(vec![
+            Value::Nil,
+            Value::string("\u{C0}\u{87}"),
+            Value::vector(vec![Value::Int(7)]),
+            Value::Int(1),
+        ]);
+        assert!(matches!(
+            maybe_coerce_compiled_literal_function(literal),
+            Value::Vector(_)
+        ));
+    }
+
+    #[test]
+    fn byte_code_form_is_rejected_when_legacy_disabled() {
+        let err = placeholder_from_byte_code_form(&[
+            Value::string("\u{8}T\u{87}"),
+            Value::vector(vec![Value::symbol("x")]),
+            Value::Int(1),
+        ])
+        .expect_err("byte-code form should be rejected");
+        match err {
+            Flow::Signal(sig) => assert_eq!(sig.symbol, "error"),
             other => panic!("unexpected error: {other:?}"),
         }
     }

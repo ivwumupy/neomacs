@@ -2129,6 +2129,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "legacy-elc-literal")]
     #[test]
     fn read_from_string_hash_bracket_coerces_compiled_literal() {
         let mut ev = Evaluator::new();
@@ -2138,6 +2139,21 @@ mod tests {
             Value::Cons(cell) => {
                 let pair = cell.lock().expect("poisoned");
                 assert!(matches!(pair.car, Value::ByteCode(_)));
+            }
+            other => panic!("Expected cons from read-from-string, got {other:?}"),
+        }
+    }
+
+    #[cfg(not(feature = "legacy-elc-literal"))]
+    #[test]
+    fn read_from_string_hash_bracket_preserves_vector_by_default() {
+        let mut ev = Evaluator::new();
+        let input = "#[nil \"\\300\\207\" [0] 1]";
+        let result = builtin_read_from_string(&mut ev, vec![Value::string(input)]).unwrap();
+        match result {
+            Value::Cons(cell) => {
+                let pair = cell.lock().expect("poisoned");
+                assert!(matches!(pair.car, Value::Vector(_)));
             }
             other => panic!("Expected cons from read-from-string, got {other:?}"),
         }

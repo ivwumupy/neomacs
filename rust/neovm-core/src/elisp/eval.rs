@@ -2505,6 +2505,7 @@ mod tests {
         assert_eq!(results[2], "OK (wrong-number-of-arguments defalias 4)");
     }
 
+    #[cfg(feature = "legacy-elc-literal")]
     #[test]
     fn defalias_compiled_literal_coerces_to_compiled_function() {
         let results = eval_all(
@@ -2516,6 +2517,7 @@ mod tests {
         assert_eq!(results[2], "OK t");
     }
 
+    #[cfg(feature = "legacy-elc-literal")]
     #[test]
     fn fset_compiled_literal_coerces_to_compiled_function() {
         let results = eval_all(
@@ -2527,6 +2529,7 @@ mod tests {
         assert_eq!(results[2], "OK t");
     }
 
+    #[cfg(feature = "legacy-elc-literal")]
     #[test]
     fn calling_simple_compiled_literal_executes() {
         let results = eval_all(
@@ -2575,6 +2578,7 @@ mod tests {
         assert_eq!(results[19], "OK 2");
     }
 
+    #[cfg(feature = "legacy-elc-literal")]
     #[test]
     fn calling_extended_compiled_literal_opcodes_executes() {
         let results = eval_all(
@@ -2621,6 +2625,7 @@ mod tests {
         assert_eq!(results[17], "OK (1 . 9)");
     }
 
+    #[cfg(feature = "legacy-elc-literal")]
     #[test]
     fn calling_sequence_compiled_literal_opcodes_executes() {
         let results = eval_all(
@@ -2751,6 +2756,7 @@ mod tests {
         assert_eq!(results[58], "OK 77");
     }
 
+    #[cfg(feature = "legacy-elc-literal")]
     #[test]
     fn calling_compiled_literal_placeholder_signals_error() {
         let result = eval_one(
@@ -2761,6 +2767,17 @@ mod tests {
                  (error (car err))))",
         );
         assert_eq!(result, "OK error");
+    }
+
+    #[cfg(not(feature = "legacy-elc-literal"))]
+    #[test]
+    fn compiled_literal_reader_form_is_not_callable_by_default() {
+        let result = eval_one(
+            "(condition-case err
+                 (funcall (car (read-from-string \"#[nil \\\"\\\\300\\\\207\\\" [42] 1]\")))
+               (error (car err)))",
+        );
+        assert_eq!(result, "OK invalid-function");
     }
 
     #[test]
