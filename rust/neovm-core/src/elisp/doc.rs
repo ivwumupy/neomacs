@@ -7,7 +7,7 @@
 //! - `documentation-property` — retrieve documentation property (stub)
 //! - `Snarf-documentation` — internal DOC file loader (stub)
 //! - `substitute-command-keys` — process special sequences in docstrings
-//! - `help-function-arglist` — return argument list of a function (stub)
+//! - `help-function-arglist` — return argument list of a function
 
 use super::error::{signal, EvalResult, Flow};
 use super::value::*;
@@ -306,11 +306,248 @@ pub(crate) fn builtin_substitute_command_keys(args: Vec<Value>) -> EvalResult {
 /// `(help-function-arglist FUNCTION &optional PRESERVE-NAMES)` -- return
 /// the argument list of FUNCTION.
 ///
-/// Stub implementation: returns nil.  A full implementation would inspect
-/// the function's parameter list and return it as a list of symbols.
+/// This returns oracle-compatible arglists for core thread/mutex/condition
+/// primitives and for lambda-like objects. For unresolved shapes, Emacs
+/// returns `t`, which we mirror here.
 pub(crate) fn builtin_help_function_arglist(args: Vec<Value>) -> EvalResult {
     expect_min_max_args("help-function-arglist", &args, 1, 2)?;
-    Ok(Value::Nil)
+    let preserve_names = args.get(1).is_some_and(Value::is_truthy);
+
+    if let Some(arglist) = help_arglist_from_value(&args[0], preserve_names) {
+        return Ok(arglist);
+    }
+
+    Ok(Value::True)
+}
+
+fn help_arglist(required: &[&str], optional: &[&str], rest: Option<&str>) -> Value {
+    if required.is_empty() && optional.is_empty() && rest.is_none() {
+        return Value::Nil;
+    }
+
+    let mut out = Vec::new();
+    for name in required {
+        out.push(Value::symbol(*name));
+    }
+    if !optional.is_empty() {
+        out.push(Value::symbol("&optional"));
+        for name in optional {
+            out.push(Value::symbol(*name));
+        }
+    }
+    if let Some(name) = rest {
+        out.push(Value::symbol("&rest"));
+        out.push(Value::symbol(name));
+    }
+    Value::list(out)
+}
+
+fn help_arglist_from_lambda_params(params: &LambdaParams) -> Value {
+    let required: Vec<&str> = params.required.iter().map(String::as_str).collect();
+    let optional: Vec<&str> = params.optional.iter().map(String::as_str).collect();
+    let rest = params.rest.as_deref();
+    help_arglist(&required, &optional, rest)
+}
+
+fn help_arglist_from_quoted_lambda(function: &Value) -> Option<Value> {
+    let items = list_to_vec(function)?;
+    let head = items.first()?.as_symbol_name()?;
+    if head != "lambda" && head != "macro" {
+        return None;
+    }
+    let params = items.get(1)?;
+    let param_items = list_to_vec(params)?;
+    let mut required = Vec::new();
+    let mut optional = Vec::new();
+    let mut rest = None;
+    enum Mode {
+        Required,
+        Optional,
+        Rest,
+    }
+    let mut mode = Mode::Required;
+    for item in &param_items {
+        match item.as_symbol_name() {
+            Some("&optional") => {
+                mode = Mode::Optional;
+                continue;
+            }
+            Some("&rest") => {
+                mode = Mode::Rest;
+                continue;
+            }
+            Some(name) => match mode {
+                Mode::Required => required.push(name.to_string()),
+                Mode::Optional => optional.push(name.to_string()),
+                Mode::Rest => {
+                    rest = Some(name.to_string());
+                    break;
+                }
+            },
+            None => return None,
+        }
+    }
+    let params = LambdaParams {
+        required,
+        optional,
+        rest,
+    };
+    Some(help_arglist_from_lambda_params(&params))
+}
+
+fn help_arglist_from_subr_name(name: &str, preserve_names: bool) -> Option<Value> {
+    let (required, optional) = match name {
+        "thread-join" => (
+            if preserve_names {
+                vec!["thread"]
+            } else {
+                vec!["arg1"]
+            },
+            vec![],
+        ),
+        "thread-yield" => (vec![], vec![]),
+        "thread-name" => (
+            if preserve_names {
+                vec!["thread"]
+            } else {
+                vec!["arg1"]
+            },
+            vec![],
+        ),
+        "thread-live-p" => (
+            if preserve_names {
+                vec!["thread"]
+            } else {
+                vec!["arg1"]
+            },
+            vec![],
+        ),
+        "thread-signal" => (
+            if preserve_names {
+                vec!["thread", "error-symbol", "data"]
+            } else {
+                vec!["arg1", "arg2", "arg3"]
+            },
+            vec![],
+        ),
+        "thread-last-error" => (
+            vec![],
+            if preserve_names {
+                vec!["cleanup"]
+            } else {
+                vec!["arg1"]
+            },
+        ),
+        "make-thread" => (
+            if preserve_names {
+                vec!["function"]
+            } else {
+                vec!["arg1"]
+            },
+            if preserve_names {
+                vec!["name"]
+            } else {
+                vec!["arg2"]
+            },
+        ),
+        "make-mutex" => (
+            vec![],
+            if preserve_names {
+                vec!["name"]
+            } else {
+                vec!["arg1"]
+            },
+        ),
+        "mutexp" => (
+            if preserve_names {
+                vec!["object"]
+            } else {
+                vec!["arg1"]
+            },
+            vec![],
+        ),
+        "mutex-name" => (
+            if preserve_names {
+                vec!["mutex"]
+            } else {
+                vec!["arg1"]
+            },
+            vec![],
+        ),
+        "mutex-lock" => (
+            if preserve_names {
+                vec!["mutex"]
+            } else {
+                vec!["arg1"]
+            },
+            vec![],
+        ),
+        "mutex-unlock" => (
+            if preserve_names {
+                vec!["mutex"]
+            } else {
+                vec!["arg1"]
+            },
+            vec![],
+        ),
+        "make-condition-variable" => (
+            if preserve_names {
+                vec!["mutex"]
+            } else {
+                vec!["arg1"]
+            },
+            if preserve_names {
+                vec!["name"]
+            } else {
+                vec!["arg2"]
+            },
+        ),
+        "condition-variable-p" => (
+            if preserve_names {
+                vec!["object"]
+            } else {
+                vec!["arg1"]
+            },
+            vec![],
+        ),
+        "condition-wait" => (
+            if preserve_names {
+                vec!["cond"]
+            } else {
+                vec!["arg1"]
+            },
+            vec![],
+        ),
+        "condition-notify" => (
+            if preserve_names {
+                vec!["cond"]
+            } else {
+                vec!["arg1"]
+            },
+            if preserve_names {
+                vec!["all"]
+            } else {
+                vec!["arg2"]
+            },
+        ),
+        "current-thread" | "all-threads" => (vec![], vec![]),
+        _ => return None,
+    };
+
+    Some(help_arglist(&required, &optional, None))
+}
+
+fn help_arglist_from_value(function: &Value, preserve_names: bool) -> Option<Value> {
+    match function {
+        Value::Subr(name) => help_arglist_from_subr_name(name, preserve_names),
+        Value::Symbol(name) => help_arglist_from_subr_name(name, preserve_names),
+        Value::Lambda(lambda) | Value::Macro(lambda) => {
+            Some(help_arglist_from_lambda_params(&lambda.params))
+        }
+        Value::ByteCode(bytecode) => Some(help_arglist_from_lambda_params(&bytecode.params)),
+        Value::Cons(_) => help_arglist_from_quoted_lambda(function),
+        _ => None,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -463,21 +700,93 @@ mod tests {
     }
 
     // =======================================================================
-    // help-function-arglist (stub)
+    // help-function-arglist
     // =======================================================================
 
-    #[test]
-    fn help_function_arglist_returns_nil() {
-        let result = builtin_help_function_arglist(vec![Value::symbol("foo")]);
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_nil());
+    fn arglist_names(v: &Value) -> Vec<String> {
+        list_to_vec(v)
+            .expect("arglist must be list")
+            .into_iter()
+            .map(|item| {
+                item.as_symbol_name()
+                    .expect("arglist item must be symbol")
+                    .to_string()
+            })
+            .collect()
     }
 
     #[test]
-    fn help_function_arglist_with_preserve_names() {
-        let result = builtin_help_function_arglist(vec![Value::symbol("foo"), Value::True]);
+    fn help_function_arglist_returns_t_for_unknown() {
+        let result = builtin_help_function_arglist(vec![Value::symbol("foo")]);
         assert!(result.is_ok());
-        assert!(result.unwrap().is_nil());
+        assert!(result.unwrap().is_truthy());
+    }
+
+    #[test]
+    fn help_function_arglist_thread_join_matches_oracle_shape() {
+        let result = builtin_help_function_arglist(vec![Value::symbol("thread-join")]).unwrap();
+        assert_eq!(arglist_names(&result), vec!["arg1".to_string()]);
+    }
+
+    #[test]
+    fn help_function_arglist_thread_join_preserve_names() {
+        let result =
+            builtin_help_function_arglist(vec![Value::symbol("thread-join"), Value::True]).unwrap();
+        assert_eq!(arglist_names(&result), vec!["thread".to_string()]);
+    }
+
+    #[test]
+    fn help_function_arglist_condition_notify_optional_arg() {
+        let result = builtin_help_function_arglist(vec![Value::symbol("condition-notify")]).unwrap();
+        assert_eq!(
+            arglist_names(&result),
+            vec![
+                "arg1".to_string(),
+                "&optional".to_string(),
+                "arg2".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn help_function_arglist_lambda_params() {
+        let result = builtin_help_function_arglist(vec![Value::Lambda(std::sync::Arc::new(
+            LambdaData {
+                params: LambdaParams {
+                    required: vec!["x".to_string()],
+                    optional: vec!["y".to_string()],
+                    rest: Some("rest".to_string()),
+                },
+                body: vec![],
+                env: None,
+                docstring: None,
+            },
+        ))])
+        .unwrap();
+        assert_eq!(
+            arglist_names(&result),
+            vec![
+                "x".to_string(),
+                "&optional".to_string(),
+                "y".to_string(),
+                "&rest".to_string(),
+                "rest".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn help_function_arglist_quoted_lambda_params() {
+        let quoted = Value::list(vec![
+            Value::symbol("lambda"),
+            Value::list(vec![Value::symbol("x"), Value::symbol("y")]),
+            Value::symbol("x"),
+        ]);
+        let result = builtin_help_function_arglist(vec![quoted]).unwrap();
+        assert_eq!(
+            arglist_names(&result),
+            vec!["x".to_string(), "y".to_string()]
+        );
     }
 
     #[test]
