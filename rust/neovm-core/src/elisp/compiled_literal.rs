@@ -158,6 +158,24 @@ fn decode_opcode_subset(byte_stream: &str, const_len: usize) -> Option<Vec<Op>> 
                 pending.push(Pending::Op(Op::StackRef(n)));
                 pc += 3;
             }
+            // stack-set (wide 8-bit offset)
+            0o262 => {
+                let n = *bytes.get(pc + 1)? as u16;
+                pending.push(Pending::Op(Op::StackSet(n)));
+                pc += 2;
+            }
+            // stack-set2 (wide 16-bit offset)
+            0o263 => {
+                let n = read_u16_operand(&bytes, pc + 1)?;
+                pending.push(Pending::Op(Op::StackSet(n)));
+                pc += 3;
+            }
+            // discardN (raw immediate encoding; includes preserve-TOS flag bit)
+            0o266 => {
+                let n = *bytes.get(pc + 1)?;
+                pending.push(Pending::Op(Op::DiscardN(n)));
+                pc += 2;
+            }
             // byte-constant 0..63
             0o300..=0o377 => {
                 let idx = (b - 0o300) as usize;
@@ -1470,6 +1488,99 @@ mod tests {
             panic!("expected Value::ByteCode");
         };
         assert_eq!(bc.ops, vec![Op::Constant(0), Op::Dup, Op::Pop, Op::Return]);
+    }
+
+    #[test]
+    fn decodes_stack_set_opcode_subset() {
+        let literal = Value::vector(vec![
+            Value::Nil,
+            Value::string("\u{C0}\u{C1}\u{C2}\u{B2}\u{1}D\u{87}"),
+            Value::vector(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+            Value::Int(3),
+        ]);
+        let coerced = maybe_coerce_compiled_literal_function(literal);
+        let Value::ByteCode(bc) = coerced else {
+            panic!("expected Value::ByteCode");
+        };
+        assert_eq!(
+            bc.ops,
+            vec![
+                Op::Constant(0),
+                Op::Constant(1),
+                Op::Constant(2),
+                Op::StackSet(1),
+                Op::List(2),
+                Op::Return,
+            ]
+        );
+
+        let literal_wide = Value::vector(vec![
+            Value::Nil,
+            Value::string("\u{C0}\u{C1}\u{C2}\u{C3}\u{B3}\u{2}\u{0}E\u{87}"),
+            Value::vector(vec![Value::Int(1), Value::Int(2), Value::Int(3), Value::Int(4)]),
+            Value::Int(4),
+        ]);
+        let coerced = maybe_coerce_compiled_literal_function(literal_wide);
+        let Value::ByteCode(bc) = coerced else {
+            panic!("expected Value::ByteCode");
+        };
+        assert_eq!(
+            bc.ops,
+            vec![
+                Op::Constant(0),
+                Op::Constant(1),
+                Op::Constant(2),
+                Op::Constant(3),
+                Op::StackSet(2),
+                Op::List(3),
+                Op::Return,
+            ]
+        );
+    }
+
+    #[test]
+    fn decodes_discard_n_opcode_subset() {
+        let literal = Value::vector(vec![
+            Value::Nil,
+            Value::string("\u{C0}\u{C1}\u{C2}\u{B6}\u{2}\u{87}"),
+            Value::vector(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+            Value::Int(3),
+        ]);
+        let coerced = maybe_coerce_compiled_literal_function(literal);
+        let Value::ByteCode(bc) = coerced else {
+            panic!("expected Value::ByteCode");
+        };
+        assert_eq!(
+            bc.ops,
+            vec![
+                Op::Constant(0),
+                Op::Constant(1),
+                Op::Constant(2),
+                Op::DiscardN(2),
+                Op::Return,
+            ]
+        );
+
+        let literal_preserve = Value::vector(vec![
+            Value::Nil,
+            Value::string("\u{C0}\u{C1}\u{C2}\u{B6}\u{82}\u{87}"),
+            Value::vector(vec![Value::Int(1), Value::Int(2), Value::Int(3)]),
+            Value::Int(3),
+        ]);
+        let coerced = maybe_coerce_compiled_literal_function(literal_preserve);
+        let Value::ByteCode(bc) = coerced else {
+            panic!("expected Value::ByteCode");
+        };
+        assert_eq!(
+            bc.ops,
+            vec![
+                Op::Constant(0),
+                Op::Constant(1),
+                Op::Constant(2),
+                Op::DiscardN(0x82),
+                Op::Return,
+            ]
+        );
     }
 
     #[test]

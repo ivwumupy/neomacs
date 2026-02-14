@@ -1702,6 +1702,8 @@ fn literal_to_value(expr: &Expr) -> Value {
 fn stack_delta(op: &Op) -> i32 {
     match op {
         Op::Constant(_) | Op::Nil | Op::True | Op::Dup | Op::StackRef(_) => 1,
+        Op::StackSet(_) => -1,
+        Op::DiscardN(n) => -((*n & 0x7F) as i32),
         Op::Pop => -1,
         Op::VarRef(_) => 1,
         Op::VarSet(_) => -1,

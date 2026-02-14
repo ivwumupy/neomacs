@@ -144,6 +144,36 @@ impl<'a> Vm<'a> {
                     let idx = stack.len().saturating_sub(1 + *n as usize);
                     stack.push(stack[idx].clone());
                 }
+                Op::StackSet(n) => {
+                    if stack.is_empty() {
+                        continue;
+                    }
+                    let n = *n as usize;
+                    let val = stack.pop().unwrap_or(Value::Nil);
+                    if n == 0 {
+                        continue;
+                    }
+                    if n <= stack.len() {
+                        let idx = stack.len() - n;
+                        stack[idx] = val;
+                    }
+                }
+                Op::DiscardN(raw) => {
+                    let preserve_tos = (raw & 0x80) != 0;
+                    let mut n = (raw & 0x7F) as usize;
+                    if n == 0 {
+                        continue;
+                    }
+                    n = n.min(stack.len());
+                    if preserve_tos && n < stack.len() {
+                        if let Some(top) = stack.last().cloned() {
+                            let target = stack.len() - 1 - n;
+                            stack[target] = top;
+                        }
+                    }
+                    let new_len = stack.len().saturating_sub(n);
+                    stack.truncate(new_len);
+                }
 
                 // -- Variable access --
                 Op::VarRef(idx) => {

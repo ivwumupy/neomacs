@@ -20,6 +20,13 @@ pub enum Op {
     Dup,
     /// Reference stack slot (0 = TOS, 1 = below TOS, ...).
     StackRef(u16),
+    /// Assign TOS into stack slot N below TOS, then pop TOS.
+    /// N = 0 behaves like pop.
+    StackSet(u16),
+    /// Emacs `discardN` semantics.
+    /// Low 7 bits: number of values to discard.
+    /// High bit: preserve original TOS in the last kept slot before discard.
+    DiscardN(u8),
 
     // -- Variable access ------------------------------------------------------
     /// Push value of variable. Operand = constant pool index of symbol name.
@@ -164,6 +171,8 @@ impl Op {
             Op::Pop => "pop".to_string(),
             Op::Dup => "dup".to_string(),
             Op::StackRef(n) => format!("stack-ref {}", n),
+            Op::StackSet(n) => format!("stack-set {}", n),
+            Op::DiscardN(n) => format!("discard-n {}", n),
             Op::VarRef(idx) => {
                 let name = const_name(constants, *idx);
                 format!("varref {} ; {}", idx, name)
