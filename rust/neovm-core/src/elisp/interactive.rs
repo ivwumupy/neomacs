@@ -221,7 +221,10 @@ pub(crate) fn builtin_commandp_interactive(eval: &mut Evaluator, args: Vec<Value
 }
 
 fn builtin_command_name(name: &str) -> bool {
-    matches!(name, "ignore" | "eval-expression" | "self-insert-command" | "newline")
+    matches!(
+        name,
+        "ignore" | "eval-expression" | "self-insert-command" | "newline" | "execute-extended-command"
+    )
 }
 
 fn expr_is_interactive_form(expr: &Expr) -> bool {
@@ -1662,6 +1665,14 @@ mod tests {
     fn commandp_true_for_builtin_ignore() {
         let mut ev = Evaluator::new();
         let result = builtin_commandp_interactive(&mut ev, vec![Value::symbol("ignore")]);
+        assert!(result.unwrap().is_truthy());
+    }
+
+    #[test]
+    fn commandp_true_for_builtin_execute_extended_command() {
+        let mut ev = Evaluator::new();
+        let result =
+            builtin_commandp_interactive(&mut ev, vec![Value::symbol("execute-extended-command")]);
         assert!(result.unwrap().is_truthy());
     }
 

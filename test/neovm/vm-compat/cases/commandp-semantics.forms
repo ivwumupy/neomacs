@@ -1,5 +1,6 @@
 ; commandp parity for interactive commands, alias resolution, and lambda interactive forms.
 (commandp 'ignore)
+(commandp 'execute-extended-command)
 (commandp 'car)
 (commandp 'eval-expression)
 (commandp 'self-insert-command)
