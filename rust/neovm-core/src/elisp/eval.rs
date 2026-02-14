@@ -610,7 +610,10 @@ impl Evaluator {
                         }
                         Expr::List(pair) if !pair.is_empty() => {
                             let Expr::Symbol(name) = &pair[0] else {
-                                return Err(signal("wrong-type-argument", vec![]));
+                                return Err(signal(
+                                    "wrong-type-argument",
+                                    vec![Value::symbol("symbolp"), quote_to_value(&pair[0])],
+                                ));
                             };
                             let value = if pair.len() > 1 {
                                 self.eval(&pair[1])?
@@ -711,7 +714,10 @@ impl Evaluator {
                             self.lexenv.pop();
                         }
                         self.dynamic.pop();
-                        return Err(signal("wrong-type-argument", vec![]));
+                        return Err(signal(
+                            "wrong-type-argument",
+                            vec![Value::symbol("symbolp"), quote_to_value(&pair[0])],
+                        ));
                     };
                     let value = if pair.len() > 1 {
                         match self.eval(&pair[1]) {
@@ -760,14 +766,20 @@ impl Evaluator {
             return Ok(Value::Nil);
         }
         if tail.len() % 2 != 0 {
-            return Err(signal("wrong-number-of-arguments", vec![]));
+            return Err(signal(
+                "wrong-number-of-arguments",
+                vec![Value::symbol("setq"), Value::Int(tail.len() as i64)],
+            ));
         }
 
         let mut last = Value::Nil;
         let mut i = 0;
         while i < tail.len() {
             let Expr::Symbol(name) = &tail[i] else {
-                return Err(signal("wrong-type-argument", vec![]));
+                return Err(signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("symbolp"), quote_to_value(&tail[i])],
+                ));
             };
             let value = self.eval(&tail[i + 1])?;
             self.assign(name, value.clone());
@@ -853,7 +865,10 @@ impl Evaluator {
     fn sf_cond(&mut self, tail: &[Expr]) -> EvalResult {
         for clause in tail {
             let Expr::List(items) = clause else {
-                return Err(signal("wrong-type-argument", vec![]));
+                return Err(signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("listp"), quote_to_value(clause)],
+                ));
             };
             if items.is_empty() {
                 continue;
@@ -1121,20 +1136,45 @@ impl Evaluator {
 
         let var = match &tail[0] {
             Expr::Symbol(name) => name.clone(),
-            _ => return Err(signal("wrong-type-argument", vec![])),
+            other => {
+                return Err(signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("symbolp"), quote_to_value(other)],
+                ))
+            }
         };
         let body = &tail[1];
         let handlers = &tail[2..];
+
+        // Emacs validates handler shape even when BODY exits normally.
+        for handler in handlers {
+            match handler {
+                Expr::List(_) => {}
+                Expr::Symbol(name) if name == "nil" => {}
+                _ => {
+                    return Err(signal(
+                        "error",
+                        vec![Value::string(format!(
+                            "Invalid condition handler: {}",
+                            super::expr::print_expr(handler)
+                        ))],
+                    ))
+                }
+            }
+        }
 
         match self.eval(body) {
             Ok(value) => Ok(value),
             Err(Flow::Signal(sig)) => {
                 for handler in handlers {
+                    if matches!(handler, Expr::Symbol(name) if name == "nil") {
+                        continue;
+                    }
                     let Expr::List(handler_items) = handler else {
                         return Err(signal("wrong-type-argument", vec![]));
                     };
                     if handler_items.is_empty() {
-                        return Err(signal("wrong-type-argument", vec![]));
+                        continue;
                     }
 
                     if signal_matches(&handler_items[0], &sig.symbol) {
@@ -1157,11 +1197,14 @@ impl Evaluator {
                 };
 
                 for handler in handlers {
+                    if matches!(handler, Expr::Symbol(name) if name == "nil") {
+                        continue;
+                    }
                     let Expr::List(handler_items) = handler else {
                         return Err(signal("wrong-type-argument", vec![]));
                     };
                     if handler_items.is_empty() {
-                        return Err(signal("wrong-type-argument", vec![]));
+                        continue;
                     }
 
                     if signal_matches(&handler_items[0], &no_catch.symbol) {
@@ -2101,6 +2144,28 @@ mod tests {
             eval_one("(condition-case err (let* ((x 1) . 2) x) (error err))"),
             "OK (wrong-type-argument listp 2)"
         );
+    }
+
+    #[test]
+    fn special_form_type_payloads_match_oracle_edges() {
+        let results = eval_all(
+            "(condition-case err (setq x) (error err))
+             (condition-case err (setq 1 2) (error err))
+             (condition-case err (let ((1 2)) nil) (error err))
+             (condition-case err (let* ((1 2)) nil) (error err))
+             (condition-case err (cond 1) (error err))
+             (condition-case err (condition-case 1 2 (error 3)) (error err))
+             (condition-case err (condition-case err 2 3) (error err))
+             (condition-case err (condition-case err 2 ()) (error err))",
+        );
+        assert_eq!(results[0], "OK (wrong-number-of-arguments setq 1)");
+        assert_eq!(results[1], "OK (wrong-type-argument symbolp 1)");
+        assert_eq!(results[2], "OK (wrong-type-argument symbolp 1)");
+        assert_eq!(results[3], "OK (wrong-type-argument symbolp 1)");
+        assert_eq!(results[4], "OK (wrong-type-argument listp 1)");
+        assert_eq!(results[5], "OK (wrong-type-argument symbolp 1)");
+        assert_eq!(results[6], "OK (error \"Invalid condition handler: 3\")");
+        assert_eq!(results[7], "OK 2");
     }
 
     #[test]
