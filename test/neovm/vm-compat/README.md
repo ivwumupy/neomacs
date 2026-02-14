@@ -177,6 +177,10 @@ The benchmark output includes `cold_load_ms`, `warm_load_ms`,
 
 Post-freeze updates:
 
+- Added builtin registry `fboundp` parity gate:
+  - `make check-builtin-registry-fboundp`
+  - allowlist file: `cases/builtin-registry-fboundp-allowlist.txt`
+- Added CI gate step for builtin registry parity in `.github/workflows/vm-compat.yml`.
 - Added `cases/input-batch-readers` corpus and wired it into default `check-all-neovm` coverage.
 - Added CI gate job for `make check-ert-allowlist` in `.github/workflows/vm-compat.yml`.
 - Added reader stream compatibility cases: `cases/read-from-string-edges` and `cases/read-stream-semantics`.
