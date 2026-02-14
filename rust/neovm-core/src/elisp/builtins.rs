@@ -989,15 +989,18 @@ pub(crate) fn builtin_substring(args: Vec<Value>) -> EvalResult {
 }
 
 pub(crate) fn builtin_concat(args: Vec<Value>) -> EvalResult {
-    fn push_concat_int(result: &mut String, n: i64) {
-        if n < 0 {
-            return;
+    fn push_concat_int(result: &mut String, n: i64) -> Result<(), Flow> {
+        if !(0..=0x3FFFFF).contains(&n) {
+            return Err(signal(
+                "wrong-type-argument",
+                vec![Value::symbol("characterp"), Value::Int(n)],
+            ));
         }
 
         let cp = n as u32;
         if let Some(c) = char::from_u32(cp) {
             result.push(c);
-            return;
+            return Ok(());
         }
 
         // Emacs concat path for raw-byte non-Unicode chars uses byte->multibyte encoding.
@@ -1009,11 +1012,31 @@ pub(crate) fn builtin_concat(args: Vec<Value>) -> EvalResult {
                 vec![0xC0 | ((b >> 6) & 0x01), 0x80 | (b & 0x3F)]
             };
             result.push_str(&bytes_to_storage_string(&bytes));
-            return;
+            return Ok(());
         }
 
         if let Some(encoded) = encode_nonunicode_char_for_storage(cp) {
             result.push_str(&encoded);
+            return Ok(());
+        }
+
+        Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("characterp"), Value::Int(n)],
+        ))
+    }
+
+    fn push_concat_element(result: &mut String, value: &Value) -> Result<(), Flow> {
+        match value {
+            Value::Char(c) => {
+                result.push(*c);
+                Ok(())
+            }
+            Value::Int(n) => push_concat_int(result, *n),
+            other => Err(signal(
+                "wrong-type-argument",
+                vec![Value::symbol("characterp"), other.clone()],
+            )),
         }
     }
 
@@ -1023,12 +1046,20 @@ pub(crate) fn builtin_concat(args: Vec<Value>) -> EvalResult {
             Value::Str(s) => result.push_str(s),
             Value::Nil => {}
             Value::Cons(_) => {
-                if let Some(items) = list_to_vec(arg) {
-                    for item in items {
-                        if let Value::Char(c) = item {
-                            result.push(c);
-                        } else if let Value::Int(n) = item {
-                            push_concat_int(&mut result, n);
+                let mut cursor = arg.clone();
+                loop {
+                    match cursor {
+                        Value::Nil => break,
+                        Value::Cons(cell) => {
+                            let pair = cell.lock().expect("poisoned");
+                            push_concat_element(&mut result, &pair.car)?;
+                            cursor = pair.cdr.clone();
+                        }
+                        tail => {
+                            return Err(signal(
+                                "wrong-type-argument",
+                                vec![Value::symbol("listp"), tail],
+                            ))
                         }
                     }
                 }
@@ -1036,11 +1067,7 @@ pub(crate) fn builtin_concat(args: Vec<Value>) -> EvalResult {
             Value::Vector(v) => {
                 let items = v.lock().expect("poisoned");
                 for item in items.iter() {
-                    if let Value::Char(c) = item {
-                        result.push(*c);
-                    } else if let Value::Int(n) = item {
-                        push_concat_int(&mut result, *n);
-                    }
+                    push_concat_element(&mut result, item)?;
                 }
             }
             _ => {
