@@ -5054,6 +5054,41 @@ neomacs_update_end (struct frame *f)
          need to xrealloc/xmalloc during FFI callbacks. */
       prewarm_all_face_fonts (f);
 
+      /* For the echo area: the Rust layout reads buffer content directly
+         via w->contents, but echo area messages live in a separate buffer
+         (echo_area_buffer[0]).  In standard Emacs, echo_area_display()
+         temporarily swaps the mini window's buffer, renders to glyph
+         matrices, then restores.  We do the same swap here so that both
+         neomacs_layout_get_window_params (reads w->contents for text)
+         and neomacs_layout_face_at_pos (sets current_buffer from
+         w->contents for face resolution) see the echo area buffer
+         consistently. */
+      Lisp_Object mini_window = FRAME_MINIBUF_WINDOW (f);
+      Lisp_Object saved_mini_buffer = Qnil;
+      Lisp_Object saved_mini_pointm = Qnil;
+      bool mini_buffer_swapped = false;
+      if (!NILP (mini_window) && FRAME_HAS_MINIBUF_P (f))
+        {
+          struct window *mw = XWINDOW (mini_window);
+          if (minibuf_level == 0
+              && !NILP (echo_area_buffer[0])
+              && BUFFERP (echo_area_buffer[0])
+              && !EQ (mw->contents, echo_area_buffer[0]))
+            {
+              struct buffer *echo_buf = XBUFFER (echo_area_buffer[0]);
+              if (BUF_ZV (echo_buf) > BUF_BEGV (echo_buf))
+                {
+                  saved_mini_buffer = mw->contents;
+                  saved_mini_pointm = Fcopy_marker (mw->pointm, Qnil);
+                  wset_buffer (mw, echo_area_buffer[0]);
+                  set_marker_both (mw->pointm, echo_area_buffer[0],
+                                   BUF_PT (echo_buf),
+                                   BUF_PT_BYTE (echo_buf));
+                  mini_buffer_swapped = true;
+                }
+            }
+        }
+
       neomacs_rust_layout_frame (
           dpyinfo->display_handle,
           (void *) f,
@@ -5066,6 +5101,16 @@ neomacs_update_end (struct frame *f)
           vb_rgb,
           rdw, bdw,
           div_fg, div_first_fg, div_last_fg);
+
+      /* Restore mini window's buffer after Rust layout. */
+      if (mini_buffer_swapped)
+        {
+          struct window *mw = XWINDOW (mini_window);
+          wset_buffer (mw, saved_mini_buffer);
+          set_marker_both (mw->pointm, saved_mini_buffer,
+                           marker_position (saved_mini_pointm),
+                           marker_byte_position (saved_mini_pointm));
+        }
 
       /* Extract menu bar and tool bar from current_matrix.
          Their desired_matrix was populated by
