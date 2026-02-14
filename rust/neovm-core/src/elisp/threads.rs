@@ -52,6 +52,8 @@ pub struct ThreadState {
     pub result: Value,
     /// Last error that occurred in this thread, if any.
     pub last_error: Option<Value>,
+    /// Whether this thread has already been joined at least once.
+    pub joined: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -117,6 +119,7 @@ impl ThreadManager {
                 status: ThreadStatus::Running,
                 result: Value::Nil,
                 last_error: None,
+                joined: false,
             },
         );
         let mut thread_handles = HashMap::new();
@@ -151,6 +154,7 @@ impl ThreadManager {
                 status: ThreadStatus::Created,
                 result: Value::Nil,
                 last_error: None,
+                joined: false,
             },
         );
         self.thread_handles
@@ -179,6 +183,10 @@ impl ThreadManager {
             t.status = ThreadStatus::Signaled;
             t.last_error = Some(error.clone());
         }
+    }
+
+    /// Publish an error value for `thread-last-error`.
+    pub fn record_last_error(&mut self, error: Value) {
         self.last_error = Some(error);
     }
 
@@ -230,6 +238,16 @@ impl ThreadManager {
             .get(&id)
             .map(|t| t.result.clone())
             .unwrap_or(Value::Nil)
+    }
+
+    /// Mark a thread as joined. Returns its terminal error only on first join.
+    pub fn join_thread(&mut self, id: u64) -> Option<Value> {
+        let thread = self.threads.get_mut(&id)?;
+        if thread.joined {
+            return None;
+        }
+        thread.joined = true;
+        thread.last_error.clone()
     }
 
     /// Get and optionally clear the global last-error.
@@ -562,6 +580,10 @@ pub(crate) fn builtin_thread_join(
             "error",
             vec![Value::string("Cannot join current thread")],
         ));
+    }
+    if let Some(error) = eval.threads.join_thread(id) {
+        // Emacs publishes joined-thread terminal errors through thread-last-error.
+        eval.threads.record_last_error(error);
     }
     Ok(eval.threads.thread_result(id))
 }
@@ -1051,8 +1073,7 @@ mod tests {
     #[test]
     fn last_error_get_and_cleanup() {
         let mut mgr = ThreadManager::new();
-        let id = mgr.create_thread(Value::Nil, None);
-        mgr.signal_thread(id, Value::symbol("oops"));
+        mgr.record_last_error(Value::symbol("oops"));
 
         let err = mgr.last_error(false);
         assert!(err.is_truthy());
@@ -1318,7 +1339,7 @@ mod tests {
     fn test_builtin_thread_last_error_cleanup() {
         let mut eval = Evaluator::new();
         eval.threads
-            .signal_thread(0, Value::list(vec![Value::symbol("err"), Value::Int(1)]));
+            .record_last_error(Value::list(vec![Value::symbol("err"), Value::Int(1)]));
 
         let e1 = builtin_thread_last_error(&mut eval, vec![Value::Nil]).unwrap();
         assert!(e1.is_truthy());
@@ -1546,6 +1567,28 @@ mod tests {
         let _ = builtin_thread_join(&mut eval, vec![thread]).unwrap();
         let err = builtin_thread_last_error(&mut eval, vec![]).unwrap();
         assert_eq!(super::super::print::print_value(&err), "(invalid-function 1)");
+    }
+
+    #[test]
+    fn test_thread_last_error_is_published_when_joining_signaled_thread() {
+        let mut eval = Evaluator::new();
+        let _ = builtin_thread_last_error(&mut eval, vec![Value::True]).unwrap();
+
+        let thread = builtin_make_thread(&mut eval, vec![Value::symbol("car")]).unwrap();
+        let before_join = builtin_thread_last_error(&mut eval, vec![]).unwrap();
+        assert!(before_join.is_nil());
+
+        let _ = builtin_thread_join(&mut eval, vec![thread.clone()]).unwrap();
+        let after_join = builtin_thread_last_error(&mut eval, vec![]).unwrap();
+        assert_eq!(
+            super::super::print::print_value(&after_join),
+            "(wrong-number-of-arguments car 0)"
+        );
+
+        let _ = builtin_thread_last_error(&mut eval, vec![Value::True]).unwrap();
+        let _ = builtin_thread_join(&mut eval, vec![thread]).unwrap();
+        let republished = builtin_thread_last_error(&mut eval, vec![]).unwrap();
+        assert!(republished.is_nil());
     }
 
     #[test]
