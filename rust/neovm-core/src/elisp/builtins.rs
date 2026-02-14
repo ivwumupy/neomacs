@@ -5539,6 +5539,8 @@ pub(crate) fn dispatch_builtin(
         }
         "count-lines" => return Some(super::navigation::builtin_count_lines(eval, args)),
         "forward-line" => return Some(super::navigation::builtin_forward_line(eval, args)),
+        "next-line" => return Some(super::navigation::builtin_next_line(eval, args)),
+        "previous-line" => return Some(super::navigation::builtin_previous_line(eval, args)),
         "beginning-of-line" => {
             return Some(super::navigation::builtin_beginning_of_line(eval, args))
         }
