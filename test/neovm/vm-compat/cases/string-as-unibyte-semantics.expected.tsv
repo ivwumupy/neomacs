@@ -1,0 +1,10 @@
+1	(string-as-unibyte "")	OK ""
+2	(string-as-unibyte "abc")	OK "abc"
+3	(string-as-unibyte "Ã©")	OK "ÁƒÀ©"
+4	(string-as-unibyte "Ã¿")	OK "ÁƒÀ¿"
+5	(string-as-unibyte "ğŸ˜€")	OK "Á°ÀŸÀ˜À€"
+6	(condition-case err (string-as-unibyte 1) (error err))	OK (wrong-type-argument stringp 1)
+7	(list (string-bytes (string-as-unibyte "abc")) (aref (string-as-unibyte "abc") 0) (find-charset-string (string-as-unibyte "abc")))	OK (3 97 (ascii))
+8	(list (string-bytes (string-as-unibyte "Ã©")) (aref (string-as-unibyte "Ã©") 0) (find-charset-string (string-as-unibyte "Ã©")))	OK (2 195 (eight-bit))
+9	(list (string-bytes (string-as-unibyte "ğŸ˜€")) (aref (string-as-unibyte "ğŸ˜€") 0) (find-charset-string (string-as-unibyte "ğŸ˜€")))	OK (4 240 (eight-bit))
+10	(list (string-bytes (string-as-unibyte (unibyte-string 255))) (aref (string-as-unibyte (unibyte-string 255)) 0) (find-charset-string (string-as-unibyte (unibyte-string 255))))	OK (1 255 (eight-bit))
