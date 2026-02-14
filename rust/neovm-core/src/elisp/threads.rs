@@ -924,7 +924,7 @@ pub(crate) fn sf_with_mutex(
     if tail.is_empty() {
         return Err(signal(
             "wrong-number-of-arguments",
-            vec![Value::symbol("with-mutex")],
+            vec![Value::cons(Value::Int(1), Value::Int(1)), Value::Int(0)],
         ));
     }
     let mutex_val = eval.eval(&tail[0])?;
@@ -1425,7 +1425,16 @@ mod tests {
         let mut eval = Evaluator::new();
         // No arguments at all
         let result = sf_with_mutex(&mut eval, &[]);
-        assert!(result.is_err());
+        match result {
+            Err(Flow::Signal(sig)) => {
+                assert_eq!(sig.symbol, "wrong-number-of-arguments");
+                assert_eq!(
+                    sig.data,
+                    vec![Value::cons(Value::Int(1), Value::Int(1)), Value::Int(0)]
+                );
+            }
+            other => panic!("expected wrong-number-of-arguments signal, got {other:?}"),
+        }
     }
 
     // -- Arity / type error tests -------------------------------------------
