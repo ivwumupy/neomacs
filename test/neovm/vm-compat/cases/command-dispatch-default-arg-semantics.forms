@@ -1,0 +1,65 @@
+; command-execute/call-interactively should supply default interactive prefix args
+; for core editing commands that require one positional argument.
+(condition-case err
+    (with-temp-buffer
+      (insert "abc")
+      (goto-char 1)
+      (command-execute 'delete-char)
+      (buffer-string))
+  (error err))
+
+(condition-case err
+    (with-temp-buffer
+      (insert "abc")
+      (goto-char 1)
+      (command-execute 'kill-word)
+      (buffer-string))
+  (error err))
+
+(condition-case err
+    (with-temp-buffer
+      (insert "abc")
+      (goto-char 3)
+      (command-execute 'backward-kill-word)
+      (buffer-string))
+  (error err))
+
+(condition-case err
+    (with-temp-buffer
+      (insert "Abc Def")
+      (goto-char 1)
+      (command-execute 'downcase-word)
+      (buffer-string))
+  (error err))
+
+(condition-case err
+    (with-temp-buffer
+      (insert "abc")
+      (goto-char 1)
+      (call-interactively 'delete-char)
+      (buffer-string))
+  (error err))
+
+(condition-case err
+    (with-temp-buffer
+      (insert "abc")
+      (goto-char 1)
+      (call-interactively 'kill-word)
+      (buffer-string))
+  (error err))
+
+(condition-case err
+    (with-temp-buffer
+      (insert "abc")
+      (goto-char 3)
+      (call-interactively 'backward-kill-word)
+      (buffer-string))
+  (error err))
+
+(condition-case err
+    (with-temp-buffer
+      (insert "Abc Def")
+      (goto-char 1)
+      (call-interactively 'downcase-word)
+      (buffer-string))
+  (error err))
