@@ -30,6 +30,7 @@
 (commandp 'upcase-region)
 (commandp 'downcase-region)
 (commandp 'capitalize-region)
+(commandp 'upcase-initials-region)
 (commandp 'kill-word)
 (commandp 'backward-kill-word)
 (commandp 'kill-region)
