@@ -1607,7 +1607,7 @@ impl Evaluator {
                     return self.apply(func, args);
                 }
                 if let Some(result) = builtins::dispatch_builtin(self, &name, args) {
-                    result
+                    result.map_err(|flow| rewrite_wrong_arity_function_object(flow, &name))
                 } else if super::subr_info::is_special_form(&name) {
                     Err(signal("invalid-function", vec![Value::Subr(name)]))
                 } else {
@@ -1619,7 +1619,7 @@ impl Evaluator {
                 if let Some(func) = self.obarray.symbol_function(&name).cloned() {
                     self.apply(func, args)
                 } else if let Some(result) = builtins::dispatch_builtin(self, &name, args) {
-                    result
+                    result.map_err(|flow| rewrite_wrong_arity_function_object(flow, &name))
                 } else if super::subr_info::is_special_form(&name) {
                     Err(signal("invalid-function", vec![Value::Subr(name)]))
                 } else {
@@ -1763,6 +1763,22 @@ impl Evaluator {
 
         // Fall through to obarray value cell
         self.obarray.set_symbol_value(name, value);
+    }
+}
+
+fn rewrite_wrong_arity_function_object(flow: Flow, name: &str) -> Flow {
+    match flow {
+        Flow::Signal(mut sig) => {
+            if sig.symbol == "wrong-number-of-arguments"
+                && sig.raw_data.is_none()
+                && !sig.data.is_empty()
+                && sig.data[0].as_symbol_name() == Some(name)
+            {
+                sig.data[0] = Value::Subr(name.to_string());
+            }
+            Flow::Signal(sig)
+        }
+        other => other,
     }
 }
 
@@ -2238,6 +2254,18 @@ mod tests {
         assert_eq!(
             eval_one("(condition-case err (apply 'if '(t 1 2)) (error (car err)))"),
             "OK invalid-function"
+        );
+    }
+
+    #[test]
+    fn funcall_builtin_wrong_arity_uses_subr_object_payload() {
+        assert_eq!(
+            eval_one("(condition-case err (car) (error (subrp (nth 1 err))))"),
+            "OK nil"
+        );
+        assert_eq!(
+            eval_one("(condition-case err (funcall 'car) (error (subrp (nth 1 err))))"),
+            "OK t"
         );
     }
 
