@@ -1,4 +1,9 @@
 ; commandp should recognize common interactive builtin commands.
+(commandp 'ignore)
+(commandp 'eval-expression)
+(commandp 'self-insert-command)
+(commandp 'newline)
+(commandp 'execute-extended-command)
 (commandp 'forward-char)
 (commandp 'next-line)
 (commandp 'previous-line)
