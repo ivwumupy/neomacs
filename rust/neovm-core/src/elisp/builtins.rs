@@ -3113,22 +3113,53 @@ pub(crate) fn builtin_nconc(args: Vec<Value>) -> EvalResult {
     if args.is_empty() {
         return Ok(Value::Nil);
     }
-    let mut all_items: Vec<Value> = Vec::new();
-    for arg in &args {
+
+    let mut result_head: Option<Value> = None;
+    let mut last_cons: Option<Value> = None;
+
+    for (index, arg) in args.iter().enumerate() {
+        let is_last = index + 1 == args.len();
+
+        if is_last {
+            if let Some(Value::Cons(cell)) = &last_cons {
+                cell.lock().expect("poisoned").cdr = arg.clone();
+                return Ok(result_head.unwrap_or_else(|| arg.clone()));
+            }
+            return Ok(arg.clone());
+        }
+
         match arg {
-            Value::Nil => {}
+            Value::Nil => continue,
+            Value::Cons(head) => {
+                if result_head.is_none() {
+                    result_head = Some(arg.clone());
+                }
+                if let Some(Value::Cons(prev)) = &last_cons {
+                    prev.lock().expect("poisoned").cdr = arg.clone();
+                }
+
+                let mut tail = head.clone();
+                loop {
+                    let next = tail.lock().expect("poisoned").cdr.clone();
+                    match next {
+                        Value::Cons(next_cell) => tail = next_cell,
+                        _ => {
+                            last_cons = Some(Value::Cons(tail.clone()));
+                            break;
+                        }
+                    }
+                }
+            }
             _ => {
-                let items = list_to_vec(arg).ok_or_else(|| {
-                    signal(
-                        "wrong-type-argument",
-                        vec![Value::symbol("listp"), arg.clone()],
-                    )
-                })?;
-                all_items.extend(items);
+                return Err(signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("consp"), arg.clone()],
+                ))
             }
         }
     }
-    Ok(Value::list(all_items))
+
+    Ok(result_head.unwrap_or(Value::Nil))
 }
 
 pub(crate) fn builtin_alist_get(args: Vec<Value>) -> EvalResult {
