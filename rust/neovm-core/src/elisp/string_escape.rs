@@ -8,6 +8,9 @@ const RAW_BYTE_SENTINEL_MIN: u32 = 0xE080;
 const RAW_BYTE_SENTINEL_MAX: u32 = 0xE0FF;
 const RAW_BYTE_CHAR_MIN: u32 = 0x3FFF80;
 const RAW_BYTE_CHAR_MAX: u32 = 0x3FFFFF;
+const UNIBYTE_BYTE_SENTINEL_BASE: u32 = 0xE300;
+const UNIBYTE_BYTE_SENTINEL_MIN: u32 = 0xE300;
+const UNIBYTE_BYTE_SENTINEL_MAX: u32 = 0xE3FF;
 
 const EXT_SEQ_PREFIX: u32 = 0xE100;
 const EXT_SEQ_LEN_BASE: u32 = 0xE110;
@@ -188,7 +191,27 @@ fn decode_extended_sequence_span(s: &str, start: usize) -> Option<(usize, u32)> 
     Some((start + end_rel, cp))
 }
 
-fn scan_storage_units(s: &str) -> Vec<(usize, usize, u32, usize)> {
+fn encode_emacs_mule_raw_byte(byte: u8, out: &mut Vec<u8>) {
+    if byte < 0x80 {
+        out.push(byte);
+    } else if byte < 0xC0 {
+        out.push(0xC0);
+        out.push(0x80 + (byte - 0x80));
+    } else {
+        out.push(0xC1);
+        out.push(0x80 + (byte - 0xC0));
+    }
+}
+
+fn push_unibyte_literal_byte(out: &mut Vec<u8>, byte: u8) {
+    match byte {
+        b'"' => out.extend_from_slice(br#"\""#),
+        b'\\' => out.extend_from_slice(br#"\\"#),
+        b => encode_emacs_mule_raw_byte(b, out),
+    }
+}
+
+fn scan_storage_units(s: &str) -> Vec<(usize, usize, u32, usize, usize)> {
     let mut out = Vec::new();
     let mut idx = 0usize;
 
@@ -199,20 +222,29 @@ fn scan_storage_units(s: &str) -> Vec<(usize, usize, u32, usize)> {
 
         if (RAW_BYTE_SENTINEL_MIN..=RAW_BYTE_SENTINEL_MAX).contains(&code) {
             let raw = (code - RAW_BYTE_SENTINEL_BASE) as u8;
-            out.push((idx, next, 0x3FFF00 + raw as u32, 4));
+            out.push((idx, next, 0x3FFF00 + raw as u32, 4, 2));
+            idx = next;
+            continue;
+        }
+
+        if (UNIBYTE_BYTE_SENTINEL_MIN..=UNIBYTE_BYTE_SENTINEL_MAX).contains(&code) {
+            let byte = (code - UNIBYTE_BYTE_SENTINEL_BASE) as u8;
+            out.push((idx, next, byte as u32, 1, 1));
             idx = next;
             continue;
         }
 
         if code == EXT_SEQ_PREFIX {
             if let Some((end, cp)) = decode_extended_sequence_span(s, idx) {
-                out.push((idx, end, cp, 1));
+                let byte_len = ((s[idx..end].chars().nth(1).expect("extended len sentinel") as u32)
+                    - EXT_SEQ_LEN_BASE) as usize;
+                out.push((idx, end, cp, 1, byte_len));
                 idx = end;
                 continue;
             }
         }
 
-        out.push((idx, next, code, 1));
+        out.push((idx, next, code, 1, ch.len_utf8()));
         idx = next;
     }
 
@@ -233,10 +265,25 @@ pub(crate) fn bytes_to_storage_string(bytes: &[u8]) -> String {
     out
 }
 
+/// Encode raw byte values as a unibyte storage string.
+///
+/// This keeps byte-oriented Elisp semantics for operations like `aref`,
+/// `string-bytes`, and `secure-hash` binary output.
+pub(crate) fn bytes_to_unibyte_storage_string(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len());
+    for b in bytes {
+        out.push(
+            char::from_u32(UNIBYTE_BYTE_SENTINEL_BASE + (*b as u32))
+                .expect("valid unibyte-byte sentinel"),
+        );
+    }
+    out
+}
+
 fn decode_storage_units(s: &str) -> Vec<(u32, usize)> {
     scan_storage_units(s)
         .into_iter()
-        .map(|(_, _, cp, width)| (cp, width))
+        .map(|(_, _, cp, width, _)| (cp, width))
         .collect()
 }
 
@@ -253,6 +300,14 @@ pub(crate) fn storage_string_display_width(s: &str) -> usize {
 /// Count logical Emacs characters in NeoVM string storage.
 pub(crate) fn storage_char_len(s: &str) -> usize {
     scan_storage_units(s).len()
+}
+
+/// Count Emacs string bytes represented by NeoVM string storage.
+pub(crate) fn storage_byte_len(s: &str) -> usize {
+    scan_storage_units(s)
+        .into_iter()
+        .map(|(_, _, _, _, byte_len)| byte_len)
+        .sum()
 }
 
 /// Slice NeoVM string storage by logical Emacs character index.
@@ -333,6 +388,12 @@ pub(crate) fn format_lisp_string_bytes(s: &str) -> Vec<u8> {
     let mut chars = s.chars().peekable();
     while let Some(ch) = chars.next() {
         let code = ch as u32;
+        if (UNIBYTE_BYTE_SENTINEL_MIN..=UNIBYTE_BYTE_SENTINEL_MAX).contains(&code) {
+            let byte = (code - UNIBYTE_BYTE_SENTINEL_BASE) as u8;
+            push_unibyte_literal_byte(&mut out, byte);
+            continue;
+        }
+
         if (RAW_BYTE_SENTINEL_MIN..=RAW_BYTE_SENTINEL_MAX).contains(&code) {
             let byte = (code - RAW_BYTE_SENTINEL_BASE) as u8;
             push_octal_escape(&mut out, byte);
@@ -453,5 +514,23 @@ mod tests {
     fn decode_storage_handles_overlong_raw_byte_encoding() {
         let encoded = bytes_to_storage_string(&[0xC1, 0xBF]);
         assert_eq!(decode_storage_char_codes(&encoded), vec![255]);
+    }
+
+    #[test]
+    fn unibyte_storage_string_round_trips_emacs_mule_bytes() {
+        let encoded = bytes_to_unibyte_storage_string(&[0x06, b'"', b'\\', b'\n', 0x7F, 0x80, 0xA9, 0xFF]);
+        assert_eq!(
+            format_lisp_string_bytes(&encoded),
+            vec![
+                b'"', 0x06, b'\\', b'"', b'\\', b'\\', b'\n', 0x7F, 0xC0, 0x80, 0xC0, 0xA9,
+                0xC1, 0xBF, b'"'
+            ]
+        );
+        assert_eq!(
+            decode_storage_char_codes(&encoded),
+            vec![6, 34, 92, 10, 127, 128, 169, 255]
+        );
+        assert_eq!(storage_char_len(&encoded), 8);
+        assert_eq!(storage_byte_len(&encoded), 8);
     }
 }

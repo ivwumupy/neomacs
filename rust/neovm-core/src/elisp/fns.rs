@@ -6,7 +6,7 @@
 //! compare-strings, string-version-lessp, string-collate-lessp/equalp.
 
 use super::error::{signal, EvalResult, Flow};
-use super::string_escape::{storage_char_len, storage_substring};
+use super::string_escape::{bytes_to_unibyte_storage_string, storage_char_len, storage_substring};
 use super::value::*;
 use sha1::Sha1;
 use sha2::{Digest, Sha224, Sha256, Sha384, Sha512};
@@ -573,7 +573,7 @@ fn invalid_object_payload(val: &Value) -> Value {
 }
 
 fn bytes_to_lisp_binary_string(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| char::from(*b)).collect()
+    bytes_to_unibyte_storage_string(bytes)
 }
 
 fn hash_slice_for_string(
