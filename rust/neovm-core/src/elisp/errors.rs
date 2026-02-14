@@ -157,6 +157,12 @@ pub fn init_standard_errors(obarray: &mut Obarray) {
     register_simple(obarray, "end-of-buffer", "End of buffer", &["error"]);
     register_simple(
         obarray,
+        "end-of-file",
+        "End of file during parsing",
+        &["error"],
+    );
+    register_simple(
+        obarray,
         "buffer-read-only",
         "Buffer is read-only",
         &["error"],
@@ -548,6 +554,7 @@ pub(crate) fn builtin_error_message_string(
                 .collect();
             return Ok(Value::string(format!("{first_str}: {}", rest_strs.join(", "))));
         }
+
         // Exact `error`/`file-error` without a leading string keep Emacs'
         // "peculiar error" behavior.
         if sym_name == "error" || sym_name == "file-error" {
@@ -561,9 +568,10 @@ pub(crate) fn builtin_error_message_string(
         }
     }
 
+    let quote_strings = sym_name != "end-of-file";
     let data_strs: Vec<String> = data
         .iter()
-        .map(|v| format_error_arg(v, true))
+        .map(|v| format_error_arg(v, quote_strings))
         .collect();
     Ok(Value::string(format!(
         "{}: {}",
@@ -1373,6 +1381,24 @@ mod tests {
         let file_double_result = builtin_error_message_string(&evaluator, vec![file_double]);
         assert!(file_double_result.is_ok());
         assert_eq!(file_double_result.unwrap().as_str(), Some("peculiar error: 2"));
+
+    }
+
+    #[test]
+    fn builtin_error_message_string_end_of_file_does_not_quote_string_payload() {
+        let mut evaluator = super::super::eval::Evaluator::new();
+        init_standard_errors(&mut evaluator.obarray);
+
+        let err_data = Value::list(vec![
+            Value::symbol("end-of-file"),
+            Value::string("EOF while reading"),
+        ]);
+        let result = builtin_error_message_string(&evaluator, vec![err_data]);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap().as_str(),
+            Some("End of file during parsing: EOF while reading")
+        );
     }
 
     #[test]
