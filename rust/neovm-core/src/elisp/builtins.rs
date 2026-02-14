@@ -3414,17 +3414,9 @@ pub(crate) fn builtin_delq(args: Vec<Value>) -> EvalResult {
 
 pub(crate) fn builtin_elt(args: Vec<Value>) -> EvalResult {
     expect_args("elt", &args, 2)?;
-    let idx = expect_int(&args[1])? as usize;
     match &args[0] {
-        Value::Cons(_) | Value::Nil => {
-            let items = list_to_vec(&args[0]).unwrap_or_default();
-            Ok(items.get(idx).cloned().unwrap_or(Value::Nil))
-        }
-        Value::Vector(v) => {
-            let v = v.lock().expect("poisoned");
-            Ok(v.get(idx).cloned().unwrap_or(Value::Nil))
-        }
-        Value::Str(s) => Ok(s.chars().nth(idx).map(Value::Char).unwrap_or(Value::Nil)),
+        Value::Cons(_) | Value::Nil => builtin_nth(vec![args[1].clone(), args[0].clone()]),
+        Value::Vector(_) | Value::Str(_) => builtin_aref(vec![args[0].clone(), args[1].clone()]),
         other => Err(signal(
             "wrong-type-argument",
             vec![Value::symbol("sequencep"), other.clone()],
