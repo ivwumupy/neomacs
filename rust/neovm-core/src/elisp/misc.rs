@@ -4,7 +4,7 @@
 //! - Special forms: prog2, with-temp-buffer, save-current-buffer, track-mouse, with-syntax-table
 //! - Pure builtins: copy-alist, rassoc, rassq, assoc-default, make-list, safe-length,
 //!   subst-char-in-string, replace-regexp-in-string, string-match-p, string/char encoding
-//!   stubs, coding-system stubs, nconc (improved), locale-info
+//!   stubs, nconc (improved), locale-info
 //! - Eval-dependent builtins: backtrace-frame, called-interactively-p, recursion-depth,
 //!   abort-recursive-edit
 
@@ -588,53 +588,6 @@ pub(crate) fn builtin_nconc_improved(args: Vec<Value>) -> EvalResult {
     Ok(Value::list(all_items))
 }
 
-/// `(define-coding-system-alias ALIAS CODING-SYSTEM)` -- stub returning the alias symbol.
-pub(crate) fn builtin_define_coding_system_alias(args: Vec<Value>) -> EvalResult {
-    expect_args("define-coding-system-alias", &args, 2)?;
-    Ok(args[0].clone())
-}
-
-/// `(coding-system-p OBJECT)` -- returns t for known coding systems, nil otherwise.
-pub(crate) fn builtin_coding_system_p(args: Vec<Value>) -> EvalResult {
-    expect_args("coding-system-p", &args, 1)?;
-    let known = match &args[0] {
-        Value::Symbol(s) => matches!(
-            s.as_str(),
-            "utf-8"
-                | "utf-8-unix"
-                | "utf-8-dos"
-                | "utf-8-mac"
-                | "utf-16"
-                | "utf-16le"
-                | "utf-16be"
-                | "latin-1"
-                | "iso-8859-1"
-                | "ascii"
-                | "us-ascii"
-                | "raw-text"
-                | "binary"
-                | "undecided"
-                | "emacs-internal"
-                | "no-conversion"
-        ),
-        _ => false,
-    };
-    Ok(Value::bool(known))
-}
-
-/// `(check-coding-system CODING-SYSTEM)` -- stub: returns the argument.
-/// Real Emacs signals an error for unknown systems; we just pass through.
-pub(crate) fn builtin_check_coding_system(args: Vec<Value>) -> EvalResult {
-    expect_args("check-coding-system", &args, 1)?;
-    Ok(args[0].clone())
-}
-
-/// `(set-coding-system-priority &rest CODING-SYSTEMS)` -- stub: ignored.
-pub(crate) fn builtin_set_coding_system_priority(args: Vec<Value>) -> EvalResult {
-    let _ = args;
-    Ok(Value::Nil)
-}
-
 /// `(locale-info ITEM)` -- stub returning nil.
 pub(crate) fn builtin_locale_info(args: Vec<Value>) -> EvalResult {
     expect_args("locale-info", &args, 1)?;
@@ -1019,47 +972,6 @@ mod tests {
         } else {
             panic!("expected cons");
         }
-    }
-
-    // ----- coding system stubs -----
-
-    #[test]
-    fn coding_system_p_known() {
-        let result = builtin_coding_system_p(vec![Value::symbol("utf-8")]).unwrap();
-        assert!(result.is_truthy());
-    }
-
-    #[test]
-    fn coding_system_p_unknown() {
-        let result = builtin_coding_system_p(vec![Value::symbol("martian-encoding")]).unwrap();
-        assert!(result.is_nil());
-    }
-
-    #[test]
-    fn check_coding_system_passthrough() {
-        let val = Value::symbol("utf-8");
-        let result = builtin_check_coding_system(vec![val.clone()]).unwrap();
-        assert!(eq_value(&result, &val));
-    }
-
-    #[test]
-    fn set_coding_system_priority_stub() {
-        let result = builtin_set_coding_system_priority(vec![
-            Value::symbol("utf-8"),
-            Value::symbol("latin-1"),
-        ])
-        .unwrap();
-        assert!(result.is_nil());
-    }
-
-    #[test]
-    fn define_coding_system_alias_returns_alias() {
-        let result = builtin_define_coding_system_alias(vec![
-            Value::symbol("my-utf8"),
-            Value::symbol("utf-8"),
-        ])
-        .unwrap();
-        assert!(eq_value(&result, &Value::symbol("my-utf8")));
     }
 
     // ----- locale-info -----
