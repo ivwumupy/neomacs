@@ -4644,6 +4644,7 @@ pub(crate) fn dispatch_builtin(
         "all-threads" => return Some(super::threads::builtin_all_threads(eval, args)),
         "thread-last-error" => return Some(super::threads::builtin_thread_last_error(eval, args)),
         "make-mutex" => return Some(super::threads::builtin_make_mutex(eval, args)),
+        "mutex-name" => return Some(super::threads::builtin_mutex_name(eval, args)),
         "mutex-lock" => return Some(super::threads::builtin_mutex_lock(eval, args)),
         "mutex-unlock" => return Some(super::threads::builtin_mutex_unlock(eval, args)),
         "make-condition-variable" => {
