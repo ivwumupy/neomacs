@@ -530,7 +530,12 @@ pub(crate) fn builtin_universal_argument_command(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_args("universal-argument", &args, 0)?;
-    Ok(Value::symbol("universal-argument"))
+    Ok(Value::Lambda(std::sync::Arc::new(LambdaData {
+        params: LambdaParams::simple(vec![]),
+        body: vec![Expr::Symbol("nil".to_string())],
+        env: None,
+        docstring: None,
+    })))
 }
 
 /// `(execute-extended-command PREFIXARG &optional COMMAND-NAME TYPED)`
@@ -2263,11 +2268,13 @@ mod tests {
     }
 
     #[test]
-    fn command_execute_builtin_universal_argument_returns_symbol() {
+    fn command_execute_builtin_universal_argument_returns_noninteractive_function() {
         let mut ev = Evaluator::new();
         let result = builtin_command_execute(&mut ev, vec![Value::symbol("universal-argument")])
             .expect("universal-argument should execute");
-        assert_eq!(result.as_symbol_name(), Some("universal-argument"));
+        assert!(matches!(result, Value::Lambda(_)));
+        let as_command = builtin_commandp_interactive(&mut ev, vec![result]).expect("commandp call");
+        assert!(as_command.is_nil());
     }
 
     #[test]
