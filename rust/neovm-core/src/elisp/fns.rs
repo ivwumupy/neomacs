@@ -453,7 +453,7 @@ fn normalize_md5_buffer_position(
     Ok(raw)
 }
 
-fn md5_hex_for_buffer(
+fn hash_slice_for_buffer(
     eval: &super::eval::Evaluator,
     buffer_id: crate::buffer::BufferId,
     start_raw: Option<&Value>,
@@ -483,12 +483,21 @@ fn md5_hex_for_buffer(
     };
     let lo_idx = (lo - point_min) as usize;
     let hi_idx = (hi - point_min) as usize;
-    let slice = storage_substring(&text, lo_idx, hi_idx).ok_or_else(|| {
+    storage_substring(&text, lo_idx, hi_idx).ok_or_else(|| {
         signal(
             "args-out-of-range",
             vec![start_arg.clone(), end_arg.clone()],
         )
-    })?;
+    })
+}
+
+fn md5_hex_for_buffer(
+    eval: &super::eval::Evaluator,
+    buffer_id: crate::buffer::BufferId,
+    start_raw: Option<&Value>,
+    end_raw: Option<&Value>,
+) -> Result<String, Flow> {
+    let slice = hash_slice_for_buffer(eval, buffer_id, start_raw, end_raw)?;
     Ok(md5_hash(slice.as_bytes()))
 }
 
@@ -540,6 +549,76 @@ fn bytes_to_lisp_binary_string(bytes: &[u8]) -> String {
     bytes.iter().map(|b| char::from(*b)).collect()
 }
 
+fn hash_slice_for_string(
+    object: &Value,
+    start_raw: Option<&Value>,
+    end_raw: Option<&Value>,
+) -> Result<String, Flow> {
+    let input = match object {
+        Value::Str(s) => (**s).clone(),
+        _ => unreachable!("hash_slice_for_string only accepts string object"),
+    };
+    let len = storage_char_len(&input) as i64;
+    let start_arg = start_raw.cloned().unwrap_or(Value::Nil);
+    let end_arg = end_raw.cloned().unwrap_or(Value::Nil);
+    let start =
+        normalize_secure_hash_index(start_raw, 0, len, object, &start_arg, &end_arg)? as usize;
+    let end =
+        normalize_secure_hash_index(end_raw, len, len, object, &start_arg, &end_arg)? as usize;
+
+    if start > end {
+        return Err(signal(
+            "args-out-of-range",
+            vec![object.clone(), start_arg.clone(), end_arg.clone()],
+        ));
+    }
+
+    storage_substring(&input, start, end).ok_or_else(|| {
+        signal(
+            "args-out-of-range",
+            vec![object.clone(), start_arg.clone(), end_arg.clone()],
+        )
+    })
+}
+
+fn secure_hash_digest_bytes(algo_name: &str, input: &str) -> Result<Vec<u8>, Flow> {
+    let digest = match algo_name {
+        "md5" => md5_digest(input.as_bytes()).to_vec(),
+        "sha1" => {
+            let mut h = Sha1::new();
+            h.update(input.as_bytes());
+            h.finalize().to_vec()
+        }
+        "sha224" => {
+            let mut h = Sha224::new();
+            h.update(input.as_bytes());
+            h.finalize().to_vec()
+        }
+        "sha256" => {
+            let mut h = Sha256::new();
+            h.update(input.as_bytes());
+            h.finalize().to_vec()
+        }
+        "sha384" => {
+            let mut h = Sha384::new();
+            h.update(input.as_bytes());
+            h.finalize().to_vec()
+        }
+        "sha512" => {
+            let mut h = Sha512::new();
+            h.update(input.as_bytes());
+            h.finalize().to_vec()
+        }
+        _ => {
+            return Err(signal(
+                "error",
+                vec![Value::string(format!("Invalid algorithm arg: {algo_name}"))],
+            ));
+        }
+    };
+    Ok(digest)
+}
+
 /// (secure-hash ALGORITHM OBJECT &optional START END BINARY)
 /// Returns a digest string for supported hash algorithms.
 pub(crate) fn builtin_secure_hash(args: Vec<Value>) -> EvalResult {
@@ -548,7 +627,7 @@ pub(crate) fn builtin_secure_hash(args: Vec<Value>) -> EvalResult {
 
     let object = &args[1];
     let input = match object {
-        Value::Str(s) => (**s).clone(),
+        Value::Str(_) => hash_slice_for_string(object, args.get(2), args.get(3))?,
         other => {
             return Err(signal(
                 "error",
@@ -560,63 +639,42 @@ pub(crate) fn builtin_secure_hash(args: Vec<Value>) -> EvalResult {
         }
     };
 
-    let len = storage_char_len(&input) as i64;
-    let start_arg = args.get(2).cloned().unwrap_or(Value::Int(0));
-    let end_arg = args.get(3).cloned().unwrap_or(Value::Nil);
-    let start =
-        normalize_secure_hash_index(args.get(2), 0, len, object, &start_arg, &end_arg)? as usize;
-    let end =
-        normalize_secure_hash_index(args.get(3), len, len, object, &start_arg, &end_arg)? as usize;
+    let digest = secure_hash_digest_bytes(&algo_name, &input)?;
 
-    if start > end {
-        return Err(signal(
-            "args-out-of-range",
-            vec![object.clone(), start_arg.clone(), end_arg.clone()],
-        ));
+    let binary = args.get(4).is_some_and(|v| v.is_truthy());
+    if binary {
+        Ok(Value::string(bytes_to_lisp_binary_string(&digest)))
+    } else {
+        Ok(Value::string(bytes_to_hex(&digest)))
     }
+}
 
-    let slice = storage_substring(&input, start, end).ok_or_else(|| {
-        signal(
-            "args-out-of-range",
-            vec![object.clone(), start_arg.clone(), end_arg.clone()],
-        )
-    })?;
+/// (secure-hash ALGORITHM OBJECT &optional START END BINARY)
+///
+/// Evaluator-aware implementation that also supports buffer objects.
+pub(crate) fn builtin_secure_hash_eval(
+    eval: &mut super::eval::Evaluator,
+    args: Vec<Value>,
+) -> EvalResult {
+    expect_range_args("secure-hash", &args, 2, 5)?;
+    let algo_name = secure_hash_algorithm_name(&args[0])?;
 
-    let digest = match algo_name.as_str() {
-        "md5" => md5_digest(slice.as_bytes()).to_vec(),
-        "sha1" => {
-            let mut h = Sha1::new();
-            h.update(slice.as_bytes());
-            h.finalize().to_vec()
-        }
-        "sha224" => {
-            let mut h = Sha224::new();
-            h.update(slice.as_bytes());
-            h.finalize().to_vec()
-        }
-        "sha256" => {
-            let mut h = Sha256::new();
-            h.update(slice.as_bytes());
-            h.finalize().to_vec()
-        }
-        "sha384" => {
-            let mut h = Sha384::new();
-            h.update(slice.as_bytes());
-            h.finalize().to_vec()
-        }
-        "sha512" => {
-            let mut h = Sha512::new();
-            h.update(slice.as_bytes());
-            h.finalize().to_vec()
-        }
-        _ => {
+    let object = &args[1];
+    let input = match object {
+        Value::Str(_) => hash_slice_for_string(object, args.get(2), args.get(3))?,
+        Value::Buffer(id) => hash_slice_for_buffer(eval, *id, args.get(2), args.get(3))?,
+        other => {
             return Err(signal(
                 "error",
-                vec![Value::string(format!("Invalid algorithm arg: {algo_name}"))],
+                vec![
+                    Value::string("Invalid object argument"),
+                    invalid_object_payload(other),
+                ],
             ));
         }
     };
 
+    let digest = secure_hash_digest_bytes(&algo_name, &input)?;
     let binary = args.get(4).is_some_and(|v| v.is_truthy());
     if binary {
         Ok(Value::string(bytes_to_lisp_binary_string(&digest)))
@@ -1345,6 +1403,109 @@ mod tests {
                     Some("Invalid object argument")
                 );
                 assert_eq!(sig.data.get(1), Some(&Value::Int(123)));
+            }
+            other => panic!("expected error signal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn secure_hash_eval_buffer_sha1() {
+        let mut eval = crate::elisp::eval::Evaluator::new();
+        {
+            let buf = eval.buffers.current_buffer_mut().expect("current buffer");
+            buf.delete_region(buf.point_min(), buf.point_max());
+            buf.insert("abc");
+        }
+        let id = eval.buffers.current_buffer().expect("current buffer").id;
+        let r =
+            builtin_secure_hash_eval(&mut eval, vec![Value::symbol("sha1"), Value::Buffer(id)])
+                .unwrap();
+        assert_eq!(r.as_str(), Some("a9993e364706816aba3e25717850c26c9cd0d89d"));
+    }
+
+    #[test]
+    fn secure_hash_eval_buffer_range_errors() {
+        let mut eval = crate::elisp::eval::Evaluator::new();
+        {
+            let buf = eval.buffers.current_buffer_mut().expect("current buffer");
+            buf.delete_region(buf.point_min(), buf.point_max());
+            buf.insert("abc");
+        }
+        let id = eval.buffers.current_buffer().expect("current buffer").id;
+
+        match builtin_secure_hash_eval(
+            &mut eval,
+            vec![Value::symbol("sha1"), Value::Buffer(id), Value::Int(5)],
+        ) {
+            Err(Flow::Signal(sig)) => {
+                assert_eq!(sig.symbol, "args-out-of-range");
+                assert_eq!(sig.data, vec![Value::Int(5), Value::Nil]);
+            }
+            other => panic!("expected args-out-of-range signal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn secure_hash_eval_buffer_index_type_error() {
+        let mut eval = crate::elisp::eval::Evaluator::new();
+        let id = eval.buffers.current_buffer().expect("current buffer").id;
+
+        match builtin_secure_hash_eval(
+            &mut eval,
+            vec![
+                Value::symbol("sha1"),
+                Value::Buffer(id),
+                Value::True,
+                Value::Int(3),
+            ],
+        ) {
+            Err(Flow::Signal(sig)) => {
+                assert_eq!(sig.symbol, "wrong-type-argument");
+                assert_eq!(sig.data.first(), Some(&Value::symbol("integer-or-marker-p")));
+            }
+            other => panic!("expected wrong-type-argument signal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn secure_hash_eval_buffer_marker_range() {
+        let mut eval = crate::elisp::eval::Evaluator::new();
+        {
+            let buf = eval.buffers.current_buffer_mut().expect("current buffer");
+            buf.delete_region(buf.point_min(), buf.point_max());
+            buf.insert("abc");
+        }
+        let id = eval.buffers.current_buffer().expect("current buffer").id;
+        let marker = crate::elisp::marker::make_marker_value(None, Some(2), false);
+        let r = builtin_secure_hash_eval(
+            &mut eval,
+            vec![
+                Value::symbol("sha1"),
+                Value::Buffer(id),
+                marker,
+                Value::Int(4),
+            ],
+        )
+        .unwrap();
+        assert_eq!(r.as_str(), Some("5b2505039ac5af9e197f5dad04113906a9cf9a2a"));
+    }
+
+    #[test]
+    fn secure_hash_eval_deleted_buffer_errors() {
+        let mut eval = crate::elisp::eval::Evaluator::new();
+        let id = eval.buffers.create_buffer("*secure-doomed*");
+        assert!(eval.buffers.kill_buffer(id));
+
+        match builtin_secure_hash_eval(
+            &mut eval,
+            vec![Value::symbol("sha1"), Value::Buffer(id)],
+        ) {
+            Err(Flow::Signal(sig)) => {
+                assert_eq!(sig.symbol, "error");
+                assert_eq!(
+                    sig.data.first().and_then(|v| v.as_str()),
+                    Some("Selecting deleted buffer")
+                );
             }
             other => panic!("expected error signal, got {other:?}"),
         }
