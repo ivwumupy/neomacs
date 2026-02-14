@@ -128,6 +128,8 @@ pub fn get_load_path(obarray: &super::symbol::Obarray) -> Vec<String> {
 const ELISP_CACHE_MAGIC: &str = "NEOVM-ELISP-CACHE-V1";
 const ELISP_CACHE_SCHEMA: &str = "schema=1";
 const ELISP_CACHE_VM_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const ELISP_CACHE_EXTENSION: &str = "neoc";
+const ELISP_CACHE_TEMP_EXTENSION: &str = "neoc.tmp";
 
 fn cache_key(lexical_binding: bool) -> String {
     let lexical = if lexical_binding { "1" } else { "0" };
@@ -143,11 +145,11 @@ fn source_hash(content: &str) -> u64 {
 }
 
 fn cache_sidecar_path(source_path: &Path) -> PathBuf {
-    source_path.with_extension("neoc")
+    source_path.with_extension(ELISP_CACHE_EXTENSION)
 }
 
 fn cache_temp_path(source_path: &Path) -> PathBuf {
-    cache_sidecar_path(source_path).with_extension("neoc.tmp")
+    cache_sidecar_path(source_path).with_extension(ELISP_CACHE_TEMP_EXTENSION)
 }
 
 const CACHE_WRITE_PHASE_BEFORE_WRITE: u8 = 1;
@@ -174,7 +176,7 @@ fn maybe_inject_cache_write_failure(_phase: u8) -> std::io::Result<()> {
         let should_fail = CACHE_WRITE_FAIL_PHASE.with(|p| p.get() == _phase);
         if should_fail {
             return Err(std::io::Error::other(format!(
-                "injected .neoc write failure at phase {_phase}"
+                "injected .{ELISP_CACHE_EXTENSION} write failure at phase {_phase}"
             )));
         }
     }

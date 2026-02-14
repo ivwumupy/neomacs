@@ -1,4 +1,4 @@
-use neovm_core::elisp::load::load_file;
+use neovm_core::elisp::load::{load_file, ELISP_CACHE_EXTENSION};
 use neovm_core::elisp::Evaluator;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -28,7 +28,7 @@ fn parse_iterations(arg: Option<&String>) -> Result<usize, String> {
 }
 
 fn cache_path(source: &Path) -> PathBuf {
-    source.with_extension("neoc")
+    source.with_extension(ELISP_CACHE_EXTENSION)
 }
 
 fn main() {
