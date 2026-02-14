@@ -248,6 +248,16 @@ fn decode_opcode_subset(byte_stream: &str, const_len: usize) -> Option<Vec<Op>> 
                 pending.push(Pending::Op(Op::Length));
                 pc += 1;
             }
+            // aref
+            0o110 => {
+                pending.push(Pending::Op(Op::Aref));
+                pc += 1;
+            }
+            // aset
+            0o111 => {
+                pending.push(Pending::Op(Op::Aset));
+                pc += 1;
+            }
             // 1- (sub1)
             0o123 => {
                 pending.push(Pending::Op(Op::Sub1));
@@ -322,6 +332,16 @@ fn decode_opcode_subset(byte_stream: &str, const_len: usize) -> Option<Vec<Op>> 
             // equal
             0o232 => {
                 pending.push(Pending::Op(Op::Equal));
+                pc += 1;
+            }
+            // string=
+            0o230 => {
+                pending.push(Pending::Op(Op::StringEqual));
+                pc += 1;
+            }
+            // string-lessp
+            0o231 => {
+                pending.push(Pending::Op(Op::StringLessp));
                 pc += 1;
             }
             // nthcdr
@@ -717,6 +737,68 @@ mod tests {
             panic!("expected Value::ByteCode");
         };
         assert_eq!(bc.ops, vec![Op::VarRef(0), Op::Integerp, Op::Return]);
+    }
+
+    #[test]
+    fn decodes_string_compare_opcode_subset() {
+        let literal = Value::vector(vec![
+            Value::list(vec![Value::symbol("x"), Value::symbol("y")]),
+            Value::string("\u{8}\u{9}\u{98}\u{87}"),
+            Value::vector(vec![Value::symbol("x"), Value::symbol("y")]),
+            Value::Int(2),
+        ]);
+        let coerced = maybe_coerce_compiled_literal_function(literal);
+        let Value::ByteCode(bc) = coerced else {
+            panic!("expected Value::ByteCode");
+        };
+        assert_eq!(
+            bc.ops,
+            vec![Op::VarRef(0), Op::VarRef(1), Op::StringEqual, Op::Return]
+        );
+    }
+
+    #[test]
+    fn decodes_aref_aset_opcode_subset() {
+        let aref = Value::vector(vec![
+            Value::list(vec![Value::symbol("x"), Value::symbol("y")]),
+            Value::string("\u{8}\u{9}H\u{87}"),
+            Value::vector(vec![Value::symbol("x"), Value::symbol("y")]),
+            Value::Int(2),
+        ]);
+        let coerced = maybe_coerce_compiled_literal_function(aref);
+        let Value::ByteCode(bc) = coerced else {
+            panic!("expected Value::ByteCode");
+        };
+        assert_eq!(bc.ops, vec![Op::VarRef(0), Op::VarRef(1), Op::Aref, Op::Return]);
+
+        let aset = Value::vector(vec![
+            Value::list(vec![
+                Value::symbol("x"),
+                Value::symbol("y"),
+                Value::symbol("z"),
+            ]),
+            Value::string("\u{8}\u{9}\u{A}I\u{87}"),
+            Value::vector(vec![
+                Value::symbol("x"),
+                Value::symbol("y"),
+                Value::symbol("z"),
+            ]),
+            Value::Int(3),
+        ]);
+        let coerced = maybe_coerce_compiled_literal_function(aset);
+        let Value::ByteCode(bc) = coerced else {
+            panic!("expected Value::ByteCode");
+        };
+        assert_eq!(
+            bc.ops,
+            vec![
+                Op::VarRef(0),
+                Op::VarRef(1),
+                Op::VarRef(2),
+                Op::Aset,
+                Op::Return,
+            ]
+        );
     }
 
     #[test]
