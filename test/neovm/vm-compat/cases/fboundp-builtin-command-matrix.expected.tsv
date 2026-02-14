@@ -42,3 +42,5 @@
 42	(fboundp 'scroll-up-command)	OK t
 43	(fboundp 'scroll-down-command)	OK t
 44	(fboundp 'recenter-top-bottom)	OK t
+45	(fboundp 'move-beginning-of-line)	OK t
+46	(fboundp 'move-end-of-line)	OK t

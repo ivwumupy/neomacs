@@ -43,3 +43,5 @@
 (fboundp 'scroll-up-command)
 (fboundp 'scroll-down-command)
 (fboundp 'recenter-top-bottom)
+(fboundp 'move-beginning-of-line)
+(fboundp 'move-end-of-line)
