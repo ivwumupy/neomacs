@@ -1,4 +1,5 @@
 cases/fboundp-core
+cases/fboundp-builtin-command-matrix
 cases/fboundp-dispatch
 cases/fboundp-macro-boundary
 cases/symbol-function-core

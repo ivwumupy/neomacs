@@ -1,5 +1,6 @@
 cases/core
 cases/fboundp-core
+cases/fboundp-builtin-command-matrix
 cases/intern-obarray-semantics
 cases/obarray-arg-semantics
 cases/fboundp-dispatch
