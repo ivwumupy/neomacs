@@ -96,6 +96,7 @@ cases/string-join-semantics
 cases/string-to-number-semantics
 cases/md5-semantics
 cases/secure-hash-semantics
+cases/secure-hash-buffer-semantics
 cases/buffer-hash-semantics
 cases/substring-edge-semantics
 cases/aref-aset-index-semantics
