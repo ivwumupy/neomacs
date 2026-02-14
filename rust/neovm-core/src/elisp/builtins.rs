@@ -2707,6 +2707,28 @@ fn princ_text_eval(eval: &super::eval::Evaluator, value: &Value) -> String {
     }
 }
 
+fn prin1_to_string_value(value: &Value, noescape: bool) -> String {
+    if noescape {
+        match value {
+            Value::Str(s) => (**s).clone(),
+            other => super::print::print_value(other),
+        }
+    } else {
+        super::print::print_value(value)
+    }
+}
+
+fn prin1_to_string_value_eval(eval: &super::eval::Evaluator, value: &Value, noescape: bool) -> String {
+    if noescape {
+        match value {
+            Value::Str(s) => (**s).clone(),
+            other => print_value_eval(eval, other),
+        }
+    } else {
+        print_value_eval(eval, value)
+    }
+}
+
 pub(crate) fn builtin_princ(args: Vec<Value>) -> EvalResult {
     expect_min_args("princ", &args, 1)?;
     // In real Emacs this prints to standard output; here just return the value
@@ -2740,7 +2762,14 @@ pub(crate) fn builtin_prin1_eval(
 
 pub(crate) fn builtin_prin1_to_string(args: Vec<Value>) -> EvalResult {
     expect_min_args("prin1-to-string", &args, 1)?;
-    Ok(Value::string(super::print::print_value(&args[0])))
+    if args.len() > 2 {
+        return Err(signal(
+            "wrong-number-of-arguments",
+            vec![Value::symbol("prin1-to-string"), Value::Int(args.len() as i64)],
+        ));
+    }
+    let noescape = args.get(1).is_some_and(|v| v.is_truthy());
+    Ok(Value::string(prin1_to_string_value(&args[0], noescape)))
 }
 
 pub(crate) fn builtin_prin1_to_string_eval(
@@ -2748,7 +2777,16 @@ pub(crate) fn builtin_prin1_to_string_eval(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_min_args("prin1-to-string", &args, 1)?;
-    Ok(Value::string(print_value_eval(eval, &args[0])))
+    if args.len() > 2 {
+        return Err(signal(
+            "wrong-number-of-arguments",
+            vec![Value::symbol("prin1-to-string"), Value::Int(args.len() as i64)],
+        ));
+    }
+    let noescape = args.get(1).is_some_and(|v| v.is_truthy());
+    Ok(Value::string(prin1_to_string_value_eval(
+        eval, &args[0], noescape,
+    )))
 }
 
 pub(crate) fn builtin_print(args: Vec<Value>) -> EvalResult {
@@ -6659,6 +6697,34 @@ mod tests {
             .expect("prin1-to-string should resolve for forged condvar")
             .expect("prin1-to-string should evaluate for forged condvar");
         assert_eq!(condvar_text, Value::string("(condition-variable . 1)"));
+    }
+
+    #[test]
+    fn prin1_to_string_supports_noescape_for_strings() {
+        let mut eval = crate::elisp::eval::Evaluator::new();
+        let value = Value::string("a\nb");
+
+        let escaped = dispatch_builtin(&mut eval, "prin1-to-string", vec![value.clone()])
+            .expect("prin1-to-string should resolve")
+            .expect("prin1-to-string should evaluate");
+        assert_eq!(escaped, Value::string("\"a\\nb\""));
+
+        let noescape = dispatch_builtin(&mut eval, "prin1-to-string", vec![value, Value::True])
+            .expect("prin1-to-string should resolve with noescape")
+            .expect("prin1-to-string should evaluate with noescape");
+        assert_eq!(noescape, Value::string("a\nb"));
+    }
+
+    #[test]
+    fn prin1_to_string_rejects_too_many_args() {
+        let mut eval = crate::elisp::eval::Evaluator::new();
+        let result = dispatch_builtin(
+            &mut eval,
+            "prin1-to-string",
+            vec![Value::Int(1), Value::Nil, Value::Nil],
+        )
+        .expect("prin1-to-string should resolve with extra args");
+        assert!(result.is_err());
     }
 
     #[test]
