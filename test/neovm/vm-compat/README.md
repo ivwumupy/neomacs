@@ -13,12 +13,14 @@ results against that baseline once evaluator execution is wired in.
 - `run-oracle.sh`: runs all forms from a corpus file and prints TSV output
 - `run-neovm.sh`: runs NeoVM worker-runtime compatibility runner and prints TSV output
 - `compare-results.sh`: diffs oracle TSV vs NeoVM TSV
+- `check-builtin-registry-fboundp.sh`: checks `fboundp` parity for all names in `builtin_registry.rs`
 - `bench-load-cache.sh`: runs cold/warm/post-edit `.neoc` load benchmark reporting via `load_cache_bench`
 - `cases/default.list`: default `check-all-neovm` corpus order (one case per line)
 - `cases/neovm-only.list`: NeoVM-only policy corpus order
 - `cases/legacy-elc-literal.list`: opt-in `.elc` literal compatibility corpus order
 - `cases/introspection.list`: focused callable/special-form introspection corpus order
 - `cases/thread.list`: focused thread primitive corpus order
+- `cases/builtin-registry-fboundp-allowlist.txt`: intentional `fboundp` drift allowlist for registry parity checks
 - `cases/core.forms`: starter corpus for expression and error behavior
 - `cases/input-batch-readers.forms`: batch-mode input reader compatibility corpus
 
@@ -96,6 +98,13 @@ Run the focused thread primitive suite (faster loop for `make-thread`/`thread-jo
 ```bash
 cd test/neovm/vm-compat
 make check-thread-neovm
+```
+
+Run the builtin registry `fboundp` parity gate (GNU Emacs `-Q` vs NeoVM, with explicit allowlist for intentional extensions):
+
+```bash
+cd test/neovm/vm-compat
+make check-builtin-registry-fboundp
 ```
 
 Run the ERT allowlist oracle scaffold (for upstream differential bootstrapping):
