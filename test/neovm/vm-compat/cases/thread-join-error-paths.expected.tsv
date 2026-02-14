@@ -1,0 +1,4 @@
+1	(condition-case err (thread-join) (error err))	OK (wrong-number-of-arguments thread-join 0)
+2	(condition-case err (thread-join 1) (error err))	OK (wrong-type-argument threadp 1)
+3	(condition-case err (thread-join '(thread . 0)) (error err))	OK (wrong-type-argument threadp (thread . 0))
+4	(condition-case err (thread-join (cons 'thread 0)) (error err))	OK (wrong-type-argument threadp (thread . 0))
