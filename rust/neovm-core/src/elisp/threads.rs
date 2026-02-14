@@ -18,7 +18,7 @@
 use std::collections::HashMap;
 
 use super::error::{signal, EvalResult, Flow};
-use super::value::Value;
+use super::value::{eq_value, Value};
 
 // ---------------------------------------------------------------------------
 // Thread state
@@ -93,10 +93,13 @@ pub struct ThreadManager {
     threads: HashMap<u64, ThreadState>,
     next_id: u64,
     current_thread: u64, // ID of currently running thread (0 = main)
+    thread_handles: HashMap<u64, Value>,
     mutexes: HashMap<u64, MutexState>,
     next_mutex_id: u64,
+    mutex_handles: HashMap<u64, Value>,
     condition_vars: HashMap<u64, ConditionVarState>,
     next_cv_id: u64,
+    condition_var_handles: HashMap<u64, Value>,
     /// Global last-error value (returned by `thread-last-error`).
     last_error: Option<Value>,
 }
@@ -116,14 +119,19 @@ impl ThreadManager {
                 last_error: None,
             },
         );
+        let mut thread_handles = HashMap::new();
+        thread_handles.insert(0, tagged_object_value("thread", 0));
         Self {
             threads,
             next_id: 1,
             current_thread: 0,
+            thread_handles,
             mutexes: HashMap::new(),
             next_mutex_id: 1,
+            mutex_handles: HashMap::new(),
             condition_vars: HashMap::new(),
             next_cv_id: 1,
+            condition_var_handles: HashMap::new(),
             last_error: None,
         }
     }
@@ -145,6 +153,8 @@ impl ThreadManager {
                 last_error: None,
             },
         );
+        self.thread_handles
+            .insert(id, tagged_object_value("thread", id));
         id
     }
 
@@ -199,6 +209,16 @@ impl ThreadManager {
         self.threads.contains_key(&id)
     }
 
+    /// Return canonical handle object for thread id.
+    pub fn thread_handle(&self, id: u64) -> Option<Value> {
+        self.thread_handles.get(&id).cloned()
+    }
+
+    /// Return the thread id iff VALUE is the canonical thread handle object.
+    pub fn thread_id_from_handle(&self, value: &Value) -> Option<u64> {
+        canonical_handle_id(&self.thread_handles, value, "thread")
+    }
+
     /// Return all thread ids.
     pub fn all_thread_ids(&self) -> Vec<u64> {
         self.threads.keys().copied().collect()
@@ -236,6 +256,7 @@ impl ThreadManager {
                 lock_count: 0,
             },
         );
+        self.mutex_handles.insert(id, tagged_object_value("mutex", id));
         id
     }
 
@@ -294,6 +315,16 @@ impl ThreadManager {
         self.mutexes.contains_key(&id)
     }
 
+    /// Return canonical handle object for mutex id.
+    pub fn mutex_handle(&self, id: u64) -> Option<Value> {
+        self.mutex_handles.get(&id).cloned()
+    }
+
+    /// Return the mutex id iff VALUE is the canonical mutex handle object.
+    pub fn mutex_id_from_handle(&self, value: &Value) -> Option<u64> {
+        canonical_handle_id(&self.mutex_handles, value, "mutex")
+    }
+
     /// Get mutex name.
     pub fn mutex_name(&self, id: u64) -> Option<&str> {
         self.mutexes.get(&id).and_then(|m| m.name.as_deref())
@@ -314,12 +345,24 @@ impl ThreadManager {
         self.next_cv_id += 1;
         self.condition_vars
             .insert(id, ConditionVarState { id, name, mutex_id });
+        self.condition_var_handles
+            .insert(id, tagged_object_value("condition-variable", id));
         Some(id)
     }
 
     /// Check if a value represents a known condition variable id.
     pub fn is_condition_variable(&self, id: u64) -> bool {
         self.condition_vars.contains_key(&id)
+    }
+
+    /// Return canonical handle object for condition variable id.
+    pub fn condition_variable_handle(&self, id: u64) -> Option<Value> {
+        self.condition_var_handles.get(&id).cloned()
+    }
+
+    /// Return the condition variable id iff VALUE is the canonical handle.
+    pub fn condition_variable_id_from_handle(&self, value: &Value) -> Option<u64> {
+        canonical_handle_id(&self.condition_var_handles, value, "condition-variable")
     }
 
     /// Get condition variable name.
@@ -385,9 +428,19 @@ fn tagged_object_id(value: &Value, expected_tag: &str) -> Option<u64> {
     }
 }
 
-/// Extract a thread id from a `(thread . ID)` object.
-fn expect_thread_id(value: &Value) -> Result<u64, Flow> {
-    match tagged_object_id(value, "thread") {
+fn canonical_handle_id(handles: &HashMap<u64, Value>, value: &Value, tag: &str) -> Option<u64> {
+    let id = tagged_object_id(value, tag)?;
+    let canonical = handles.get(&id)?;
+    if eq_value(canonical, value) {
+        Some(id)
+    } else {
+        None
+    }
+}
+
+/// Extract a thread id from a canonical thread handle object.
+fn expect_thread_id(manager: &ThreadManager, value: &Value) -> Result<u64, Flow> {
+    match manager.thread_id_from_handle(value) {
         Some(id) => Ok(id),
         None => Err(signal(
             "wrong-type-argument",
@@ -396,9 +449,9 @@ fn expect_thread_id(value: &Value) -> Result<u64, Flow> {
     }
 }
 
-/// Extract a mutex id from a `(mutex . ID)` object.
-fn expect_mutex_id(value: &Value) -> Result<u64, Flow> {
-    match tagged_object_id(value, "mutex") {
+/// Extract a mutex id from a canonical mutex handle object.
+fn expect_mutex_id(manager: &ThreadManager, value: &Value) -> Result<u64, Flow> {
+    match manager.mutex_id_from_handle(value) {
         Some(id) => Ok(id),
         None => Err(signal(
             "wrong-type-argument",
@@ -407,9 +460,9 @@ fn expect_mutex_id(value: &Value) -> Result<u64, Flow> {
     }
 }
 
-/// Extract a condition variable id from a `(condition-variable . ID)` object.
-fn expect_cv_id(value: &Value) -> Result<u64, Flow> {
-    match tagged_object_id(value, "condition-variable") {
+/// Extract a condition variable id from a canonical handle object.
+fn expect_cv_id(manager: &ThreadManager, value: &Value) -> Result<u64, Flow> {
+    match manager.condition_variable_id_from_handle(value) {
         Some(id) => Ok(id),
         None => Err(signal(
             "wrong-type-argument",
@@ -484,7 +537,10 @@ pub(crate) fn builtin_make_thread(
         }
     }
 
-    Ok(tagged_object_value("thread", thread_id))
+    Ok(eval
+        .threads
+        .thread_handle(thread_id)
+        .unwrap_or_else(|| tagged_object_value("thread", thread_id)))
 }
 
 /// `(thread-join THREAD)` -- wait for thread completion.
@@ -496,7 +552,7 @@ pub(crate) fn builtin_thread_join(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_args("thread-join", &args, 1)?;
-    let id = expect_thread_id(&args[0])?;
+    let id = expect_thread_id(&eval.threads, &args[0])?;
     if !eval.threads.is_thread(id) {
         return Err(signal(
             "wrong-type-argument",
@@ -523,7 +579,7 @@ pub(crate) fn builtin_thread_name(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_args("thread-name", &args, 1)?;
-    let id = expect_thread_id(&args[0])?;
+    let id = expect_thread_id(&eval.threads, &args[0])?;
     if !eval.threads.is_thread(id) {
         return Err(signal(
             "wrong-type-argument",
@@ -542,7 +598,7 @@ pub(crate) fn builtin_thread_live_p(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_args("thread-live-p", &args, 1)?;
-    let id = expect_thread_id(&args[0])?;
+    let id = expect_thread_id(&eval.threads, &args[0])?;
     if !eval.threads.is_thread(id) {
         return Err(signal(
             "wrong-type-argument",
@@ -560,10 +616,9 @@ pub(crate) fn builtin_threadp(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_args("threadp", &args, 1)?;
-    match tagged_object_id(&args[0], "thread") {
-        Some(id) => Ok(Value::bool(eval.threads.is_thread(id))),
-        None => Ok(Value::Nil),
-    }
+    Ok(Value::bool(
+        eval.threads.thread_id_from_handle(&args[0]).is_some(),
+    ))
 }
 
 /// `(thread-signal THREAD ERROR-SYMBOL DATA)` -- send a signal to a thread.
@@ -574,7 +629,7 @@ pub(crate) fn builtin_thread_signal(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_args("thread-signal", &args, 3)?;
-    let id = expect_thread_id(&args[0])?;
+    let id = expect_thread_id(&eval.threads, &args[0])?;
     if !eval.threads.is_thread(id) {
         return Err(signal(
             "wrong-type-argument",
@@ -594,7 +649,11 @@ pub(crate) fn builtin_current_thread(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_args("current-thread", &args, 0)?;
-    Ok(tagged_object_value("thread", eval.threads.current_thread_id()))
+    let id = eval.threads.current_thread_id();
+    Ok(eval
+        .threads
+        .thread_handle(id)
+        .unwrap_or_else(|| tagged_object_value("thread", id)))
 }
 
 /// `(all-threads)` -- return a list of all thread objects.
@@ -607,7 +666,11 @@ pub(crate) fn builtin_all_threads(
     ids.sort_unstable();
     let objects: Vec<Value> = ids
         .into_iter()
-        .map(|id| tagged_object_value("thread", id))
+        .map(|id| {
+            eval.threads
+                .thread_handle(id)
+                .unwrap_or_else(|| tagged_object_value("thread", id))
+        })
         .collect();
     Ok(Value::list(objects))
 }
@@ -662,7 +725,10 @@ pub(crate) fn builtin_make_mutex(
         None
     };
     let id = eval.threads.create_mutex(name);
-    Ok(tagged_object_value("mutex", id))
+    Ok(eval
+        .threads
+        .mutex_handle(id)
+        .unwrap_or_else(|| tagged_object_value("mutex", id)))
 }
 
 /// `(mutexp OBJ)` -- type predicate for mutexes.
@@ -671,10 +737,7 @@ pub(crate) fn builtin_mutexp(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_args("mutexp", &args, 1)?;
-    match tagged_object_id(&args[0], "mutex") {
-        Some(id) => Ok(Value::bool(eval.threads.is_mutex(id))),
-        None => Ok(Value::Nil),
-    }
+    Ok(Value::bool(eval.threads.mutex_id_from_handle(&args[0]).is_some()))
 }
 
 /// `(mutex-name MUTEX)` -- return the mutex's name or nil.
@@ -683,7 +746,7 @@ pub(crate) fn builtin_mutex_name(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_args("mutex-name", &args, 1)?;
-    let id = expect_mutex_id(&args[0])?;
+    let id = expect_mutex_id(&eval.threads, &args[0])?;
     if !eval.threads.is_mutex(id) {
         return Err(signal(
             "wrong-type-argument",
@@ -704,7 +767,7 @@ pub(crate) fn builtin_mutex_lock(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_args("mutex-lock", &args, 1)?;
-    let id = expect_mutex_id(&args[0])?;
+    let id = expect_mutex_id(&eval.threads, &args[0])?;
     if !eval.threads.is_mutex(id) {
         return Err(signal(
             "wrong-type-argument",
@@ -721,7 +784,7 @@ pub(crate) fn builtin_mutex_unlock(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_args("mutex-unlock", &args, 1)?;
-    let id = expect_mutex_id(&args[0])?;
+    let id = expect_mutex_id(&eval.threads, &args[0])?;
     if !eval.threads.is_mutex(id) {
         return Err(signal(
             "wrong-type-argument",
@@ -751,7 +814,7 @@ pub(crate) fn builtin_make_condition_variable(
             ],
         ));
     }
-    let mutex_id = expect_mutex_id(&args[0])?;
+    let mutex_id = expect_mutex_id(&eval.threads, &args[0])?;
     if !eval.threads.is_mutex(mutex_id) {
         return Err(signal(
             "wrong-type-argument",
@@ -773,7 +836,10 @@ pub(crate) fn builtin_make_condition_variable(
         None
     };
     match eval.threads.create_condition_variable(mutex_id, name) {
-        Some(id) => Ok(tagged_object_value("condition-variable", id)),
+        Some(id) => Ok(eval
+            .threads
+            .condition_variable_handle(id)
+            .unwrap_or_else(|| tagged_object_value("condition-variable", id))),
         None => Err(signal(
             "wrong-type-argument",
             vec![Value::symbol("mutexp"), args[0].clone()],
@@ -787,10 +853,11 @@ pub(crate) fn builtin_condition_variable_p(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_args("condition-variable-p", &args, 1)?;
-    match tagged_object_id(&args[0], "condition-variable") {
-        Some(id) => Ok(Value::bool(eval.threads.is_condition_variable(id))),
-        None => Ok(Value::Nil),
-    }
+    Ok(Value::bool(
+        eval.threads
+            .condition_variable_id_from_handle(&args[0])
+            .is_some(),
+    ))
 }
 
 /// `(condition-wait COND)` -- wait on a condition variable.
@@ -801,7 +868,7 @@ pub(crate) fn builtin_condition_wait(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_args("condition-wait", &args, 1)?;
-    let id = expect_cv_id(&args[0])?;
+    let id = expect_cv_id(&eval.threads, &args[0])?;
     if !eval.threads.is_condition_variable(id) {
         return Err(signal(
             "wrong-type-argument",
@@ -830,7 +897,7 @@ pub(crate) fn builtin_condition_notify(
             ],
         ));
     }
-    let id = expect_cv_id(&args[0])?;
+    let id = expect_cv_id(&eval.threads, &args[0])?;
     if !eval.threads.is_condition_variable(id) {
         return Err(signal(
             "wrong-type-argument",
@@ -861,7 +928,7 @@ pub(crate) fn sf_with_mutex(
         ));
     }
     let mutex_val = eval.eval(&tail[0])?;
-    let mutex_id = expect_mutex_id(&mutex_val)?;
+    let mutex_id = expect_mutex_id(&eval.threads, &mutex_val)?;
     if !eval.threads.is_mutex(mutex_id) {
         return Err(signal(
             "wrong-type-argument",
@@ -1064,6 +1131,11 @@ mod tests {
         let r = builtin_threadp(&mut eval, vec![fake]);
         assert!(r.is_ok());
         assert!(r.unwrap().is_nil());
+
+        let forged_main = Value::cons(Value::symbol("thread"), Value::Int(0));
+        let r = builtin_threadp(&mut eval, vec![forged_main]);
+        assert!(r.is_ok());
+        assert!(r.unwrap().is_nil());
     }
 
     #[test]
@@ -1072,6 +1144,14 @@ mod tests {
         let result = builtin_current_thread(&mut eval, vec![]);
         assert!(result.is_ok());
         assert_eq!(tagged_object_id(&result.unwrap(), "thread"), Some(0));
+    }
+
+    #[test]
+    fn test_builtin_current_thread_returns_stable_handle_identity() {
+        let mut eval = Evaluator::new();
+        let first = builtin_current_thread(&mut eval, vec![]).unwrap();
+        let second = builtin_current_thread(&mut eval, vec![]).unwrap();
+        assert!(eq_value(&first, &second));
     }
 
     #[test]
@@ -1213,6 +1293,11 @@ mod tests {
         let r = builtin_mutexp(&mut eval, vec![Value::Nil]);
         assert!(r.is_ok());
         assert!(r.unwrap().is_nil());
+
+        let forged = Value::cons(Value::symbol("mutex"), Value::Int(1));
+        let r = builtin_mutexp(&mut eval, vec![forged]);
+        assert!(r.is_ok());
+        assert!(r.unwrap().is_nil());
     }
 
     #[test]
@@ -1260,6 +1345,11 @@ mod tests {
         assert!(r.unwrap().is_nil());
 
         let r = builtin_condition_variable_p(&mut eval, vec![Value::Nil]);
+        assert!(r.is_ok());
+        assert!(r.unwrap().is_nil());
+
+        let forged = Value::cons(Value::symbol("condition-variable"), Value::Int(1));
+        let r = builtin_condition_variable_p(&mut eval, vec![forged]);
         assert!(r.is_ok());
         assert!(r.unwrap().is_nil());
     }
