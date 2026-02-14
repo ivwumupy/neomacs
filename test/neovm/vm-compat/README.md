@@ -95,6 +95,8 @@ You can override all three via `ERT_ALLOWLIST`, `ERT_LOAD_FILES`, and `ERT_EXPEC
 
 `run-neovm.sh` sets `NEOVM_DISABLE_LOAD_CACHE_WRITE=1` so compatibility runs do
 not mutate fixture directories with `.neoc` sidecars.
+It also executes the built `elisp_compat_runner` binary directly and rebuilds it
+only when relevant Rust sources are newer than the binary.
 
 NeoVM-only policy cases (expected to diverge from GNU Emacs oracle baselines)
 can be run separately:
