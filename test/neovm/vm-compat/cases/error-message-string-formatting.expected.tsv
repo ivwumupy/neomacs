@@ -7,4 +7,6 @@
 7	(error-message-string '(error 1 2))	OK "peculiar error: 2"
 8	(error-message-string '(file-error 1 2))	OK "peculiar error: 2"
 9	(error-message-string '(args-out-of-range "abc" 9))	OK "Args out of range: \"abc\", 9"
-10	(let ((msg (condition-case e (progn (error "%S" (current-thread)) "") (error (error-message-string e))))) (string-prefix-p "#<thread" msg))	OK t
+10	(error-message-string '(void-variable x))	OK "Symbol’s value as variable is void: x"
+11	(error-message-string '(void-function x))	OK "Symbol’s function definition is void: x"
+12	(let ((msg (condition-case e (progn (error "%S" (current-thread)) "") (error (error-message-string e))))) (string-prefix-p "#<thread" msg))	OK t

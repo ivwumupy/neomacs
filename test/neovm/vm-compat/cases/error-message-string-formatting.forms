@@ -7,4 +7,6 @@
 (error-message-string '(error 1 2))
 (error-message-string '(file-error 1 2))
 (error-message-string '(args-out-of-range "abc" 9))
+(error-message-string '(void-variable x))
+(error-message-string '(void-function x))
 (let ((msg (condition-case e (progn (error "%S" (current-thread)) "") (error (error-message-string e))))) (string-prefix-p "#<thread" msg))
