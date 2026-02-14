@@ -1169,7 +1169,10 @@ pub(crate) fn builtin_transpose_words(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_args("transpose-words", &args, 1)?;
-    let _n = expect_int(&args[0])?;
+    let n = expect_int(&args[0])?;
+    if n == 0 {
+        return Ok(Value::Nil);
+    }
 
     let buf = eval
         .buffers
@@ -1183,96 +1186,142 @@ pub(crate) fn builtin_transpose_words(
         ));
     }
 
-    let table = buf.syntax_table.clone();
-    let pt = buf.point();
-    let pmin = buf.point_min();
-    let pmax = buf.point_max();
+    let steps = n.unsigned_abs() as usize;
+    let backward = n < 0;
+    let two_word_error =
+        || signal("error", vec![Value::string("Don\u{2019}t have two things to transpose")]);
 
-    let is_word_char = |ch: char| matches!(table.char_syntax(ch), SyntaxClass::Word);
+    for _ in 0..steps {
+        let (w1s, w1e, w2s, w2e) = {
+            let buf = eval
+                .buffers
+                .current_buffer()
+                .ok_or_else(|| signal("error", vec![Value::string("No current buffer")]))?;
 
-    let word_start_before_or_at = |start_pos: usize| -> Option<usize> {
-        let mut pos = start_pos;
-        while pos > pmin {
-            let ch = buf.char_before(pos)?;
-            if !is_word_char(ch) {
-                break;
-            }
-            pos -= ch.len_utf8();
-        }
-        if pos < pmax {
-            let ch = buf.char_after(pos)?;
-            if is_word_char(ch) {
-                return Some(pos);
-            }
-        }
-        None
-    };
+            let table = buf.syntax_table.clone();
+            let pt = buf.point();
+            let pmin = buf.point_min();
+            let pmax = buf.point_max();
+            let is_word_char = |ch: char| matches!(table.char_syntax(ch), SyntaxClass::Word);
 
-    let word_start_at_or_after = |start_pos: usize| -> Option<usize> {
-        let mut pos = start_pos;
-        while pos < pmax {
-            let ch = buf.char_after(pos)?;
-            if is_word_char(ch) {
-                return Some(pos);
-            }
-            pos += ch.len_utf8();
-        }
-        None
-    };
-
-    let word_end_from_start = |start_pos: usize| -> usize {
-        let mut pos = start_pos;
-        while pos < pmax {
-            let Some(ch) = buf.char_after(pos) else {
-                break;
+            let retreat_to_word_start = |start_pos: usize| -> Option<usize> {
+                let mut pos = start_pos;
+                while pos > pmin {
+                    let ch = buf.char_before(pos)?;
+                    if !is_word_char(ch) {
+                        break;
+                    }
+                    pos -= ch.len_utf8();
+                }
+                if pos < pmax {
+                    let ch = buf.char_after(pos)?;
+                    if is_word_char(ch) {
+                        return Some(pos);
+                    }
+                }
+                None
             };
-            if !is_word_char(ch) {
-                break;
+
+            let word_start_at_or_after = |start_pos: usize| -> Option<usize> {
+                let mut pos = start_pos;
+                while pos < pmax {
+                    let ch = buf.char_after(pos)?;
+                    if is_word_char(ch) {
+                        return Some(pos);
+                    }
+                    pos += ch.len_utf8();
+                }
+                None
+            };
+
+            let word_start_before = |start_pos: usize| -> Option<usize> {
+                let mut pos = start_pos;
+                while pos > pmin {
+                    let ch = buf.char_before(pos)?;
+                    pos -= ch.len_utf8();
+                    if is_word_char(ch) {
+                        return retreat_to_word_start(pos);
+                    }
+                }
+                None
+            };
+
+            let word_end_from_start = |start_pos: usize| -> usize {
+                let mut pos = start_pos;
+                while pos < pmax {
+                    let Some(ch) = buf.char_after(pos) else {
+                        break;
+                    };
+                    if !is_word_char(ch) {
+                        break;
+                    }
+                    pos += ch.len_utf8();
+                }
+                pos
+            };
+
+            if backward {
+                let pivot = if pt > pmin && buf.char_before(pt).is_some_and(|ch| is_word_char(ch)) {
+                    retreat_to_word_start(pt)
+                } else if pt < pmax && buf.char_after(pt).is_some_and(|ch| is_word_char(ch)) {
+                    retreat_to_word_start(pt)
+                } else {
+                    word_start_before(pt)
+                }
+                .ok_or_else(&two_word_error)?;
+                let prev = word_start_before(pivot).ok_or_else(&two_word_error)?;
+                let prev_end = word_end_from_start(prev);
+                let pivot_end = word_end_from_start(pivot);
+                (prev, prev_end, pivot, pivot_end)
+            } else {
+                let pivot = if pt > pmin && buf.char_before(pt).is_some_and(|ch| is_word_char(ch)) {
+                    retreat_to_word_start(pt)
+                } else if pt < pmax && buf.char_after(pt).is_some_and(|ch| is_word_char(ch)) {
+                    retreat_to_word_start(pt)
+                } else {
+                    word_start_at_or_after(pt)
+                }
+                .ok_or_else(&two_word_error)?;
+
+                let pivot_end = word_end_from_start(pivot);
+                if let Some(prev) = word_start_before(pivot) {
+                    let prev_end = word_end_from_start(prev);
+                    (prev, prev_end, pivot, pivot_end)
+                } else {
+                    let next = word_start_at_or_after(pivot_end).ok_or_else(&two_word_error)?;
+                    let next_end = word_end_from_start(next);
+                    (pivot, pivot_end, next, next_end)
+                }
             }
-            pos += ch.len_utf8();
-        }
-        pos
-    };
+        };
 
-    let w1s = if pt > pmin
-        && buf
-            .char_before(pt)
-            .is_some_and(|ch| is_word_char(ch))
-    {
-        word_start_before_or_at(pt)
-    } else {
-        word_start_at_or_after(pt)
+        let (w1_text, between, w2_text) = {
+            let buf_r = eval
+                .buffers
+                .current_buffer()
+                .ok_or_else(|| signal("error", vec![Value::string("No current buffer")]))?;
+            (
+                buf_r.buffer_substring(w1s, w1e),
+                buf_r.buffer_substring(w1e, w2s),
+                buf_r.buffer_substring(w2s, w2e),
+            )
+        };
+
+        let buf_m = eval
+            .buffers
+            .current_buffer_mut()
+            .ok_or_else(|| signal("error", vec![Value::string("No current buffer")]))?;
+
+        // Replace the whole range [w1s, w2e) with w2 + between + w1.
+        buf_m.delete_region(w1s, w2e);
+        buf_m.goto_char(w1s);
+        buf_m.insert(&w2_text);
+        buf_m.insert(&between);
+        buf_m.insert(&w1_text);
+
+        // Keep point at end of the first transposed word.
+        buf_m.goto_char(w1s + w2_text.len() + between.len());
     }
-    .ok_or_else(|| signal("error", vec![Value::string("Don't have two things to transpose")]))?;
-    let w1e = word_end_from_start(w1s);
-    let w2s = word_start_at_or_after(w1e)
-        .ok_or_else(|| signal("error", vec![Value::string("Don't have two things to transpose")]))?;
-    let w2e = word_end_from_start(w2s);
-
-    let buf_r = eval
-        .buffers
-        .current_buffer()
-        .ok_or_else(|| signal("error", vec![Value::string("No current buffer")]))?;
-
-    let w1_text = buf_r.buffer_substring(w1s, w1e);
-    let between = buf_r.buffer_substring(w1e, w2s);
-    let w2_text = buf_r.buffer_substring(w2s, w2e);
-
-    let buf_m = eval
-        .buffers
-        .current_buffer_mut()
-        .ok_or_else(|| signal("error", vec![Value::string("No current buffer")]))?;
-
-    // Replace the whole range [w1s, w2e) with w2 + between + w1.
-    buf_m.delete_region(w1s, w2e);
-    buf_m.goto_char(w1s);
-    buf_m.insert(&w2_text);
-    buf_m.insert(&between);
-    buf_m.insert(&w1_text);
-
-    // Keep point at the end of the transposed pair.
-    let new_pt = w1s + w2_text.len() + between.len() + w1_text.len();
-    buf_m.goto_char(new_pt);
 
     Ok(Value::Nil)
 }
