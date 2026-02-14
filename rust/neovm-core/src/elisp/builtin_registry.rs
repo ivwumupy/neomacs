@@ -403,6 +403,7 @@ const DISPATCH_BUILTIN_NAMES: &[&str] = &[
     "hash-table-weakness",
     "help-function-arglist",
     "identity",
+    "ignore",
     "image-flush",
     "image-mask-p",
     "image-size",

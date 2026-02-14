@@ -1820,6 +1820,10 @@ pub(crate) fn builtin_identity(args: Vec<Value>) -> EvalResult {
     Ok(args[0].clone())
 }
 
+pub(crate) fn builtin_ignore(_args: Vec<Value>) -> EvalResult {
+    Ok(Value::Nil)
+}
+
 pub(crate) fn builtin_message(args: Vec<Value>) -> EvalResult {
     expect_min_args("message", &args, 1)?;
     let msg = if args.len() == 1 {
@@ -4607,6 +4611,8 @@ enum PureBuiltinId {
     Null,
     #[strum(serialize = "not")]
     Not,
+    #[strum(serialize = "ignore")]
+    Ignore,
     #[strum(serialize = "atom")]
     Atom,
     #[strum(serialize = "consp")]
@@ -4836,6 +4842,7 @@ fn dispatch_builtin_id_pure(id: PureBuiltinId, args: Vec<Value>) -> EvalResult {
         PureBuiltinId::Ash => builtin_ash(args),
         PureBuiltinId::Null => builtin_null(args),
         PureBuiltinId::Not => builtin_not(args),
+        PureBuiltinId::Ignore => builtin_ignore(args),
         PureBuiltinId::Atom => builtin_atom(args),
         PureBuiltinId::Consp => builtin_consp(args),
         PureBuiltinId::Listp => builtin_listp(args),
@@ -7401,6 +7408,22 @@ mod tests {
             .expect("builtin last should resolve")
             .expect("builtin last should evaluate");
         assert_eq!(last, Value::list(vec![Value::Int(4)]));
+    }
+
+    #[test]
+    fn pure_dispatch_typed_ignore_accepts_any_arity() {
+        let zero = dispatch_builtin_pure("ignore", vec![])
+            .expect("builtin ignore should resolve")
+            .expect("builtin ignore should evaluate");
+        assert!(zero.is_nil());
+
+        let many = dispatch_builtin_pure(
+            "ignore",
+            vec![Value::Int(1), Value::string("x"), Value::symbol("foo")],
+        )
+        .expect("builtin ignore should resolve")
+        .expect("builtin ignore should evaluate");
+        assert!(many.is_nil());
     }
 
     #[test]
