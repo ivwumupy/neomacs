@@ -448,6 +448,7 @@ const DISPATCH_BUILTIN_NAMES: &[&str] = &[
     "kbd-macro-query",
     "key-binding",
     "keyboard-coding-system",
+    "keyboard-quit",
     "keymap-parent",
     "keymapp",
     "kill-append",

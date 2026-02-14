@@ -5737,6 +5737,7 @@ pub(crate) fn dispatch_builtin(
         "self-insert-command" => {
             return Some(super::interactive::builtin_self_insert_command(eval, args))
         }
+        "keyboard-quit" => return Some(super::interactive::builtin_keyboard_quit(eval, args)),
         "execute-extended-command" => {
             return Some(super::interactive::builtin_execute_extended_command(
                 eval, args,

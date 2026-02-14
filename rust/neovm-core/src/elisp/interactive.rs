@@ -461,6 +461,12 @@ pub(crate) fn builtin_self_insert_command(_eval: &mut Evaluator, args: Vec<Value
     Ok(Value::Nil)
 }
 
+/// `(keyboard-quit)` -- cancel the current command sequence.
+pub(crate) fn builtin_keyboard_quit(_eval: &mut Evaluator, args: Vec<Value>) -> EvalResult {
+    expect_args("keyboard-quit", &args, 0)?;
+    Err(signal("quit", vec![]))
+}
+
 /// `(execute-extended-command PREFIXARG &optional COMMAND-NAME TYPED)`
 /// Read a command name and execute it. This is the M-x equivalent.
 /// In our stub implementation, COMMAND-NAME must be provided.
@@ -2230,6 +2236,20 @@ mod tests {
             Flow::Signal(sig) => {
                 assert_eq!(sig.symbol, "wrong-type-argument");
                 assert_eq!(sig.data, vec![Value::symbol("fixnump"), Value::symbol("x")]);
+            }
+            other => panic!("unexpected flow: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn keyboard_quit_signals_quit() {
+        let mut ev = Evaluator::new();
+        let result = builtin_command_execute(&mut ev, vec![Value::symbol("keyboard-quit")])
+            .expect_err("keyboard-quit should signal quit");
+        match result {
+            Flow::Signal(sig) => {
+                assert_eq!(sig.symbol, "quit");
+                assert!(sig.data.is_empty());
             }
             other => panic!("unexpected flow: {other:?}"),
         }
