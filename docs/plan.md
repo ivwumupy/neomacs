@@ -4,6 +4,8 @@ Last updated: 2026-02-14
 
 ## Done
 
+- Full suite baseline verified after latest cleanup:
+  - `cd test/neovm/vm-compat && make check-all-neovm` (pass)
 - Added a builtin-registry-wide `fboundp` parity checker against GNU Emacs `-Q`:
   - `test/neovm/vm-compat/check-builtin-registry-fboundp.sh`
   - allowlist: `test/neovm/vm-compat/cases/builtin-registry-fboundp-allowlist.txt`
@@ -31,6 +33,7 @@ Last updated: 2026-02-14
   - keep builtin surface and registry in lock-step
   - run oracle/parity checks after each behavior-affecting change
   - remove dead helper code that is not part of exposed compatibility surface
+- Reduce vm-compat operator friction for large case sets (small Makefile UX improvements).
 
 ## Next
 
