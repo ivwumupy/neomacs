@@ -292,6 +292,15 @@ fn subr_arity_value(name: &str) -> Value {
         "car" | "cdr" => arity_cons(1, Some(1)),
         "message" => arity_cons(1, None),
         "if" => Value::cons(Value::Int(2), Value::symbol("unevalled")),
+        // Threading primitives
+        "thread-join" | "thread-name" | "thread-live-p" | "mutexp" | "mutex-name"
+        | "mutex-lock" | "mutex-unlock" | "condition-variable-p" | "condition-wait" => {
+            arity_cons(1, Some(1))
+        }
+        "thread-yield" | "current-thread" | "all-threads" => arity_cons(0, Some(0)),
+        "thread-signal" => arity_cons(3, Some(3)),
+        "thread-last-error" | "make-mutex" => arity_cons(0, Some(1)),
+        "make-thread" | "make-condition-variable" | "condition-notify" => arity_cons(1, Some(2)),
         _ => arity_cons(0, None),
     }
 }
@@ -604,17 +613,23 @@ mod tests {
 
     // -- subr-arity --
 
-    #[test]
-    fn subr_arity_returns_cons() {
-        let result = builtin_subr_arity(vec![Value::Subr("+".into())]).unwrap();
-        // Should be (0 . many)
+    fn assert_subr_arity(name: &str, min: i64, max: Option<i64>) {
+        let result = builtin_subr_arity(vec![Value::Subr(name.to_string())]).unwrap();
         if let Value::Cons(cell) = &result {
             let pair = cell.lock().unwrap();
-            assert_eq!(pair.car.as_int(), Some(0));
-            assert_eq!(pair.cdr.as_symbol_name(), Some("many"));
+            assert_eq!(pair.car.as_int(), Some(min));
+            match max {
+                Some(n) => assert_eq!(pair.cdr.as_int(), Some(n)),
+                None => assert_eq!(pair.cdr.as_symbol_name(), Some("many")),
+            }
         } else {
             panic!("expected cons cell");
         }
+    }
+
+    #[test]
+    fn subr_arity_returns_cons() {
+        assert_subr_arity("+", 0, None);
     }
 
     #[test]
@@ -625,14 +640,7 @@ mod tests {
 
     #[test]
     fn subr_arity_message_is_one_or_more() {
-        let result = builtin_subr_arity(vec![Value::Subr("message".into())]).unwrap();
-        if let Value::Cons(cell) = &result {
-            let pair = cell.lock().unwrap();
-            assert_eq!(pair.car.as_int(), Some(1));
-            assert_eq!(pair.cdr.as_symbol_name(), Some("many"));
-        } else {
-            panic!("expected cons cell");
-        }
+        assert_subr_arity("message", 1, None);
     }
 
     #[test]
@@ -645,6 +653,36 @@ mod tests {
         } else {
             panic!("expected cons cell");
         }
+    }
+
+    #[test]
+    fn subr_arity_thread_join_is_one() {
+        assert_subr_arity("thread-join", 1, Some(1));
+    }
+
+    #[test]
+    fn subr_arity_thread_signal_is_three() {
+        assert_subr_arity("thread-signal", 3, Some(3));
+    }
+
+    #[test]
+    fn subr_arity_thread_last_error_optional_cleanup() {
+        assert_subr_arity("thread-last-error", 0, Some(1));
+    }
+
+    #[test]
+    fn subr_arity_make_thread_optional_name() {
+        assert_subr_arity("make-thread", 1, Some(2));
+    }
+
+    #[test]
+    fn subr_arity_current_thread_is_zero() {
+        assert_subr_arity("current-thread", 0, Some(0));
+    }
+
+    #[test]
+    fn subr_arity_condition_notify_optional_all() {
+        assert_subr_arity("condition-notify", 1, Some(2));
     }
 
     #[test]
