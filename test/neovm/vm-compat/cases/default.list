@@ -101,6 +101,7 @@ cases/charset-priority-semantics
 cases/charset-id-internal-semantics
 cases/find-charset-string-semantics
 cases/unibyte-string-semantics
+cases/string-to-unibyte-semantics
 cases/locale-info-semantics
 cases/secure-hash-semantics
 cases/secure-hash-binary-semantics
