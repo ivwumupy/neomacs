@@ -278,6 +278,15 @@ fn decode_opcode_subset(byte_stream: &str, const_len: usize) -> Option<Vec<Op>> 
                 pending.push(Pending::GotoIfNil(target));
                 pc += 3;
             }
+            // constant2 (wide 16-bit constant index)
+            0o201 => {
+                let idx = read_u16_operand(&bytes, pc + 1)? as usize;
+                if idx >= const_len {
+                    return None;
+                }
+                pending.push(Pending::Op(Op::Constant(idx as u16)));
+                pc += 3;
+            }
             // goto-if-not-nil (16-bit bytecode stream offset)
             0o204 => {
                 let target = read_u16_operand(&bytes, pc + 1)? as usize;
@@ -729,6 +738,25 @@ mod tests {
             panic!("expected Value::ByteCode");
         };
         assert_eq!(bc.ops, vec![Op::Constant(0), Op::Return]);
+    }
+
+    #[test]
+    fn decodes_constant2_opcode_subset() {
+        let mut consts = Vec::new();
+        for i in 0..=64 {
+            consts.push(Value::Int(i));
+        }
+        let literal = Value::vector(vec![
+            Value::Nil,
+            Value::string("\u{81}@\u{0}\u{87}"),
+            Value::vector(consts),
+            Value::Int(1),
+        ]);
+        let coerced = maybe_coerce_compiled_literal_function(literal);
+        let Value::ByteCode(bc) = coerced else {
+            panic!("expected Value::ByteCode");
+        };
+        assert_eq!(bc.ops, vec![Op::Constant(64), Op::Return]);
     }
 
     #[test]
