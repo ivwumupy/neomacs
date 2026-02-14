@@ -421,6 +421,10 @@ fn default_command_execute_args(eval: &Evaluator, name: &str) -> Result<Vec<Valu
         | "transpose-lines" => Ok(vec![Value::Int(1)]),
         "kill-region" => interactive_region_args(eval, "user-error"),
         "kill-ring-save" => interactive_region_args(eval, "error"),
+        "capitalize-region" => interactive_region_args(eval, "error"),
+        "upcase-region" | "downcase-region" => {
+            Err(signal("args-out-of-range", vec![Value::string(""), Value::Int(0)]))
+        }
         _ => Ok(Vec::new()),
     }
 }
@@ -2430,6 +2434,71 @@ mod tests {
                  (buffer-string))"#,
         );
         assert_eq!(results[0], "OK \"Abc\"");
+    }
+
+    #[test]
+    fn command_execute_builtin_upcase_region_signals_args_out_of_range() {
+        let mut ev = Evaluator::new();
+        let results = eval_all_with(
+            &mut ev,
+            r#"(with-temp-buffer
+                 (insert "abc")
+                 (goto-char 1)
+                 (set-mark 3)
+                 (condition-case err
+                     (command-execute 'upcase-region)
+                   (error err)))"#,
+        );
+        assert_eq!(results[0], "OK (args-out-of-range \"\" 0)");
+    }
+
+    #[test]
+    fn command_execute_builtin_downcase_region_signals_args_out_of_range() {
+        let mut ev = Evaluator::new();
+        let results = eval_all_with(
+            &mut ev,
+            r#"(with-temp-buffer
+                 (insert "ABC")
+                 (goto-char 1)
+                 (set-mark 3)
+                 (condition-case err
+                     (command-execute 'downcase-region)
+                   (error err)))"#,
+        );
+        assert_eq!(results[0], "OK (args-out-of-range \"\" 0)");
+    }
+
+    #[test]
+    fn command_execute_builtin_capitalize_region_uses_marked_region() {
+        let mut ev = Evaluator::new();
+        let results = eval_all_with(
+            &mut ev,
+            r#"(with-temp-buffer
+                 (insert "abc")
+                 (goto-char 1)
+                 (set-mark 3)
+                 (command-execute 'capitalize-region)
+                 (buffer-string))"#,
+        );
+        assert_eq!(results[0], "OK \"Abc\"");
+    }
+
+    #[test]
+    fn command_execute_builtin_capitalize_region_without_mark_signals_error() {
+        let mut ev = Evaluator::new();
+        let results = eval_all_with(
+            &mut ev,
+            r#"(with-temp-buffer
+                 (insert "abc")
+                 (goto-char 1)
+                 (condition-case err
+                     (command-execute 'capitalize-region)
+                   (error err)))"#,
+        );
+        assert_eq!(
+            results[0],
+            "OK (error \"The mark is not set now, so there is no region\")"
+        );
     }
 
     #[test]
