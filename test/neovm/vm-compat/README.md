@@ -249,3 +249,8 @@ Post-freeze updates:
   - `cases/ignore-semantics`
 - Full NeoVM gate is green with these additions:
   - `make check-all-neovm`
+- Added command dispatch and command identity compatibility cases:
+  - `cases/commandp-builtin-command-matrix`
+  - `cases/command-dispatch-line-motion-semantics`
+  - `cases/keyboard-quit-command-semantics`
+  - `cases/fboundp-builtin-command-matrix`
