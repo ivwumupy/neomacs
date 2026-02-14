@@ -517,26 +517,42 @@ pub(crate) fn builtin_error_message_string(
         return Ok(Value::string(base_message));
     }
 
-    // Emacs treats a leading string datum as an override message.
-    // The remaining payload is appended with class-dependent separators.
-    if let Some(first_str) = data.first().and_then(|v| v.as_str().map(|s| s.to_string())) {
-        let rest = &data[1..];
-        if rest.is_empty() {
-            return Ok(Value::string(first_str));
-        }
-        let sep = if sym_name == "user-error" { ", " } else { ": " };
-        let quote_strings = sym_name == "error";
-        let rest_strs: Vec<String> = rest
-            .iter()
-            .map(|v| format_error_arg(v, quote_strings))
-            .collect();
-        return Ok(Value::string(format!("{first_str}{sep}{}", rest_strs.join(", "))));
-    }
-
-    // `user-error` prints payload data directly without the base prefix.
+    // `user-error` always renders payload data directly.
     if sym_name == "user-error" {
+        if let Some(first_str) = data.first().and_then(|v| v.as_str().map(|s| s.to_string())) {
+            let rest = &data[1..];
+            if rest.is_empty() {
+                return Ok(Value::string(first_str));
+            }
+            let rest_strs: Vec<String> = rest.iter().map(|v| format_error_arg(v, false)).collect();
+            return Ok(Value::string(format!("{first_str}, {}", rest_strs.join(", "))));
+        }
         let data_strs: Vec<String> = data.iter().map(|v| format_error_arg(v, false)).collect();
         return Ok(Value::string(data_strs.join(", ")));
+    }
+
+    // `error` and `file-error` require a leading string for user-facing detail;
+    // otherwise Emacs reports a peculiar error.
+    if sym_name == "error" || sym_name == "file-error" {
+        if let Some(first_str) = data.first().and_then(|v| v.as_str().map(|s| s.to_string())) {
+            let rest = &data[1..];
+            if rest.is_empty() {
+                return Ok(Value::string(first_str));
+            }
+            let quote_strings = sym_name == "error";
+            let rest_strs: Vec<String> = rest
+                .iter()
+                .map(|v| format_error_arg(v, quote_strings))
+                .collect();
+            return Ok(Value::string(format!("{first_str}: {}", rest_strs.join(", "))));
+        }
+        if let Some(detail) = data.get(1) {
+            return Ok(Value::string(format!(
+                "peculiar error: {}",
+                format_error_arg(detail, true)
+            )));
+        }
+        return Ok(Value::string("peculiar error"));
     }
 
     let data_strs: Vec<String> = data
@@ -1290,6 +1306,47 @@ mod tests {
         assert!(result.is_ok());
         let msg = result.unwrap();
         assert_eq!(msg.as_str(), Some("No such file: foo"));
+    }
+
+    #[test]
+    fn builtin_error_message_string_peculiar_error_paths() {
+        let mut evaluator = super::super::eval::Evaluator::new();
+        init_standard_errors(&mut evaluator.obarray);
+
+        let error_single = Value::list(vec![Value::symbol("error"), Value::Int(1)]);
+        let error_single_result = builtin_error_message_string(&evaluator, vec![error_single]);
+        assert!(error_single_result.is_ok());
+        assert_eq!(error_single_result.unwrap().as_str(), Some("peculiar error"));
+
+        let error_double = Value::list(vec![Value::symbol("error"), Value::Int(1), Value::Int(2)]);
+        let error_double_result = builtin_error_message_string(&evaluator, vec![error_double]);
+        assert!(error_double_result.is_ok());
+        assert_eq!(error_double_result.unwrap().as_str(), Some("peculiar error: 2"));
+
+        let file_single = Value::list(vec![Value::symbol("file-error"), Value::Int(1)]);
+        let file_single_result = builtin_error_message_string(&evaluator, vec![file_single]);
+        assert!(file_single_result.is_ok());
+        assert_eq!(file_single_result.unwrap().as_str(), Some("peculiar error"));
+
+        let file_double = Value::list(vec![Value::symbol("file-error"), Value::Int(1), Value::Int(2)]);
+        let file_double_result = builtin_error_message_string(&evaluator, vec![file_double]);
+        assert!(file_double_result.is_ok());
+        assert_eq!(file_double_result.unwrap().as_str(), Some("peculiar error: 2"));
+    }
+
+    #[test]
+    fn builtin_error_message_string_args_out_of_range_uses_base_message() {
+        let mut evaluator = super::super::eval::Evaluator::new();
+        init_standard_errors(&mut evaluator.obarray);
+
+        let err_data = Value::list(vec![
+            Value::symbol("args-out-of-range"),
+            Value::string("abc"),
+            Value::Int(9),
+        ]);
+        let result = builtin_error_message_string(&evaluator, vec![err_data]);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().as_str(), Some("Args out of range: \"abc\", 9"));
     }
 
     #[test]
