@@ -1,0 +1,4 @@
+1	(string-join '("a" "b"))	OK "ab"
+2	(string-join '("a" "b") ",")	OK "a,b"
+3	(condition-case err (string-join '("a" 1)) (error (car err)))	OK wrong-type-argument
+4	(condition-case err (string-join '("a") "," nil) (error (car err)))	OK wrong-number-of-arguments
