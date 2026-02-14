@@ -1239,12 +1239,40 @@ pub(crate) fn builtin_transpose_lines(
         pmax
     };
 
-    // Find previous line boundaries.
+    // Emacs special-cases BOB: transpose current line with following line,
+    // and with an empty line when there is no following line.
     if cur_line_start == pmin {
-        return Err(signal(
-            "error",
-            vec![Value::string("No previous line to transpose")],
-        ));
+        let next_line_start = cur_line_end;
+        let next_line_end = if next_line_start < pmax {
+            let text_from_next = buf.buffer_substring(next_line_start, pmax);
+            if let Some(nl_pos) = text_from_next.find('\n') {
+                next_line_start + nl_pos + 1
+            } else {
+                pmax
+            }
+        } else {
+            cur_line_end
+        };
+
+        let cur_line_text = buf.buffer_substring(cur_line_start, cur_line_end);
+        let next_line_text = if next_line_start < pmax {
+            buf.buffer_substring(next_line_start, next_line_end)
+        } else {
+            String::new()
+        };
+
+        let cur_no_nl = cur_line_text.strip_suffix('\n').unwrap_or(&cur_line_text);
+        let next_no_nl = next_line_text.strip_suffix('\n').unwrap_or(&next_line_text);
+        let replacement = format!("{next_no_nl}\n{cur_no_nl}\n");
+
+        let buf = eval
+            .buffers
+            .current_buffer_mut()
+            .ok_or_else(|| signal("error", vec![Value::string("No current buffer")]))?;
+        buf.delete_region(cur_line_start, next_line_end);
+        buf.goto_char(cur_line_start);
+        buf.insert(&replacement);
+        return Ok(Value::Nil);
     }
 
     let text_before_cur = buf.buffer_substring(pmin, cur_line_start);
@@ -2113,6 +2141,17 @@ mod tests {
                (buffer-string)"#,
         );
         assert_eq!(results[3], r#"OK "line2\nline1\nline3""#);
+    }
+
+    #[test]
+    fn transpose_lines_at_buffer_start() {
+        let results = eval_all(
+            r#"(insert "line1\nline2")
+               (goto-char 1)
+               (transpose-lines 1)
+               (buffer-string)"#,
+        );
+        assert_eq!(results[3], r#"OK "line2\nline1\n""#);
     }
 
     // -- indent-line-to tests --
