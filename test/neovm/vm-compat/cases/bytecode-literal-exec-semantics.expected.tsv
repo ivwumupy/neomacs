@@ -1,0 +1,5 @@
+1	(funcall (car (read-from-string "#[nil \"\\300\\207\" [0] 1]")))	OK 0
+2	(funcall (car (read-from-string "#[nil \"\\300\\207\" [42] 1]")))	OK 42
+3	(funcall (car (read-from-string "#[(x) \"\\10\\207\" [x] 1]")) 99)	OK 99
+4	(funcall (car (read-from-string "#[(x) \"\\10\\207\" [x] 1]")) 'sym)	OK sym
+5	(apply (car (read-from-string "#[(x) \"\\10\\207\" [x] 1]")) '(123))	OK 123

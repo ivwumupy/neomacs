@@ -76,6 +76,7 @@ The compatibility corpus now explicitly guards core callable introspection behav
 Additional oracle-checked primitive guardrails added in the same compatibility-first style:
 
 - Reader stream edges: `read-from-string` index semantics and `read` stream/arity error boundaries
+- Bytecode literal edges: `#[...]` reader/type behavior and executable subset parity for simple `constant`/`varref`/`return` opcode streams
 - Obarray argument boundaries: `intern`, `intern-soft`, `unintern`, `mapatoms` optional OBARRAY validation
 - String primitive edges: `split-string`, `string-trim*`, `string-prefix-p`/`string-suffix-p`, `string-join`, `string-to-number`, and `substring` bounds/arity semantics
 
