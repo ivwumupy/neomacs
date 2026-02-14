@@ -252,6 +252,7 @@ Post-freeze updates:
 - Added command dispatch and command identity compatibility cases:
   - `cases/commandp-builtin-command-matrix`
   - `cases/command-dispatch-line-motion-semantics`
+  - `cases/command-prefix-state-return-shape`
   - `cases/keyboard-quit-command-semantics`
   - `cases/fboundp-builtin-command-matrix`
   - matrices now include `ignore`/`eval-expression`/`self-insert-command`/`newline`/`execute-extended-command`, and line-motion dispatch includes `other-window` no-frame fallback.
