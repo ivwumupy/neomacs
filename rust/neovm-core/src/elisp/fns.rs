@@ -908,28 +908,14 @@ pub(crate) fn builtin_identity(args: Vec<Value>) -> EvalResult {
     Ok(args[0].clone())
 }
 
-/// (string-to-multibyte STRING) -- return STRING (all strings multibyte).
+/// (string-to-multibyte STRING) -- convert unibyte storage bytes to multibyte chars.
 pub(crate) fn builtin_string_to_multibyte(args: Vec<Value>) -> EvalResult {
-    expect_args("string-to-multibyte", &args, 1)?;
-    match &args[0] {
-        Value::Str(_) => Ok(args[0].clone()),
-        other => Err(signal(
-            "wrong-type-argument",
-            vec![Value::symbol("stringp"), other.clone()],
-        )),
-    }
+    super::misc::builtin_string_to_multibyte(args)
 }
 
-/// (string-to-unibyte STRING) -- return STRING.
+/// (string-to-unibyte STRING) -- convert to unibyte storage.
 pub(crate) fn builtin_string_to_unibyte(args: Vec<Value>) -> EvalResult {
-    expect_args("string-to-unibyte", &args, 1)?;
-    match &args[0] {
-        Value::Str(_) => Ok(args[0].clone()),
-        other => Err(signal(
-            "wrong-type-argument",
-            vec![Value::symbol("stringp"), other.clone()],
-        )),
-    }
+    super::misc::builtin_string_to_unibyte(args)
 }
 
 /// (string-make-multibyte STRING) -- convert unibyte storage bytes to multibyte chars.
@@ -1739,7 +1725,7 @@ mod tests {
     // ---- string-to-multibyte / unibyte ----
 
     #[test]
-    fn string_to_multibyte_passthrough() {
+    fn string_to_multibyte_passthrough_ascii() {
         let r = builtin_string_to_multibyte(vec![Value::string("abc")]).unwrap();
         assert_eq!(r.as_str(), Some("abc"));
     }
@@ -1751,9 +1737,24 @@ mod tests {
     }
 
     #[test]
-    fn string_to_unibyte_passthrough() {
+    fn string_to_unibyte_ascii_passthrough() {
         let r = builtin_string_to_unibyte(vec![Value::string("abc")]).unwrap();
-        assert_eq!(r.as_str(), Some("abc"));
+        assert_eq!(string_escape::decode_storage_char_codes(r.as_str().unwrap()), vec![97, 98, 99]);
+    }
+
+    #[test]
+    fn string_to_multibyte_promotes_unibyte_byte() {
+        let r = builtin_string_to_multibyte(vec![Value::string(
+            bytes_to_unibyte_storage_string(&[0xFF]),
+        )])
+        .unwrap();
+        assert_eq!(string_escape::decode_storage_char_codes(r.as_str().unwrap()), vec![0x3FFFFF]);
+    }
+
+    #[test]
+    fn string_to_unibyte_rejects_unicode_scalar() {
+        let r = builtin_string_to_unibyte(vec![Value::string("é")]);
+        assert!(r.is_err());
     }
 
     #[test]
