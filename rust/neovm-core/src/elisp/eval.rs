@@ -1660,7 +1660,9 @@ impl Evaluator {
             Value::Symbol(name) => {
                 self.apply_named_callable(&name, args, Value::Subr(name.clone()), true)
             }
-            Value::True => Err(signal("void-function", vec![Value::symbol("t")])),
+            Value::True => {
+                self.apply_named_callable("t", args, Value::Subr("t".to_string()), true)
+            }
             Value::Keyword(name) => Err(signal("void-function", vec![Value::symbol(name)])),
             Value::Nil => Err(signal("void-function", vec![Value::symbol("nil")])),
             _ => Err(signal("invalid-function", vec![function])),
@@ -2526,6 +2528,33 @@ mod tests {
         assert_eq!(results[3], "OK (invalid-function vm-fsetint)");
         assert_eq!(results[4], "OK (invalid-function vm-fsetint)");
         assert_eq!(results[5], "OK (invalid-function vm-fsetint)");
+    }
+
+    #[test]
+    fn fset_t_function_cell_controls_funcall_and_apply_behavior() {
+        assert_eq!(
+            eval_one(
+                "(let ((orig (symbol-function 't)))
+                   (unwind-protect
+                       (progn
+                         (fset 't 'car)
+                         (funcall t '(1 2)))
+                     (fset 't orig)))"
+            ),
+            "OK 1"
+        );
+
+        assert_eq!(
+            eval_one(
+                "(let ((orig (symbol-function 't)))
+                   (unwind-protect
+                       (progn
+                         (fset 't 1)
+                         (condition-case err (funcall t) (error err)))
+                     (fset 't orig)))"
+            ),
+            "OK (invalid-function t)"
+        );
     }
 
     #[test]
