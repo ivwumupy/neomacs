@@ -194,13 +194,13 @@ pub fn init_standard_errors(obarray: &mut Obarray) {
     register_simple(
         obarray,
         "void-function",
-        "Symbol's function definition is void",
+        "Symbol\u{2019}s function definition is void",
         &["error"],
     );
     register_simple(
         obarray,
         "void-variable",
-        "Symbol's value as variable is void",
+        "Symbol\u{2019}s value as variable is void",
         &["error"],
     );
     register_simple(
@@ -1212,7 +1212,7 @@ mod tests {
         let result = builtin_error_message_string(&evaluator, vec![err_data]);
         assert!(result.is_ok());
         let msg = result.unwrap();
-        assert_eq!(msg.as_str(), Some("Symbol's value as variable is void: x"));
+        assert_eq!(msg.as_str(), Some("Symbol\u{2019}s value as variable is void: x"));
     }
 
     #[test]
@@ -1226,6 +1226,21 @@ mod tests {
         assert!(result.is_ok());
         let msg = result.unwrap();
         assert_eq!(msg.as_str(), Some("Arithmetic error"));
+    }
+
+    #[test]
+    fn builtin_error_message_string_void_function_typography() {
+        let mut evaluator = super::super::eval::Evaluator::new();
+        init_standard_errors(&mut evaluator.obarray);
+
+        let err_data = Value::list(vec![Value::symbol("void-function"), Value::symbol("x")]);
+        let result = builtin_error_message_string(&evaluator, vec![err_data]);
+        assert!(result.is_ok());
+        let msg = result.unwrap();
+        assert_eq!(
+            msg.as_str(),
+            Some("Symbol\u{2019}s function definition is void: x")
+        );
     }
 
     #[test]
