@@ -538,6 +538,14 @@ pub(crate) fn builtin_error_message_string(
     }
 
     let is_file_error_family = signal_matches_hierarchical(&eval.obarray, &sym_name, "file-error");
+    let is_file_locked = sym_name == "file-locked";
+
+    // `file-locked` is an oddball in Emacs: it always reports "peculiar error"
+    // with all payload elements, even if the first datum is a string.
+    if is_file_locked {
+        let data_strs: Vec<String> = data.iter().map(|v| format_error_arg(v, true)).collect();
+        return Ok(Value::string(format!("peculiar error: {}", data_strs.join(", "))));
+    }
 
     // `error` and file-error-family conditions use a leading string for
     // user-facing detail.
@@ -1413,6 +1421,20 @@ mod tests {
         assert_eq!(
             file_missing_triple_result.unwrap().as_str(),
             Some("peculiar error: 2, 3")
+        );
+
+        let file_locked_strings = Value::list(vec![
+            Value::symbol("file-locked"),
+            Value::string("Locking file"),
+            Value::string("Permission denied"),
+            Value::string("/tmp/probe"),
+        ]);
+        let file_locked_strings_result =
+            builtin_error_message_string(&evaluator, vec![file_locked_strings]);
+        assert!(file_locked_strings_result.is_ok());
+        assert_eq!(
+            file_locked_strings_result.unwrap().as_str(),
+            Some("peculiar error: \"Locking file\", \"Permission denied\", \"/tmp/probe\"")
         );
 
     }
