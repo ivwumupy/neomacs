@@ -946,7 +946,8 @@ pub(crate) fn builtin_nreverse(args: Vec<Value>) -> EvalResult {
 pub(crate) fn builtin_member(args: Vec<Value>) -> EvalResult {
     expect_args("member", &args, 2)?;
     let target = &args[0];
-    let mut cursor = args[1].clone();
+    let list = args[1].clone();
+    let mut cursor = list.clone();
     loop {
         match cursor {
             Value::Nil => return Ok(Value::Nil),
@@ -958,7 +959,12 @@ pub(crate) fn builtin_member(args: Vec<Value>) -> EvalResult {
                 }
                 cursor = pair.cdr.clone();
             }
-            _ => return Ok(Value::Nil),
+            _ => {
+                return Err(signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("listp"), list],
+                ))
+            }
         }
     }
 }
@@ -966,7 +972,8 @@ pub(crate) fn builtin_member(args: Vec<Value>) -> EvalResult {
 pub(crate) fn builtin_memq(args: Vec<Value>) -> EvalResult {
     expect_args("memq", &args, 2)?;
     let target = &args[0];
-    let mut cursor = args[1].clone();
+    let list = args[1].clone();
+    let mut cursor = list.clone();
     loop {
         match cursor {
             Value::Nil => return Ok(Value::Nil),
@@ -978,7 +985,12 @@ pub(crate) fn builtin_memq(args: Vec<Value>) -> EvalResult {
                 }
                 cursor = pair.cdr.clone();
             }
-            _ => return Ok(Value::Nil),
+            _ => {
+                return Err(signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("listp"), list],
+                ))
+            }
         }
     }
 }
@@ -986,7 +998,8 @@ pub(crate) fn builtin_memq(args: Vec<Value>) -> EvalResult {
 pub(crate) fn builtin_assoc(args: Vec<Value>) -> EvalResult {
     expect_args("assoc", &args, 2)?;
     let key = &args[0];
-    let mut cursor = args[1].clone();
+    let list = args[1].clone();
+    let mut cursor = list.clone();
     loop {
         match cursor {
             Value::Nil => return Ok(Value::Nil),
@@ -1000,7 +1013,12 @@ pub(crate) fn builtin_assoc(args: Vec<Value>) -> EvalResult {
                 }
                 cursor = pair.cdr.clone();
             }
-            _ => return Ok(Value::Nil),
+            _ => {
+                return Err(signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("listp"), list],
+                ))
+            }
         }
     }
 }
@@ -1008,7 +1026,8 @@ pub(crate) fn builtin_assoc(args: Vec<Value>) -> EvalResult {
 pub(crate) fn builtin_assq(args: Vec<Value>) -> EvalResult {
     expect_args("assq", &args, 2)?;
     let key = &args[0];
-    let mut cursor = args[1].clone();
+    let list = args[1].clone();
+    let mut cursor = list.clone();
     loop {
         match cursor {
             Value::Nil => return Ok(Value::Nil),
@@ -1022,7 +1041,12 @@ pub(crate) fn builtin_assq(args: Vec<Value>) -> EvalResult {
                 }
                 cursor = pair.cdr.clone();
             }
-            _ => return Ok(Value::Nil),
+            _ => {
+                return Err(signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("listp"), list],
+                ))
+            }
         }
     }
 }
