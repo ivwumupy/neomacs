@@ -1,0 +1,14 @@
+1	(commandp 'forward-char)	OK t
+2	(commandp 'next-line)	OK t
+3	(commandp 'previous-line)	OK t
+4	(commandp 'kill-line)	OK t
+5	(commandp 'switch-to-buffer)	OK t
+6	(commandp 'find-file)	OK t
+7	(commandp 'save-buffer)	OK t
+8	(commandp 'set-mark-command)	OK t
+9	(commandp 'other-window)	OK t
+10	(commandp 'keyboard-quit)	OK t
+11	(commandp 'quoted-insert)	OK t
+12	(commandp 'universal-argument)	OK t
+13	(commandp 'beginning-of-line)	OK t
+14	(commandp 'end-of-line)	OK t
