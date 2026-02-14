@@ -185,12 +185,23 @@ pub(crate) fn builtin_reindent_then_newline_and_indent(
 /// (indent-for-tab-command &optional ARG) -> nil
 ///
 /// Indent the current line or region, or insert a tab, as appropriate.
-/// Stub: does nothing, returns nil.
+/// Current behavior: insert a tab character at point.
 pub(crate) fn builtin_indent_for_tab_command(
-    _eval: &mut super::eval::Evaluator,
+    eval: &mut super::eval::Evaluator,
     args: Vec<Value>,
 ) -> EvalResult {
     expect_max_args("indent-for-tab-command", &args, 1)?;
+    let buf = eval
+        .buffers
+        .current_buffer_mut()
+        .ok_or_else(|| signal("error", vec![Value::string("No current buffer")]))?;
+    if buf.read_only {
+        return Err(signal(
+            "buffer-read-only",
+            vec![Value::string(buf.name.clone())],
+        ));
+    }
+    buf.insert("\t");
     Ok(Value::Nil)
 }
 
@@ -354,5 +365,20 @@ mod tests {
         assert!(obarray.is_special("indent-tabs-mode"));
         assert!(obarray.is_special("standard-indent"));
         assert!(obarray.is_special("tab-stop-list"));
+    }
+
+    #[test]
+    fn indent_for_tab_command_inserts_tab() {
+        let mut ev = super::super::eval::Evaluator::new();
+        let forms = super::super::parser::parse_forms(
+            r#"(with-temp-buffer
+                 (insert "x")
+                 (goto-char 1)
+                 (indent-for-tab-command)
+                 (buffer-string))"#,
+        )
+        .expect("parse forms");
+        let value = ev.eval(&forms[0]).expect("eval");
+        assert_eq!(value.as_str(), Some("\tx"));
     }
 }
