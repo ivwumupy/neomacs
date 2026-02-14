@@ -520,12 +520,12 @@ pub(crate) fn builtin_other_window(
     } else {
         expect_int(&args[0])?
     };
-    let fid = eval
-        .frames
-        .selected_frame()
-        .map(|f| f.id)
-        .ok_or_else(|| signal("error", vec![Value::string("No selected frame")]))?;
-    let frame = eval.frames.get(fid).unwrap();
+    let Some(fid) = eval.frames.selected_frame().map(|f| f.id) else {
+        return Ok(Value::Nil);
+    };
+    let Some(frame) = eval.frames.get(fid) else {
+        return Ok(Value::Nil);
+    };
     let list = frame.window_list();
     if list.is_empty() {
         return Ok(Value::Nil);
@@ -1208,6 +1208,14 @@ mod tests {
                (/= (selected-window) w1))",
         );
         assert_eq!(results[0], "OK t");
+    }
+
+    #[test]
+    fn other_window_without_selected_frame_returns_nil() {
+        let forms = parse_forms("(other-window)").expect("parse");
+        let mut ev = Evaluator::new();
+        let results = ev.eval_forms(&forms);
+        assert_eq!(format_eval_result(&results[0]), "OK nil");
     }
 
     #[test]
