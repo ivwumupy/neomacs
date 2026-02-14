@@ -76,7 +76,7 @@ The compatibility corpus now explicitly guards core callable introspection behav
 Additional oracle-checked primitive guardrails added in the same compatibility-first style:
 
 - Reader stream edges: `read-from-string` index semantics and `read` stream/arity error boundaries
-- Bytecode literal edges: `#[...]` reader/type behavior and executable subset parity for simple `constant`/`varref`/`return` opcode streams
+- Bytecode literal edges: `#[...]` reader behavior is always covered; executable `.elc` literal subset coverage is gated behind an opt-in compatibility feature
 - Obarray argument boundaries: `intern`, `intern-soft`, `unintern`, `mapatoms` optional OBARRAY validation
 - String primitive edges: `split-string`, `string-trim*`, `string-prefix-p`/`string-suffix-p`, `string-join`, `string-to-number`, and `substring` bounds/arity semantics
 
@@ -203,11 +203,12 @@ Package/runtime policy:
 - `.elc`-only package delivery is unsupported and should be treated as incompatible packaging for NeoVM.
 - When both `.el` and `.elc` are present, NeoVM resolves and loads `.el` source.
 - When only `.elc` is present, NeoVM must hard-fail with an explicit unsupported-artifact error.
+- Legacy `.elc` literal coercion/execution compatibility is available only as a non-default build profile (`legacy-elc-literal`) for focused differential testing.
 
 Not implemented yet:
 
 - Full Elisp reader/compiler/bytecode pipeline
-- Native execution of GNU Emacs `.elc` compiled-function objects (explicitly out of scope for current compatibility contract)
+- Native execution parity for full GNU Emacs `.elc` compiled-function objects in default builds (source-only policy remains the compatibility contract)
 - Per-isolate Lisp heaps and snapshot/patch transfer semantics
 - Tiered JIT pipeline and deoptimization metadata
 - Incremental/concurrent GC engine
@@ -501,6 +502,7 @@ Phase C (+ optimizing JIT):
 
 - Differential testing against GNU Emacs for language semantics
 - Bytecode behavior parity tests for NeoVM-compiled/internal bytecode and interpreted paths (not GNU `.elc` format parity)
+- Optional legacy corpus gates for `#[...]` literal coercion/execution when `legacy-elc-literal` is enabled
 - Fuzzing reader/evaluator/error unwinding
 - Deterministic tests for deopt state reconstruction
 - Negative artifact tests:
