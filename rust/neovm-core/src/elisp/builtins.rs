@@ -60,6 +60,17 @@ fn expect_int(value: &Value) -> Result<i64, Flow> {
     }
 }
 
+fn expect_fixnum(value: &Value) -> Result<i64, Flow> {
+    match value {
+        Value::Int(n) => Ok(*n),
+        Value::Char(c) => Ok(*c as i64),
+        other => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("fixnump"), other.clone()],
+        )),
+    }
+}
+
 /// Extract an integer/marker-ish position value.
 ///
 /// NeoVM does not expose marker values yet, so this currently accepts
@@ -1474,7 +1485,7 @@ pub(crate) fn builtin_vector(args: Vec<Value>) -> EvalResult {
 
 pub(crate) fn builtin_aref(args: Vec<Value>) -> EvalResult {
     expect_args("aref", &args, 2)?;
-    let idx = expect_int(&args[1])? as usize;
+    let idx = expect_fixnum(&args[1])? as usize;
     match &args[0] {
         Value::Vector(v) => {
             let items = v.lock().expect("poisoned");
@@ -1499,7 +1510,7 @@ pub(crate) fn builtin_aref(args: Vec<Value>) -> EvalResult {
 
 pub(crate) fn builtin_aset(args: Vec<Value>) -> EvalResult {
     expect_args("aset", &args, 3)?;
-    let idx = expect_int(&args[1])? as usize;
+    let idx = expect_fixnum(&args[1])? as usize;
     match &args[0] {
         Value::Vector(v) => {
             let mut items = v.lock().expect("poisoned");
