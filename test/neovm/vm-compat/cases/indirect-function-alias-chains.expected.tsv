@@ -15,3 +15,6 @@
 15	(defalias nil 'car)	ERR (setting-constant (nil))
 16	(defalias t 'car)	OK t
 17	(indirect-function t)	OK #<subr car>
+18	(defalias)	ERR (wrong-number-of-arguments (defalias 0))
+19	(defalias 'vm-da-too-few)	ERR (wrong-number-of-arguments (defalias 1))
+20	(defalias 'vm-da-too-many 'car "doc" t)	ERR (wrong-number-of-arguments (defalias 4))

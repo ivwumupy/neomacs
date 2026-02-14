@@ -36,3 +36,6 @@
 (defalias nil 'car)
 (defalias t 'car)
 (indirect-function t)
+(defalias)
+(defalias 'vm-da-too-few)
+(defalias 'vm-da-too-many 'car "doc" t)
