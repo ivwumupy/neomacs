@@ -378,6 +378,31 @@ fn decode_opcode_subset(byte_stream: &str, const_len: usize) -> Option<Vec<Op>> 
                 pending.push(Pending::Op(Op::Aset));
                 pc += 1;
             }
+            // symbol-value
+            0o112 => {
+                pending.push(Pending::Op(Op::SymbolValue));
+                pc += 1;
+            }
+            // symbol-function
+            0o113 => {
+                pending.push(Pending::Op(Op::SymbolFunction));
+                pc += 1;
+            }
+            // set
+            0o114 => {
+                pending.push(Pending::Op(Op::Set));
+                pc += 1;
+            }
+            // fset
+            0o115 => {
+                pending.push(Pending::Op(Op::Fset));
+                pc += 1;
+            }
+            // get
+            0o116 => {
+                pending.push(Pending::Op(Op::Get));
+                pc += 1;
+            }
             // 1- (sub1)
             0o123 => {
                 pending.push(Pending::Op(Op::Sub1));
@@ -427,6 +452,11 @@ fn decode_opcode_subset(byte_stream: &str, const_len: usize) -> Option<Vec<Op>> 
             // -
             0o132 => {
                 pending.push(Pending::Op(Op::Sub));
+                pc += 1;
+            }
+            // unary -
+            0o133 => {
+                pending.push(Pending::Op(Op::Negate));
                 pc += 1;
             }
             // +
@@ -1368,6 +1398,56 @@ mod tests {
             panic!("expected Value::ByteCode");
         };
         assert_eq!(bc.ops, vec![Op::Constant(0), Op::Dup, Op::Pop, Op::Return]);
+    }
+
+    #[test]
+    fn decodes_symbol_cell_opcode_subset() {
+        let literal = Value::vector(vec![
+            Value::Nil,
+            Value::string("\u{C0}J\u{C1}K\u{C3}\u{C0}L\u{C0}\u{C2}N\u{87}"),
+            Value::vector(vec![
+                Value::symbol("x"),
+                Value::symbol("car"),
+                Value::symbol("p"),
+                Value::Int(5),
+            ]),
+            Value::Int(2),
+        ]);
+        let coerced = maybe_coerce_compiled_literal_function(literal);
+        let Value::ByteCode(bc) = coerced else {
+            panic!("expected Value::ByteCode");
+        };
+        assert_eq!(
+            bc.ops,
+            vec![
+                Op::Constant(0),
+                Op::SymbolValue,
+                Op::Constant(1),
+                Op::SymbolFunction,
+                Op::Constant(3),
+                Op::Constant(0),
+                Op::Set,
+                Op::Constant(0),
+                Op::Constant(2),
+                Op::Get,
+                Op::Return,
+            ]
+        );
+    }
+
+    #[test]
+    fn decodes_negate_opcode_subset() {
+        let literal = Value::vector(vec![
+            Value::list(vec![Value::symbol("x")]),
+            Value::string("\u{8}[\u{87}"),
+            Value::vector(vec![Value::symbol("x")]),
+            Value::Int(1),
+        ]);
+        let coerced = maybe_coerce_compiled_literal_function(literal);
+        let Value::ByteCode(bc) = coerced else {
+            panic!("expected Value::ByteCode");
+        };
+        assert_eq!(bc.ops, vec![Op::VarRef(0), Op::Negate, Op::Return]);
     }
 
     #[test]
