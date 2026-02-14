@@ -41,7 +41,7 @@ pub fn print_expr(expr: &Expr) -> String {
         Expr::Float(v) => format_float(*v),
         Expr::Symbol(s) => s.clone(),
         Expr::Keyword(s) => s.clone(),
-        Expr::Str(s) => format!("{:?}", s),
+        Expr::Str(s) => format_lisp_string(s),
         // Emacs chars are integer values, so print as codepoint.
         Expr::Char(c) => (*c as u32).to_string(),
         Expr::Bool(true) => "t".to_string(),
@@ -84,6 +84,32 @@ pub fn print_expr(expr: &Expr) -> String {
     }
 }
 
+fn format_lisp_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\u{08}' => out.push_str("\\b"),
+            '\t' => out.push_str("\\t"),
+            '\n' => out.push_str("\\n"),
+            '\u{0b}' => out.push_str("\\v"),
+            '\u{0c}' => out.push_str("\\f"),
+            '\r' => out.push_str("\\r"),
+            '\u{07}' => out.push_str("\\a"),
+            '\u{1b}' => out.push_str("\\e"),
+            c if (c as u32) < 0x20 || c == '\u{7f}' => {
+                out.push('\\');
+                out.push_str(&format!("{:03o}", c as u32));
+            }
+            _ => out.push(ch),
+        }
+    }
+    out.push('"');
+    out
+}
+
 fn format_float(f: f64) -> String {
     if f.fract() == 0.0 && f.is_finite() {
         format!("{:.1}", f)
@@ -123,5 +149,13 @@ mod tests {
     fn print_vector() {
         let expr = Expr::Vector(vec![Expr::Int(1), Expr::Int(2)]);
         assert_eq!(print_expr(&expr), "[1 2]");
+    }
+
+    #[test]
+    fn print_string_keeps_non_bmp_visible() {
+        assert_eq!(
+            print_expr(&Expr::Str("\u{10ffff}".into())),
+            "\"\u{10ffff}\""
+        );
     }
 }
