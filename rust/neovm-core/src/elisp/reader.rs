@@ -80,57 +80,77 @@ pub(crate) fn builtin_read_from_string(
     args: Vec<Value>,
 ) -> EvalResult {
     expect_min_args("read-from-string", &args, 1)?;
+    if args.len() > 3 {
+        return Err(signal(
+            "wrong-number-of-arguments",
+            vec![Value::symbol("read-from-string"), Value::Int(args.len() as i64)],
+        ));
+    }
 
     let full_string = expect_string(&args[0])?;
 
-    let start = if args.len() > 1 && args[1].is_truthy() {
-        match &args[1] {
+    let start_arg = args.get(1).cloned().unwrap_or(Value::Nil);
+    let end_arg = args.get(2).cloned().unwrap_or(Value::Nil);
+    let to_index = |value: &Value| -> Result<usize, Flow> {
+        match value {
+            Value::Nil => Ok(0),
             Value::Int(n) => {
-                if *n < 0 {
+                let idx = if *n < 0 {
+                    (full_string.len() as i64) + *n
+                } else {
+                    *n
+                };
+                if idx < 0 || idx > full_string.len() as i64 {
                     return Err(signal(
                         "args-out-of-range",
-                        vec![args[0].clone(), args[1].clone()],
+                        vec![args[0].clone(), start_arg.clone(), end_arg.clone()],
                     ));
                 }
-                *n as usize
+                Ok(idx as usize)
             }
-            _ => 0,
+            other => Err(signal(
+                "wrong-type-argument",
+                vec![Value::symbol("integerp"), other.clone()],
+            )),
         }
+    };
+    let start = if args.len() > 1 {
+        to_index(&start_arg)?
     } else {
         0
     };
-
-    let end = if args.len() > 2 && args[2].is_truthy() {
-        match &args[2] {
-            Value::Int(n) => {
-                if *n < 0 || (*n as usize) > full_string.len() {
-                    return Err(signal(
-                        "args-out-of-range",
-                        vec![args[0].clone(), args[2].clone()],
-                    ));
-                }
-                *n as usize
-            }
-            _ => full_string.len(),
-        }
+    let end = if args.len() > 2 {
+        to_index(&end_arg)?
     } else {
         full_string.len()
     };
 
-    if start > end || start > full_string.len() {
+    if start > end {
         return Err(signal(
             "args-out-of-range",
-            vec![args[0].clone(), Value::Int(start as i64)],
+            vec![args[0].clone(), start_arg.clone(), end_arg.clone()],
         ));
     }
 
     let substring = &full_string[start..end];
+    let end_pos = compute_read_end_position(substring);
+    if end_pos == 0 {
+        return Err(signal(
+            "end-of-file",
+            vec![Value::string("End of file during parsing")],
+        ));
+    }
 
-    let forms = super::parser::parse_forms(substring).map_err(|e| {
-        signal(
-            "invalid-read-syntax",
-            vec![Value::string(e.message.clone())],
-        )
+    let consumed = &substring[..end_pos.min(substring.len())];
+    let forms = super::parser::parse_forms(consumed).map_err(|e| {
+        if e.message.contains("unterminated") || e.message.contains("end of input") {
+            signal(
+                "end-of-file",
+                vec![Value::string("End of file during parsing")],
+            )
+        } else {
+            signal("invalid-read-syntax", vec![Value::string(e.message.clone())])
+        }
     })?;
 
     if forms.is_empty() {
@@ -140,10 +160,6 @@ pub(crate) fn builtin_read_from_string(
         ));
     }
 
-    // Compute end position: re-parse to find where the first form ends.
-    // We do this by parsing form-by-form and tracking consumed bytes.
-    let end_pos = compute_read_end_position(substring, &forms[0]);
-    let consumed = &substring[..end_pos.min(substring.len())];
     let value = if first_form_is_reader_hash_dollar(&forms[0], consumed) {
         eval.obarray()
             .symbol_value("load-file-name")
@@ -200,7 +216,7 @@ fn consumed_represents_hash_dollar(input: &str) -> bool {
 /// Estimate the end position of the first parsed form in the input string.
 /// We re-parse character by character to find where the parser would stop
 /// after reading one expression.
-fn compute_read_end_position(input: &str, _first_form: &Expr) -> usize {
+fn compute_read_end_position(input: &str) -> usize {
     // Use a simple approach: parse just one form and see how far we get.
     // We create a mini-parser that tracks position.
     let mut pos = 0;
@@ -597,7 +613,7 @@ pub(crate) fn builtin_read(eval: &mut super::eval::Evaluator, args: Vec<Value>) 
             }
             let value = super::eval::quote_to_value(&forms[0]);
             // Advance point past the read form
-            let end_offset = compute_read_end_position(substring, &forms[0]);
+            let end_offset = compute_read_end_position(substring);
             let new_pt = pt + end_offset;
             if let Some(buf) = eval.buffers.get_mut(buf_id) {
                 buf.pt = new_pt;
