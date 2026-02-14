@@ -1,0 +1,4 @@
+(condition-case err (make-thread (lambda () nil) 1) (error err))
+(let ((th (make-thread (lambda () nil) nil))) (thread-name th))
+(let ((th (make-thread (lambda () nil) ""))) (thread-name th))
+(let ((th (make-thread (lambda () nil) "worker-y"))) (thread-name th))
