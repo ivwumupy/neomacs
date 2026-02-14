@@ -114,7 +114,7 @@ impl ThreadManager {
             0,
             ThreadState {
                 id: 0,
-                name: Some("main".to_string()),
+                name: None,
                 function: Value::Nil,
                 status: ThreadStatus::Running,
                 result: Value::Nil,
@@ -1020,7 +1020,7 @@ mod tests {
         assert!(mgr.is_thread(0));
         assert_eq!(mgr.current_thread_id(), 0);
         assert!(mgr.thread_alive_p(0));
-        assert_eq!(mgr.thread_name(0), Some("main"));
+        assert_eq!(mgr.thread_name(0), None);
     }
 
     #[test]
@@ -1228,7 +1228,7 @@ mod tests {
         let current = builtin_current_thread(&mut eval, vec![]).unwrap();
         let result = builtin_thread_name(&mut eval, vec![current]);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().as_str(), Some("main"));
+        assert!(result.unwrap().is_nil());
     }
 
     #[test]
@@ -1582,7 +1582,7 @@ mod tests {
         let after_join = builtin_thread_last_error(&mut eval, vec![]).unwrap();
         assert_eq!(
             super::super::print::print_value(&after_join),
-            "(wrong-number-of-arguments car 0)"
+            "(wrong-number-of-arguments #<subr car> 0)"
         );
 
         let _ = builtin_thread_last_error(&mut eval, vec![Value::True]).unwrap();
