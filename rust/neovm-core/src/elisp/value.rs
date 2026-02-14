@@ -287,7 +287,7 @@ impl Value {
             Value::Macro(_) => "macro",
             Value::Char(_) => "integer", // Emacs chars are integers
             Value::Subr(_) => "subr",
-            Value::ByteCode(_) => "compiled-function",
+            Value::ByteCode(_) => "byte-code-function",
             Value::Buffer(_) => "buffer",
             Value::Timer(_) => "timer",
         }

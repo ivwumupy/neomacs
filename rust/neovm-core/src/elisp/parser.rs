@@ -392,9 +392,8 @@ impl<'a> Parser<'a> {
                 Ok(Expr::List(vec![Expr::Symbol("function".into()), expr]))
             }
             '(' => {
-                // #(...) — historical compiled-function literal.
-                let vector = self.parse_vector_paren()?;
-                Ok(Expr::List(vec![Expr::Symbol("quote".into()), vector]))
+                // GNU Emacs rejects #(...): invalid-read-syntax "#"
+                Err(self.error("#"))
             }
             '[' => {
                 // #[...] — compiled-function literal in .elc.
@@ -821,23 +820,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_paren_bytecode_literal_vector_is_quoted() {
-        let forms = parse_forms("#((x) \"\\bT\\207\" [x] 1 (#$ . 83))").unwrap();
-        assert_eq!(forms.len(), 1);
-        let Expr::List(items) = &forms[0] else {
-            panic!("expected quoted literal");
-        };
-        assert_eq!(items.len(), 2);
-        assert_eq!(items[0], Expr::Symbol("quote".into()));
-
-        let Expr::Vector(values) = &items[1] else {
-            panic!("expected vector body");
-        };
-        let Expr::DottedList(cons_items, cdr) = &values[4] else {
-            panic!("expected source-loc dotted pair");
-        };
-        assert_eq!(cons_items, &vec![Expr::Symbol("load-file-name".into())]);
-        assert_eq!(**cdr, Expr::Int(83));
+    fn parse_paren_bytecode_literal_is_rejected() {
+        let err = parse_forms("#((x) \"\\bT\\207\" [x] 1 (#$ . 83))").expect_err("should fail");
+        assert!(err.message.contains('#'));
     }
 
     #[test]
