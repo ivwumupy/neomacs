@@ -1923,39 +1923,84 @@ neomacs_layout_get_window_params (void *frame_ptr, int window_index,
   params->header_line_height = (float) WINDOW_HEADER_LINE_HEIGHT (w);
   params->tab_line_height = (float) WINDOW_TAB_LINE_HEIGHT (w);
 
-  /* Cursor type — read from phys_cursor_type (set by C display engine).
-     get_window_cursor_type() is static in xdisp.c so we use the cached value.
+  /* Cursor type — compute directly from buffer/frame variables.
+     We cannot use w->phys_cursor_type because it is only set by
+     display_and_set_cursor() in xdisp.c, which is called from
+     redisplay_window() — and Neomacs skips redisplay_window() entirely.
+     So phys_cursor_type stays NO_CURSOR forever.
+
+     Instead we replicate the core logic of get_window_cursor_type()
+     (which is static in xdisp.c) by reading the buffer's cursor-type
+     variable and falling back to the frame default.
 
      cursor_bar_width carries the configured dimension:
        BAR_CURSOR  → bar width  from (bar . WIDTH)  or default 2
        HBAR_CURSOR → bar height from (hbar . HEIGHT) or default 2
-       others      → 0 (unused)
-
-     We extract this from the buffer's cursor-type variable since
-     w->phys_cursor_width holds the glyph pixel width, not the
-     configured cursor dimension.  */
-  switch (w->phys_cursor_type)
-    {
-    case FILLED_BOX_CURSOR: params->cursor_type = 0; break;
-    case BAR_CURSOR: params->cursor_type = 1; break;
-    case HBAR_CURSOR: params->cursor_type = 2; break;
-    case HOLLOW_BOX_CURSOR: params->cursor_type = 3; break;
-    case NO_CURSOR: params->cursor_type = 4; break;
-    default: params->cursor_type = 0; break;
-    }
-
-  /* Extract bar/hbar dimension from cursor-type spec.  */
+       others      → 0 (unused)  */
   {
-    int cursor_dim = 2; /* default for both bar and hbar */
+    enum text_cursor_kinds cursor_kind = FILLED_BOX_CURSOR;
+    int cursor_dim = 2;
     Lisp_Object ct = Qnil;
+
     if (BUFFERP (w->contents))
       ct = BVAR (XBUFFER (w->contents), cursor_type);
-    /* If buffer cursor-type is t or nil, use frame default.  */
-    if (EQ (ct, Qt) || NILP (ct))
-      cursor_dim = FRAME_CURSOR_WIDTH (f);
-    else if (CONSP (ct) && RANGED_FIXNUMP (1, XCDR (ct), INT_MAX))
-      cursor_dim = XFIXNUM (XCDR (ct));
-    /* else plain symbol (bar, hbar, box, hollow) → keep default 2 */
+
+    if (NILP (ct))
+      {
+        /* cursor-type is nil → no cursor in this buffer.  */
+        cursor_kind = NO_CURSOR;
+      }
+    else if (EQ (ct, Qt))
+      {
+        /* cursor-type is t → use frame default.  */
+        cursor_kind = FRAME_DESIRED_CURSOR (f);
+        cursor_dim = FRAME_CURSOR_WIDTH (f);
+      }
+    else if (EQ (ct, Qbox))
+      cursor_kind = FILLED_BOX_CURSOR;
+    else if (EQ (ct, Qhollow))
+      cursor_kind = HOLLOW_BOX_CURSOR;
+    else if (EQ (ct, Qbar))
+      {
+        cursor_kind = BAR_CURSOR;
+        cursor_dim = 2;
+      }
+    else if (EQ (ct, Qhbar))
+      {
+        cursor_kind = HBAR_CURSOR;
+        cursor_dim = 2;
+      }
+    else if (CONSP (ct))
+      {
+        Lisp_Object car = XCAR (ct);
+        if (EQ (car, Qbox))
+          cursor_kind = FILLED_BOX_CURSOR;
+        else if (EQ (car, Qbar))
+          cursor_kind = BAR_CURSOR;
+        else if (EQ (car, Qhbar))
+          cursor_kind = HBAR_CURSOR;
+        else
+          cursor_kind = HOLLOW_BOX_CURSOR;
+
+        if (RANGED_FIXNUMP (1, XCDR (ct), INT_MAX))
+          cursor_dim = XFIXNUM (XCDR (ct));
+      }
+    else
+      {
+        /* Unknown cursor-type value → hollow box (matches Emacs behavior).  */
+        cursor_kind = HOLLOW_BOX_CURSOR;
+      }
+
+    switch (cursor_kind)
+      {
+      case FILLED_BOX_CURSOR: params->cursor_type = 0; break;
+      case BAR_CURSOR: params->cursor_type = 1; break;
+      case HBAR_CURSOR: params->cursor_type = 2; break;
+      case HOLLOW_BOX_CURSOR: params->cursor_type = 3; break;
+      case NO_CURSOR: params->cursor_type = 4; break;
+      default: params->cursor_type = 0; break;
+      }
+
     params->cursor_bar_width = cursor_dim > 0 ? cursor_dim : 2;
   }
 
