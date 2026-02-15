@@ -158,6 +158,8 @@ pub struct WindowParams {
 
     /// Horizontal scroll offset in columns
     pub hscroll: i32,
+    /// Vertical scroll offset in pixels (shifts content up)
+    pub vscroll: i32,
 
     /// Whether to truncate long lines
     pub truncate_lines: bool,
@@ -617,6 +619,7 @@ mod tests {
             buffer_size: 10000,
             buffer_begv: 1,
             hscroll: 0,
+            vscroll: 0,
             truncate_lines: false,
             word_wrap: true,
             tab_width: 8,
@@ -678,6 +681,7 @@ mod tests {
             buffer_size: 0,
             buffer_begv: 1,
             hscroll: 0,
+            vscroll: 0,
             truncate_lines: true,
             word_wrap: false,
             tab_width: 8,
@@ -731,6 +735,7 @@ mod tests {
             buffer_size: 100,
             buffer_begv: 1,
             hscroll: 5,
+            vscroll: 0,
             truncate_lines: true,
             word_wrap: false,
             tab_width: 4,

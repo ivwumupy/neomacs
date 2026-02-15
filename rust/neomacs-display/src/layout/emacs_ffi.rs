@@ -465,6 +465,8 @@ pub struct WindowParamsFFI {
 
     /// Horizontal scroll
     pub hscroll: c_int,
+    /// Vertical scroll (pixel offset, shifts content up)
+    pub vscroll: c_int,
     /// Truncate long lines
     pub truncate_lines: c_int,
     /// Word wrap at word boundaries

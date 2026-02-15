@@ -299,6 +299,7 @@ impl LayoutEngine {
                 buffer_size: rust_zv,
                 buffer_begv: rust_begv,
                 hscroll: wp.hscroll,
+                vscroll: wp.vscroll,
                 truncate_lines: rust_truncate,
                 word_wrap: rust_word_wrap,
                 tab_width: rust_tab_width,
@@ -625,6 +626,16 @@ impl LayoutEngine {
             - params.tab_line_height
             - params.mode_line_height;
 
+        // Apply vertical scroll: shift content up by vscroll pixels.
+        // In Emacs, w->vscroll shifts the first row upward, hiding the
+        // top portion of the window content.  We achieve this by reducing
+        // text_height — content that would render above the window top
+        // is simply not laid out, producing an empty visible area when
+        // vscroll >= text_height (used by vertico-posframe to hide the
+        // minibuffer).
+        let vscroll = params.vscroll.max(0) as f32;
+        let text_height = (text_height - vscroll).max(0.0);
+
         // Guard against zero/negative dimensions from FFI
         let char_w = if params.char_width > 0.0 { params.char_width } else { 8.0 };
         let char_h = if params.char_height > 0.0 {
@@ -660,7 +671,11 @@ impl LayoutEngine {
         // The minibuffer must always render at least 1 row.  Its pixel
         // height may be fractionally smaller than char_h (e.g. 24px vs
         // 24.15 with line-spacing) causing floor() to yield 0.
-        let max_rows = if params.is_minibuffer && max_rows <= 0 && text_height > 0.0 {
+        // Exception: when vscroll is active, don't force 1 row — vscroll
+        // is used (e.g. by vertico-posframe) to intentionally hide content.
+        let max_rows = if params.is_minibuffer && max_rows <= 0 && text_height > 0.0
+            && vscroll == 0.0
+        {
             1
         } else {
             max_rows

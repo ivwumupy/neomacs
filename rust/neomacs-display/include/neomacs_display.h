@@ -397,6 +397,10 @@ typedef struct WindowParamsFFI {
    */
   int hscroll;
   /**
+   * Vertical scroll (pixel offset, shifts content up)
+   */
+  int vscroll;
+  /**
    * Truncate long lines
    */
   int truncateLines;

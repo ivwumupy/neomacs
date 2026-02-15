@@ -1661,6 +1661,7 @@ struct neomacs_window_params_ffi {
   int64_t buffer_zv;
   int64_t buffer_begv;
   int hscroll;
+  int vscroll;
   int truncate_lines;
   int word_wrap;
   int tab_width;
@@ -1851,6 +1852,7 @@ neomacs_layout_get_window_params (void *frame_ptr, int window_index,
     params->window_end = 0;  /* 0 = unknown/invalid */
 
   params->hscroll = w->hscroll;
+  params->vscroll = w->vscroll;
 
   /* Face colors */
   struct face *default_face = FACE_FROM_ID_OR_NULL (f, DEFAULT_FACE_ID);
