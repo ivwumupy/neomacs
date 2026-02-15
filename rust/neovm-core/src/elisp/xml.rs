@@ -46,6 +46,18 @@ fn expect_max_args(name: &str, args: &[Value], max: usize) -> Result<(), Flow> {
     }
 }
 
+fn expect_integer_or_marker(value: &Value) -> Result<i64, Flow> {
+    match value {
+        Value::Int(n) => Ok(*n),
+        Value::Char(c) => Ok(*c as i64),
+        v if super::marker::is_marker(v) => super::marker::marker_position_as_int(v),
+        other => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("integer-or-marker-p"), other.clone()],
+        )),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Pure builtins
 // ---------------------------------------------------------------------------
@@ -83,9 +95,60 @@ pub(crate) fn builtin_zlib_available_p(args: Vec<Value>) -> EvalResult {
 }
 
 /// (zlib-decompress-region START END)
-/// Stub: returns nil (zlib decompression not implemented in pure Rust yet).
+/// Compatibility subset:
+/// - validates START/END as integer-or-marker
+/// - supports optional third arg
+/// - signals the same unibyte-buffer requirement as Emacs in current multibyte buffers
 pub(crate) fn builtin_zlib_decompress_region(args: Vec<Value>) -> EvalResult {
-    expect_args("zlib-decompress-region", &args, 2)?;
-    // Stub: zlib decompression not implemented
-    Ok(Value::Nil)
+    expect_min_args("zlib-decompress-region", &args, 2)?;
+    expect_max_args("zlib-decompress-region", &args, 3)?;
+    let _start = expect_integer_or_marker(&args[0])?;
+    let _end = expect_integer_or_marker(&args[1])?;
+
+    Err(signal(
+        "error",
+        vec![Value::string(
+            "This function can be called only in unibyte buffers",
+        )],
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zlib_decompress_region_arity_and_type_validation() {
+        let arity = builtin_zlib_decompress_region(vec![]);
+        assert!(arity.is_err());
+
+        let too_many = builtin_zlib_decompress_region(vec![
+            Value::Int(1),
+            Value::Int(1),
+            Value::Nil,
+            Value::Nil,
+        ]);
+        assert!(too_many.is_err());
+
+        let bad_type = builtin_zlib_decompress_region(vec![Value::string("x"), Value::Int(1)]);
+        assert!(bad_type.is_err());
+    }
+
+    #[test]
+    fn zlib_decompress_region_signals_unibyte_requirement() {
+        let result = builtin_zlib_decompress_region(vec![Value::Int(1), Value::Int(1)])
+            .expect_err("must signal error in multibyte buffers");
+        match result {
+            Flow::Signal(sig) => {
+                assert_eq!(sig.symbol, "error");
+                assert_eq!(
+                    sig.data,
+                    vec![Value::string(
+                        "This function can be called only in unibyte buffers"
+                    )]
+                );
+            }
+            other => panic!("unexpected flow: {other:?}"),
+        }
+    }
 }
