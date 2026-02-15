@@ -69,6 +69,7 @@ cases/minibufferp-semantics
 cases/exit-recursive-edit-semantics
 cases/minibuffer-contents-no-properties-semantics
 cases/input-batch-readers
+cases/read-batch-input-semantics
 cases/timer-semantics
 cases/display-stub-semantics
 cases/display-batch-semantics
