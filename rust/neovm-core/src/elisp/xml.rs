@@ -101,17 +101,17 @@ pub(crate) fn builtin_libxml_parse_xml_region(args: Vec<Value>) -> EvalResult {
 }
 
 /// (libxml-available-p)
-/// Returns nil (libxml not available in pure Rust yet).
+/// Returns t (feature availability probe).
 pub(crate) fn builtin_libxml_available_p(args: Vec<Value>) -> EvalResult {
     expect_args("libxml-available-p", &args, 0)?;
-    Ok(Value::Nil)
+    Ok(Value::True)
 }
 
 /// (zlib-available-p)
-/// Returns nil (zlib not available in pure Rust yet).
+/// Returns t (feature availability probe).
 pub(crate) fn builtin_zlib_available_p(args: Vec<Value>) -> EvalResult {
     expect_args("zlib-available-p", &args, 0)?;
-    Ok(Value::Nil)
+    Ok(Value::True)
 }
 
 /// (zlib-decompress-region START END)
@@ -251,6 +251,36 @@ mod tests {
                 assert_eq!(
                     sig.data,
                     vec![Value::symbol("libxml-parse-html-region"), Value::Int(5)]
+                );
+            }
+            other => panic!("unexpected flow: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn availability_probes_return_true_and_validate_arity() {
+        assert_eq!(builtin_libxml_available_p(vec![]).unwrap(), Value::True);
+        assert_eq!(builtin_zlib_available_p(vec![]).unwrap(), Value::True);
+
+        let libxml_arity = builtin_libxml_available_p(vec![Value::Int(1)]).unwrap_err();
+        match libxml_arity {
+            Flow::Signal(sig) => {
+                assert_eq!(sig.symbol, "wrong-number-of-arguments");
+                assert_eq!(
+                    sig.data,
+                    vec![Value::symbol("libxml-available-p"), Value::Int(1)]
+                );
+            }
+            other => panic!("unexpected flow: {other:?}"),
+        }
+
+        let zlib_arity = builtin_zlib_available_p(vec![Value::Int(1)]).unwrap_err();
+        match zlib_arity {
+            Flow::Signal(sig) => {
+                assert_eq!(sig.symbol, "wrong-number-of-arguments");
+                assert_eq!(
+                    sig.data,
+                    vec![Value::symbol("zlib-available-p"), Value::Int(1)]
                 );
             }
             other => panic!("unexpected flow: {other:?}"),
