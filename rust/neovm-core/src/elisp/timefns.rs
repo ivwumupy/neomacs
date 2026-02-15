@@ -5,11 +5,12 @@
 //! `encode-time`, `decode-time`, `time-convert`, `set-time-zone-rule`, and
 //! `safe-date-to-time`.
 //!
-//! Uses only `std::time::SystemTime` and `std::time::UNIX_EPOCH`; no external
-//! crates.
+//! Uses `std::time::SystemTime`/`UNIX_EPOCH` plus lightweight regex parsing
+//! for a compatibility subset of date string formats.
 
 use super::error::{signal, EvalResult, Flow};
 use super::value::*;
+use regex::Regex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // ---------------------------------------------------------------------------
@@ -533,11 +534,126 @@ pub(crate) fn builtin_set_time_zone_rule(args: Vec<Value>) -> EvalResult {
     Ok(Value::Nil)
 }
 
-/// `(safe-date-to-time DATE-STRING)` -> current-time (stub).
+fn parse_tz_offset_hhmm(offset: &str) -> Option<i64> {
+    if offset.len() != 5 {
+        return None;
+    }
+    let sign = match &offset[0..1] {
+        "+" => 1i64,
+        "-" => -1i64,
+        _ => return None,
+    };
+    let hh: i64 = offset[1..3].parse().ok()?;
+    let mm: i64 = offset[3..5].parse().ok()?;
+    if hh > 23 || mm > 59 {
+        return None;
+    }
+    Some(sign * (hh * 3600 + mm * 60))
+}
+
+fn parse_month_abbrev(mon: &str) -> Option<i64> {
+    match mon.to_ascii_lowercase().as_str() {
+        "jan" => Some(1),
+        "feb" => Some(2),
+        "mar" => Some(3),
+        "apr" => Some(4),
+        "may" => Some(5),
+        "jun" => Some(6),
+        "jul" => Some(7),
+        "aug" => Some(8),
+        "sep" => Some(9),
+        "oct" => Some(10),
+        "nov" => Some(11),
+        "dec" => Some(12),
+        _ => None,
+    }
+}
+
+fn parse_i64_capture(caps: &regex::Captures<'_>, idx: usize) -> Option<i64> {
+    caps.get(idx)?.as_str().parse().ok()
+}
+
+fn validate_ymd_hms(year: i64, month: i64, day: i64, hour: i64, min: i64, sec: i64) -> bool {
+    if !(1..=12).contains(&month) {
+        return false;
+    }
+    if day < 1 || day > days_in_month(month, year) {
+        return false;
+    }
+    if !(0..=23).contains(&hour) || !(0..=59).contains(&min) || !(0..=59).contains(&sec) {
+        return false;
+    }
+    true
+}
+
+fn parse_safe_date_to_epoch_secs(input: &str) -> Option<i64> {
+    // Examples:
+    //   1970-01-01 00:00:00 +0000
+    //   1970/01/01 00:00:00 -0100
+    let iso = Regex::new(
+        r"^\s*(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s+([+-]\d{4})\s*$",
+    )
+    .expect("valid safe-date-to-time iso regex");
+    if let Some(caps) = iso.captures(input) {
+        let year = parse_i64_capture(&caps, 1)?;
+        let month = parse_i64_capture(&caps, 2)?;
+        let day = parse_i64_capture(&caps, 3)?;
+        let hour = parse_i64_capture(&caps, 4)?;
+        let min = parse_i64_capture(&caps, 5)?;
+        let sec = caps
+            .get(6)
+            .and_then(|m| m.as_str().parse::<i64>().ok())
+            .unwrap_or(0);
+        if !validate_ymd_hms(year, month, day, hour, min, sec) {
+            return None;
+        }
+        let offset = parse_tz_offset_hhmm(caps.get(7)?.as_str())?;
+        let local_secs = encode_to_epoch_secs(sec, min, hour, day, month, year);
+        return Some(local_secs - offset);
+    }
+
+    // Example:
+    //   Thu, 01 Jan 1970 00:00:00 +0000
+    let rfc = Regex::new(
+        r"^\s*[A-Za-z]{3},\s*(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s+([+-]\d{4})\s*$",
+    )
+    .expect("valid safe-date-to-time rfc regex");
+    if let Some(caps) = rfc.captures(input) {
+        let day = parse_i64_capture(&caps, 1)?;
+        let month = parse_month_abbrev(caps.get(2)?.as_str())?;
+        let year = parse_i64_capture(&caps, 3)?;
+        let hour = parse_i64_capture(&caps, 4)?;
+        let min = parse_i64_capture(&caps, 5)?;
+        let sec = caps
+            .get(6)
+            .and_then(|m| m.as_str().parse::<i64>().ok())
+            .unwrap_or(0);
+        if !validate_ymd_hms(year, month, day, hour, min, sec) {
+            return None;
+        }
+        let offset = parse_tz_offset_hhmm(caps.get(7)?.as_str())?;
+        let local_secs = encode_to_epoch_secs(sec, min, hour, day, month, year);
+        return Some(local_secs - offset);
+    }
+
+    None
+}
+
+/// `(safe-date-to-time DATE-STRING)` -> `(HIGH LOW)` or 0.
+///
+/// Returns `0` when DATE-STRING is not parseable, matching Emacs'
+/// "safe" behavior.
 pub(crate) fn builtin_safe_date_to_time(args: Vec<Value>) -> EvalResult {
     expect_args("safe-date-to-time", &args, 1)?;
-    // Stub: ignore the date string, return current time.
-    Ok(TimeMicros::now().to_list())
+    let Value::Str(date) = &args[0] else {
+        return Ok(Value::Int(0));
+    };
+    let Some(secs) = parse_safe_date_to_epoch_secs(date) else {
+        return Ok(Value::Int(0));
+    };
+    let high = (secs >> 16) & 0xFFFF_FFFF;
+    let low = secs & 0xFFFF;
+    Ok(Value::list(vec![Value::Int(high), Value::Int(low)]))
 }
 
 // ---------------------------------------------------------------------------
@@ -1029,11 +1145,38 @@ mod tests {
     }
 
     #[test]
-    fn builtin_safe_date_to_time_stub() {
+    fn builtin_safe_date_to_time_iso_utc() {
         let result =
-            builtin_safe_date_to_time(vec![Value::string("Mon Jan  2 15:04:05 2006")]).unwrap();
-        let items = list_to_vec(&result).unwrap();
-        assert_eq!(items.len(), 4);
+            builtin_safe_date_to_time(vec![Value::string("1970-01-01 00:00:00 +0000")]).unwrap();
+        assert_eq!(result, Value::list(vec![Value::Int(0), Value::Int(0)]));
+    }
+
+    #[test]
+    fn builtin_safe_date_to_time_rfc_utc() {
+        let result = builtin_safe_date_to_time(vec![Value::string(
+            "Thu, 01 Jan 1970 00:00:00 +0000",
+        )])
+        .unwrap();
+        assert_eq!(result, Value::list(vec![Value::Int(0), Value::Int(0)]));
+    }
+
+    #[test]
+    fn builtin_safe_date_to_time_with_offset() {
+        let result =
+            builtin_safe_date_to_time(vec![Value::string("1970-01-01 00:00:00 -0100")]).unwrap();
+        assert_eq!(result, Value::list(vec![Value::Int(0), Value::Int(3600)]));
+    }
+
+    #[test]
+    fn builtin_safe_date_to_time_invalid_returns_zero() {
+        let result = builtin_safe_date_to_time(vec![Value::string("not a date")]).unwrap();
+        assert_eq!(result, Value::Int(0));
+    }
+
+    #[test]
+    fn builtin_safe_date_to_time_non_string_returns_zero() {
+        let result = builtin_safe_date_to_time(vec![Value::Nil]).unwrap();
+        assert_eq!(result, Value::Int(0));
     }
 
     #[test]
