@@ -54,41 +54,40 @@ pub(crate) fn builtin_documentation(
 ) -> EvalResult {
     expect_min_max_args("documentation", &args, 1, 2)?;
 
-    // Resolve the function value. FUNCTION may be a symbol, a lambda, or a
-    // compiled function directly.
-    let func_val = match &args[0] {
-        Value::Symbol(name) => {
-            // Look up the function cell via the obarray, following indirection.
-            match eval.obarray.indirect_function(name) {
-                Some(val) => val,
-                None => {
-                    // Also try the direct function cell without indirection.
-                    match eval.obarray.symbol_function(name) {
-                        Some(val) => val.clone(),
-                        None => return Ok(Value::Nil),
-                    }
-                }
-            }
+    // For symbols, Emacs consults the `function-documentation` property first.
+    // This can produce docs even when the function cell is non-callable.
+    if let Some(name) = args[0].as_symbol_name() {
+        if let Some(prop) = eval.obarray.get_property(name, "function-documentation") {
+            return Ok(prop.as_str().map_or(Value::Nil, Value::string));
         }
-        Value::Nil => {
-            // nil as a symbol — look up "nil" function cell.
-            return Ok(Value::Nil);
-        }
-        other => other.clone(),
-    };
 
-    // Extract the docstring from the resolved function value.
-    match &func_val {
+        let func_val = eval
+            .obarray
+            .indirect_function(name)
+            .or_else(|| eval.obarray.symbol_function(name).cloned());
+
+        let Some(func_val) = func_val else {
+            return Err(signal("void-function", vec![Value::symbol(name)]));
+        };
+
+        if func_val.is_nil() {
+            return Err(signal("void-function", vec![Value::symbol(name)]));
+        }
+
+        return function_doc_or_error(func_val);
+    }
+
+    function_doc_or_error(args[0].clone())
+}
+
+fn function_doc_or_error(func_val: Value) -> EvalResult {
+    match func_val {
         Value::Lambda(data) | Value::Macro(data) => match &data.docstring {
             Some(doc) => Ok(Value::string(doc.clone())),
             None => Ok(Value::Nil),
         },
-        Value::Subr(_) | Value::ByteCode(_) => {
-            // Built-in functions and bytecode don't carry docstrings in our
-            // implementation.
-            Ok(Value::Nil)
-        }
-        _ => Ok(Value::Nil),
+        Value::Subr(_) | Value::ByteCode(_) => Ok(Value::Nil),
+        other => Err(signal("invalid-function", vec![other])),
     }
 }
 
@@ -869,8 +868,7 @@ mod tests {
     fn documentation_unbound_function() {
         let mut evaluator = super::super::eval::Evaluator::new();
         let result = builtin_documentation(&mut evaluator, vec![Value::symbol("nonexistent")]);
-        assert!(result.is_ok());
-        assert!(result.unwrap().is_nil());
+        assert!(result.is_err());
     }
 
     #[test]
@@ -883,6 +881,40 @@ mod tests {
         let result = builtin_documentation(&mut evaluator, vec![Value::symbol("plus")]);
         assert!(result.is_ok());
         assert!(result.unwrap().is_nil());
+    }
+
+    #[test]
+    fn documentation_prefers_function_documentation_property() {
+        let mut evaluator = super::super::eval::Evaluator::new();
+        evaluator.obarray.set_symbol_function("doc-prop", Value::Int(7));
+        evaluator
+            .obarray
+            .put_property("doc-prop", "function-documentation", Value::string("propdoc"));
+
+        let result = builtin_documentation(&mut evaluator, vec![Value::symbol("doc-prop")]);
+        assert_eq!(result.unwrap().as_str(), Some("propdoc"));
+    }
+
+    #[test]
+    fn documentation_non_string_function_documentation_property_returns_nil() {
+        let mut evaluator = super::super::eval::Evaluator::new();
+        evaluator.obarray.set_symbol_function("doc-prop", Value::Int(7));
+        evaluator
+            .obarray
+            .put_property("doc-prop", "function-documentation", Value::Int(9));
+
+        let result = builtin_documentation(&mut evaluator, vec![Value::symbol("doc-prop")]);
+        assert!(result.unwrap().is_nil());
+    }
+
+    #[test]
+    fn documentation_non_symbol_non_function_errors_invalid_function() {
+        let mut evaluator = super::super::eval::Evaluator::new();
+        let result = builtin_documentation(
+            &mut evaluator,
+            vec![Value::list(vec![Value::Int(1), Value::Int(2)])],
+        );
+        assert!(result.is_err());
     }
 
     #[test]

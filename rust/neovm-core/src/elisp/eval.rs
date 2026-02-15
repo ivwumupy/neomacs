@@ -1086,12 +1086,16 @@ impl Evaluator {
             ));
         };
         let params = self.parse_lambda_params(&tail[1])?;
-        let body = tail[2..].to_vec();
+        let (docstring, body_start) = match tail.get(2) {
+            Some(Expr::Str(s)) => (Some(s.clone()), 3),
+            _ => (None, 2),
+        };
+        let body = tail[body_start..].to_vec();
         let macro_val = Value::Macro(std::sync::Arc::new(LambdaData {
             params,
             body,
             env: None,
-            docstring: None,
+            docstring,
         }));
         self.obarray.set_symbol_function(name, macro_val);
         Ok(Value::symbol(name.clone()))
@@ -1567,15 +1571,10 @@ impl Evaluator {
 
         let params = self.parse_lambda_params(&tail[0])?;
 
-        // Skip docstring if present
-        let body_start = if tail.len() > 2 {
-            if let Expr::Str(_) = &tail[1] {
-                2
-            } else {
-                1
-            }
-        } else {
-            1
+        // Extract docstring if present as the first body element.
+        let (docstring, body_start) = match tail.get(1) {
+            Some(Expr::Str(s)) => (Some(s.clone()), 2),
+            _ => (None, 1),
         };
 
         // Capture lexical environment for closures (when lexical-binding is on)
@@ -1589,7 +1588,7 @@ impl Evaluator {
             params,
             body: tail[body_start..].to_vec(),
             env,
-            docstring: None,
+            docstring,
         })))
     }
 
@@ -2252,6 +2251,33 @@ mod tests {
             eval_one("(equal #''(lambda) ''(lambda))"),
             "OK t"
         );
+    }
+
+    #[test]
+    fn lambda_captures_docstring_metadata() {
+        let forms = parse_forms("(lambda nil \"lambda-doc\" nil)").expect("parse");
+        let mut ev = Evaluator::new();
+        let value = ev.eval_expr(&forms[0]).expect("eval");
+        let Value::Lambda(data) = value else {
+            panic!("expected lambda value");
+        };
+        assert_eq!(data.docstring.as_deref(), Some("lambda-doc"));
+    }
+
+    #[test]
+    fn defmacro_captures_docstring_metadata() {
+        let forms = parse_forms("(defmacro vm-doc-macro (x) \"macro-doc\" x)").expect("parse");
+        let mut ev = Evaluator::new();
+        ev.eval_expr(&forms[0]).expect("eval defmacro");
+        let macro_val = ev
+            .obarray
+            .symbol_function("vm-doc-macro")
+            .cloned()
+            .expect("macro function cell");
+        let Value::Macro(data) = macro_val else {
+            panic!("expected macro value");
+        };
+        assert_eq!(data.docstring.as_deref(), Some("macro-doc"));
     }
 
     #[test]
