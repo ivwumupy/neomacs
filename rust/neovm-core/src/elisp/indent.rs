@@ -441,10 +441,12 @@ pub(crate) fn builtin_newline_and_indent(
 /// Reindent current line, insert newline, then indent the new line.
 /// Stub: does nothing, returns nil.
 pub(crate) fn builtin_reindent_then_newline_and_indent(
-    _eval: &mut super::eval::Evaluator,
+    eval: &mut super::eval::Evaluator,
     args: Vec<Value>,
 ) -> EvalResult {
     expect_args("reindent-then-newline-and-indent", &args, 0)?;
+    builtin_indent_according_to_mode(eval, vec![])?;
+    super::kill_ring::builtin_newline(eval, vec![])?;
     Ok(Value::Nil)
 }
 
@@ -476,10 +478,49 @@ pub(crate) fn builtin_indent_for_tab_command(
 /// Indent line in proper way for current major mode.
 /// Stub: does nothing, returns nil.
 pub(crate) fn builtin_indent_according_to_mode(
-    _eval: &mut super::eval::Evaluator,
+    eval: &mut super::eval::Evaluator,
     args: Vec<Value>,
 ) -> EvalResult {
-    expect_args("indent-according-to-mode", &args, 0)?;
+    expect_max_args("indent-according-to-mode", &args, 1)?;
+
+    let Some(buf) = eval.buffers.current_buffer() else {
+        return Ok(Value::Nil);
+    };
+    if buf.read_only {
+        return Err(signal(
+            "buffer-read-only",
+            vec![Value::string(buf.name.clone())],
+        ));
+    }
+
+    let text = buf.text.to_string();
+    let pt = buf.pt.clamp(buf.begv, buf.zv);
+    let (bol, eol) = line_bounds(&text, buf.begv, buf.zv, pt);
+    let line = &text[bol..eol];
+    let indent_len = line
+        .chars()
+        .take_while(|ch| *ch == ' ' || *ch == '\t')
+        .map(char::len_utf8)
+        .sum::<usize>();
+    if indent_len == 0 {
+        return Ok(Value::Nil);
+    }
+
+    let indent_end = bol + indent_len;
+    let new_pt = if pt <= bol {
+        pt
+    } else if pt <= indent_end {
+        bol
+    } else {
+        pt - indent_len
+    };
+
+    let Some(buf) = eval.buffers.current_buffer_mut() else {
+        return Ok(Value::Nil);
+    };
+    buf.delete_region(bol, indent_end);
+    buf.goto_char(new_pt);
+
     Ok(Value::Nil)
 }
 
@@ -806,6 +847,58 @@ mod tests {
 
         let fourth = ev.eval(&forms[3]).expect("eval indent-region non-numeric column");
         assert_eq!(fourth, Value::True);
+    }
+
+    #[test]
+    fn eval_indent_mode_subset() {
+        let mut ev = super::super::eval::Evaluator::new();
+        let forms = super::super::parser::parse_forms(
+            r#"
+            (with-temp-buffer
+              (insert (string 32 32 97))
+              (goto-char (point-max))
+              (indent-according-to-mode)
+              (string-to-list (buffer-string)))
+            (with-temp-buffer
+              (insert (string 32 32 97))
+              (goto-char (point-max))
+              (indent-according-to-mode)
+              (point))
+            (with-temp-buffer
+              (insert (string 32 32 97))
+              (goto-char (point-max))
+              (reindent-then-newline-and-indent)
+              (string-to-list (buffer-string)))
+            (with-temp-buffer
+              (insert (string 32 32 97))
+              (goto-char (point-max))
+              (reindent-then-newline-and-indent)
+              (point))
+            "#,
+        )
+        .expect("parse forms");
+
+        let first = ev.eval(&forms[0]).expect("eval indent-according-to-mode");
+        assert_eq!(
+            list_to_vec(&first).expect("first byte list"),
+            vec![Value::Int(97)]
+        );
+
+        let second = ev.eval(&forms[1]).expect("eval indent-according-to-mode point");
+        assert_eq!(second, Value::Int(2));
+
+        let third = ev
+            .eval(&forms[2])
+            .expect("eval reindent-then-newline-and-indent");
+        assert_eq!(
+            list_to_vec(&third).expect("third byte list"),
+            vec![Value::Int(97), Value::Int(10)]
+        );
+
+        let fourth = ev
+            .eval(&forms[3])
+            .expect("eval reindent-then-newline-and-indent point");
+        assert_eq!(fourth, Value::Int(3));
     }
 
     #[test]
