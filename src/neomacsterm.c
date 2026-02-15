@@ -1871,20 +1871,20 @@ neomacs_layout_get_window_params (void *frame_ptr, int window_index,
       params->default_bg = 0x00000000;
     }
 
+  /* Many variables below are buffer-local (face-remapping-alist,
+     show-trailing-whitespace, wrap-prefix, line-prefix, fill-column
+     indicator settings, etc.).  Their C globals (Vfoo) resolve through
+     current_buffer.  Switch to the window's buffer for the remainder
+     of this function so every window gets its own values.  */
+  struct buffer *old_buf = current_buffer;
+  if (BUFFERP (w->contents))
+    set_buffer_internal_1 (XBUFFER (w->contents));
+
   /* Character cell dimensions.
      Use the window's own default face font if available (respects
      text-scale-mode / buffer-face-mode via face-remapping-alist),
-     otherwise fall back to the frame font.
-
-     IMPORTANT: face-remapping-alist is buffer-local.  lookup_basic_face
-     reads Vface_remapping_alist which depends on current_buffer.  We must
-     temporarily switch to the window's buffer so each window gets its own
-     remapped default face, not the selected window's.  */
+     otherwise fall back to the frame font.  */
   {
-    struct buffer *old_buf = current_buffer;
-    if (BUFFERP (w->contents))
-      set_buffer_internal_1 (XBUFFER (w->contents));
-
     int def_face_id = lookup_basic_face (w, f, DEFAULT_FACE_ID);
     struct face *wface = FACE_FROM_ID_OR_NULL (f, def_face_id);
     if (wface && wface->font)
@@ -1906,7 +1906,6 @@ neomacs_layout_get_window_params (void *frame_ptr, int window_index,
           ? (float) FONT_BASE (FRAME_FONT (f)) : 12.0f;
       }
 
-    set_buffer_internal_1 (old_buf);
   }
 
   /* Special line heights.
@@ -2123,6 +2122,7 @@ neomacs_layout_get_window_params (void *frame_ptr, int window_index,
       params->line_prefix_len = (int) copy_len;
     }
 
+  set_buffer_internal_1 (old_buf);
   return 0;
 }
 
@@ -3313,6 +3313,12 @@ neomacs_layout_line_number_face (void *window_ptr,
 
   struct frame *f = XFRAME (w->frame);
 
+  /* merge_faces reads Vface_remapping_alist (buffer-local).
+     Switch to the window's buffer so the correct remapping is used.  */
+  struct buffer *old = current_buffer;
+  if (BUFFERP (w->contents))
+    set_buffer_internal_1 (XBUFFER (w->contents));
+
   /* Choose face symbol.  */
   Lisp_Object face_name = Qline_number;
   if (is_current)
@@ -3330,6 +3336,7 @@ neomacs_layout_line_number_face (void *window_ptr,
   if (face && face_out)
     fill_face_data (f, face, (struct FaceDataFFI *) face_out);
 
+  set_buffer_internal_1 (old);
   return 0;
 }
 
