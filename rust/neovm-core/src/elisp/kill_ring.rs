@@ -54,6 +54,11 @@ fn expect_max_args(name: &str, args: &[Value], max: usize) -> Result<(), Flow> {
     }
 }
 
+fn expect_min_max_args(name: &str, args: &[Value], min: usize, max: usize) -> Result<(), Flow> {
+    expect_min_args(name, args, min)?;
+    expect_max_args(name, args, max)
+}
+
 fn expect_int(value: &Value) -> Result<i64, Flow> {
     match value {
         Value::Int(n) => Ok(*n),
@@ -495,20 +500,50 @@ impl KillRing {
 // Buffer helper: resolve BEG END from arguments (Emacs convention)
 // ===========================================================================
 
-/// Resolve (beg, end) byte positions from two integer args, ensuring beg <= end
-/// and both are within the accessible region.
+/// Resolve (beg, end) byte positions from Emacs-style 1-based character
+/// positions, ensuring beg <= end and both are within the accessible region.
 fn resolve_region(buf: &Buffer, beg: i64, end: i64) -> (usize, usize) {
-    // Emacs uses 1-based character positions; our buffer uses 0-based byte positions.
-    // The builtins in this codebase accept 0-based byte positions directly.
-    let mut a = beg.max(0) as usize;
-    let mut b = end.max(0) as usize;
-    // Clamp to accessible region.
-    a = a.clamp(buf.point_min(), buf.point_max());
-    b = b.clamp(buf.point_min(), buf.point_max());
+    let point_min = buf.text.byte_to_char(buf.point_min()) as i64 + 1;
+    let point_max = buf.text.byte_to_char(buf.point_max()) as i64 + 1;
+
+    let mut a = beg.clamp(point_min, point_max);
+    let mut b = end.clamp(point_min, point_max);
     if a > b {
         std::mem::swap(&mut a, &mut b);
     }
-    (a, b)
+
+    // Convert 1-based character positions to 0-based byte positions.
+    let a_byte = buf.text.char_to_byte((a - 1).max(0) as usize);
+    let b_byte = buf.text.char_to_byte((b - 1).max(0) as usize);
+    (a_byte, b_byte)
+}
+
+/// Resolve case-region bounds.
+/// When REGION-NONCONTIGUOUS-P is non-nil, Emacs ignores BEG/END and uses the
+/// active point/mark region instead.
+fn resolve_case_region(
+    eval: &super::eval::Evaluator,
+    beg: i64,
+    end: i64,
+    arg: Option<&Value>,
+) -> Result<(usize, usize), Flow> {
+    let buf = eval
+        .buffers
+        .current_buffer()
+        .ok_or_else(|| signal("error", vec![Value::string("No current buffer")]))?;
+
+    if arg.is_some_and(|v| !v.is_nil()) {
+        let mark = buf.mark().ok_or_else(|| {
+            signal(
+                "error",
+                vec![Value::string("The mark is not set now, so there is no region")],
+            )
+        })?;
+        let pt = buf.point();
+        return Ok((pt.min(mark), pt.max(mark)));
+    }
+
+    Ok(resolve_region(buf, beg, end))
 }
 
 // ===========================================================================
@@ -1041,12 +1076,13 @@ pub(crate) fn builtin_yank_pop(eval: &mut super::eval::Evaluator, args: Vec<Valu
 // Case commands
 // ===========================================================================
 
-/// `(downcase-region BEG END)` — convert the region to lower case.
+/// `(downcase-region BEG END &optional REGION-NONCONTIGUOUS-P)` — convert the
+/// region to lower case.
 pub(crate) fn builtin_downcase_region(
     eval: &mut super::eval::Evaluator,
     args: Vec<Value>,
 ) -> EvalResult {
-    expect_args("downcase-region", &args, 2)?;
+    expect_min_max_args("downcase-region", &args, 2, 3)?;
     let beg_val = expect_int(&args[0])?;
     let end_val = expect_int(&args[1])?;
 
@@ -1062,7 +1098,7 @@ pub(crate) fn builtin_downcase_region(
         ));
     }
 
-    let (beg, end) = resolve_region(buf, beg_val, end_val);
+    let (beg, end) = resolve_case_region(eval, beg_val, end_val, args.get(2))?;
     let text = buf.buffer_substring(beg, end);
     let lower = text.to_lowercase();
 
@@ -1083,12 +1119,13 @@ pub(crate) fn builtin_downcase_region(
     Ok(Value::Nil)
 }
 
-/// `(upcase-region BEG END)` — convert the region to upper case.
+/// `(upcase-region BEG END &optional REGION-NONCONTIGUOUS-P)` — convert the
+/// region to upper case.
 pub(crate) fn builtin_upcase_region(
     eval: &mut super::eval::Evaluator,
     args: Vec<Value>,
 ) -> EvalResult {
-    expect_args("upcase-region", &args, 2)?;
+    expect_min_max_args("upcase-region", &args, 2, 3)?;
     let beg_val = expect_int(&args[0])?;
     let end_val = expect_int(&args[1])?;
 
@@ -1104,7 +1141,7 @@ pub(crate) fn builtin_upcase_region(
         ));
     }
 
-    let (beg, end) = resolve_region(buf, beg_val, end_val);
+    let (beg, end) = resolve_case_region(eval, beg_val, end_val, args.get(2))?;
     let text = buf.buffer_substring(beg, end);
     let upper = text.to_uppercase();
 
@@ -1125,12 +1162,13 @@ pub(crate) fn builtin_upcase_region(
     Ok(Value::Nil)
 }
 
-/// `(capitalize-region BEG END)` — capitalize each word in the region.
+/// `(capitalize-region BEG END &optional REGION-NONCONTIGUOUS-P)` — capitalize
+/// each word in the region.
 pub(crate) fn builtin_capitalize_region(
     eval: &mut super::eval::Evaluator,
     args: Vec<Value>,
 ) -> EvalResult {
-    expect_args("capitalize-region", &args, 2)?;
+    expect_min_max_args("capitalize-region", &args, 2, 3)?;
     let beg_val = expect_int(&args[0])?;
     let end_val = expect_int(&args[1])?;
 
@@ -1146,7 +1184,7 @@ pub(crate) fn builtin_capitalize_region(
         ));
     }
 
-    let (beg, end) = resolve_region(buf, beg_val, end_val);
+    let (beg, end) = resolve_case_region(eval, beg_val, end_val, args.get(2))?;
     let text = buf.buffer_substring(beg, end);
 
     // Capitalize each word: first letter upper, rest lower.
@@ -2770,7 +2808,7 @@ mod tests {
     fn kill_region_basic() {
         let results = eval_all(
             r#"(insert "hello world")
-               (kill-region 0 5)
+               (kill-region 1 6)
                (buffer-string)"#,
         );
         assert_eq!(results[2], r#"OK " world""#);
@@ -2780,7 +2818,7 @@ mod tests {
     fn kill_region_adds_to_kill_ring() {
         let results = eval_all(
             r#"(insert "hello world")
-               (kill-region 0 5)
+               (kill-region 1 6)
                (current-kill 0)"#,
         );
         assert_eq!(results[2], r#"OK "hello""#);
@@ -2792,7 +2830,7 @@ mod tests {
     fn kill_ring_save_basic() {
         let results = eval_all(
             r#"(insert "hello world")
-               (kill-ring-save 0 5)
+               (kill-ring-save 1 6)
                (buffer-string)
                (current-kill 0)"#,
         );
@@ -2945,7 +2983,7 @@ mod tests {
     fn downcase_region_basic() {
         let results = eval_all(
             r#"(insert "HELLO WORLD")
-               (downcase-region 0 11)
+               (downcase-region 1 12)
                (buffer-string)"#,
         );
         assert_eq!(results[2], r#"OK "hello world""#);
@@ -2957,7 +2995,7 @@ mod tests {
     fn upcase_region_basic() {
         let results = eval_all(
             r#"(insert "hello world")
-               (upcase-region 0 11)
+               (upcase-region 1 12)
                (buffer-string)"#,
         );
         assert_eq!(results[2], r#"OK "HELLO WORLD""#);
@@ -2969,7 +3007,7 @@ mod tests {
     fn capitalize_region_basic() {
         let results = eval_all(
             r#"(insert "hello world")
-               (capitalize-region 0 11)
+               (capitalize-region 1 12)
                (buffer-string)"#,
         );
         assert_eq!(results[2], r#"OK "Hello World""#);
@@ -2979,10 +3017,32 @@ mod tests {
     fn upcase_initials_region_basic() {
         let results = eval_all(
             r#"(insert "hELLo wORLD")
-               (upcase-initials-region 0 11)
+               (upcase-initials-region 1 12)
                (buffer-string)"#,
         );
         assert_eq!(results[2], r#"OK "HELLo WORLD""#);
+    }
+
+    #[test]
+    fn upcase_region_noncontiguous_requires_mark() {
+        let result = eval_one(
+            r#"(with-temp-buffer
+                 (insert "abc")
+                 (upcase-region 1 3 t))"#,
+        );
+        assert!(result.starts_with("ERR (error"));
+        assert!(result.contains("The mark is not set now, so there is no region"));
+    }
+
+    #[test]
+    fn upcase_region_noncontiguous_accepts_live_mark() {
+        let results = eval_all(
+            r#"(insert "abc")
+               (set-mark 2)
+               (upcase-region 1 3 t)
+               (buffer-string)"#,
+        );
+        assert_eq!(results[3], r#"OK "aBC""#);
     }
 
     // -- downcase-word tests --
@@ -3341,7 +3401,7 @@ mod tests {
     fn indent_rigidly_forward() {
         let results = eval_all(
             r#"(insert "a\nb\nc")
-               (indent-rigidly 0 5 2)
+               (indent-rigidly 1 6 2)
                (buffer-string)"#,
         );
         assert_eq!(results[2], r#"OK "  a\n  b\n  c""#);
@@ -3351,7 +3411,7 @@ mod tests {
     fn indent_rigidly_backward() {
         let results = eval_all(
             r#"(insert "  a\n  b\n  c")
-               (indent-rigidly 0 11 -2)
+               (indent-rigidly 1 12 -2)
                (buffer-string)"#,
         );
         assert_eq!(results[2], r#"OK "a\nb\nc""#);
@@ -3363,7 +3423,7 @@ mod tests {
     fn copy_region_as_kill_basic() {
         let results = eval_all(
             r#"(insert "hello world")
-               (copy-region-as-kill 0 5)
+               (copy-region-as-kill 1 6)
                (buffer-string)
                (current-kill 0)"#,
         );

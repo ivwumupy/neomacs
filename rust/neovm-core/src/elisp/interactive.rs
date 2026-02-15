@@ -436,7 +436,10 @@ fn interactive_region_args(eval: &Evaluator, missing_mark_signal: &str) -> Resul
     let pt = buf.point();
     let beg = pt.min(mark);
     let end = pt.max(mark);
-    Ok(vec![Value::Int(beg as i64), Value::Int(end as i64)])
+    // Region-taking builtins use Emacs-style 1-based character positions.
+    let beg_char = buf.text.byte_to_char(beg) as i64 + 1;
+    let end_char = buf.text.byte_to_char(end) as i64 + 1;
+    Ok(vec![Value::Int(beg_char), Value::Int(end_char)])
 }
 
 fn default_command_execute_args(eval: &Evaluator, name: &str) -> Result<Vec<Value>, Flow> {
