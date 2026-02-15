@@ -87,9 +87,17 @@ Last updated: 2026-02-15
   - `json-parse-buffer` now parses from current point, allows trailing content, and advances point to the end of parsed value
   - `json-insert` now uses `json-serialize` keyword semantics (`:null-object`, `:false-object`)
   - dispatch for `json-parse-buffer` / `json-insert` now routes to `elisp/json.rs` implementations
+- Aligned JSON keyword-argument error semantics with Emacs:
+  - odd JSON plist tails now signal `(wrong-type-argument plistp ...)`
+  - unknown JSON keyword args now signal `error` with Emacs-compatible message + offending value payload
+  - invalid `:array-type` / `:object-type` values now signal Emacs-compatible `error` payloads
 - Added and enabled new oracle corpus:
   - `test/neovm/vm-compat/cases/json-buffer-semantics.forms`
   - `test/neovm/vm-compat/cases/json-buffer-semantics.expected.tsv`
+  - wired into `test/neovm/vm-compat/cases/default.list`
+- Added and enabled new oracle corpus:
+  - `test/neovm/vm-compat/cases/json-keyword-errors.forms`
+  - `test/neovm/vm-compat/cases/json-keyword-errors.expected.tsv`
   - wired into `test/neovm/vm-compat/cases/default.list`
 - Kept branch green with targeted Rust tests and vm-compat checks after each slice.
 
