@@ -4,6 +4,16 @@ Last updated: 2026-02-15
 
 ## Done
 
+- Implemented `exit-recursive-edit` compatibility slice:
+  - replaced nil stub behavior with GNU-compatible `user-error` in batch when no recursive edit is active
+  - added and enabled oracle corpus:
+    - `test/neovm/vm-compat/cases/exit-recursive-edit-semantics.forms`
+    - `test/neovm/vm-compat/cases/exit-recursive-edit-semantics.expected.tsv`
+    - wired into `test/neovm/vm-compat/cases/default.list`
+  - verified:
+    - `cargo test builtin_exit_recursive_edit -- --nocapture` (pass)
+    - `make -C test/neovm/vm-compat check-neovm FORMS=cases/exit-recursive-edit-semantics.forms EXPECTED=cases/exit-recursive-edit-semantics.expected.tsv` (pass)
+    - `make -C test/neovm/vm-compat validate-case-lists` (pass)
 - Implemented `posix-search-*` / `word-search-*` evaluator fallback slice:
   - replaced nil-stub dispatch paths by routing:
     - `posix-search-forward` / `posix-search-backward` -> evaluator regex search paths
