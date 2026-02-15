@@ -8,6 +8,7 @@ use super::error::{signal, EvalResult, Flow};
 use super::value::*;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 thread_local! {
@@ -18,6 +19,7 @@ thread_local! {
 
 const TERMINAL_NAME: &str = "initial_terminal";
 const TERMINAL_ID: u64 = 0;
+static CURSOR_VISIBLE: AtomicBool = AtomicBool::new(true);
 
 // ---------------------------------------------------------------------------
 // Argument helpers
@@ -94,6 +96,17 @@ fn expect_frame_designator(value: &Value) -> Result<(), Flow> {
     }
 }
 
+fn expect_window_designator(value: &Value) -> Result<(), Flow> {
+    if value.is_nil() {
+        Ok(())
+    } else {
+        Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("windowp"), value.clone()],
+        ))
+    }
+}
+
 fn terminal_handle_value() -> Value {
     TERMINAL_HANDLE.with(|handle| Value::Vector(handle.clone()))
 }
@@ -133,6 +146,9 @@ fn make_alist(pairs: Vec<(Value, Value)>) -> Value {
 /// (redraw-frame &optional FRAME) -> nil
 pub(crate) fn builtin_redraw_frame(args: Vec<Value>) -> EvalResult {
     expect_range_args("redraw-frame", &args, 0, 1)?;
+    if let Some(frame) = args.first() {
+        expect_frame_designator(frame)?;
+    }
     Ok(Value::Nil)
 }
 
@@ -149,7 +165,7 @@ pub(crate) fn builtin_open_termscript(args: Vec<Value>) -> EvalResult {
     expect_args("open-termscript", &args, 1)?;
     Err(signal(
         "error",
-        vec![Value::string("Terminal script output is unsupported")],
+        vec![Value::string("Current frame is not on a tty device")],
     ))
 }
 
@@ -163,7 +179,12 @@ pub(crate) fn builtin_ding(args: Vec<Value>) -> EvalResult {
 pub(crate) fn builtin_send_string_to_terminal(args: Vec<Value>) -> EvalResult {
     expect_range_args("send-string-to-terminal", &args, 1, 2)?;
     match &args[0] {
-        Value::Str(_) => Ok(Value::Nil),
+        Value::Str(_) => {
+            if let Some(terminal) = args.get(1) {
+                expect_terminal_designator(terminal)?;
+            }
+            Ok(Value::Nil)
+        }
         other => Err(signal(
             "wrong-type-argument",
             vec![Value::symbol("stringp"), other.clone()],
@@ -174,13 +195,18 @@ pub(crate) fn builtin_send_string_to_terminal(args: Vec<Value>) -> EvalResult {
 /// (internal-show-cursor WINDOW SHOW) -> nil
 pub(crate) fn builtin_internal_show_cursor(args: Vec<Value>) -> EvalResult {
     expect_args("internal-show-cursor", &args, 2)?;
+    expect_window_designator(&args[0])?;
+    CURSOR_VISIBLE.store(!args[1].is_nil(), Ordering::Relaxed);
     Ok(Value::Nil)
 }
 
-/// (internal-show-cursor-p &optional WINDOW) -> nil
+/// (internal-show-cursor-p &optional WINDOW) -> t/nil
 pub(crate) fn builtin_internal_show_cursor_p(args: Vec<Value>) -> EvalResult {
     expect_range_args("internal-show-cursor-p", &args, 0, 1)?;
-    Ok(Value::Nil)
+    if let Some(window) = args.first() {
+        expect_window_designator(window)?;
+    }
+    Ok(Value::bool(CURSOR_VISIBLE.load(Ordering::Relaxed)))
 }
 
 /// (display-graphic-p &optional DISPLAY) -> nil in batch-style vm context.
@@ -515,6 +541,10 @@ mod tests {
         TERMINAL_PARAMS.with(|slot| slot.borrow_mut().clear());
     }
 
+    fn reset_cursor_visible() {
+        CURSOR_VISIBLE.store(true, Ordering::Relaxed);
+    }
+
     #[test]
     fn terminal_parameter_defaults_to_nil() {
         clear_terminal_parameters();
@@ -615,6 +645,58 @@ mod tests {
         let handle = builtin_frame_terminal(vec![Value::Nil]).unwrap();
         let live = builtin_terminal_live_p(vec![handle]).unwrap();
         assert_eq!(live, Value::True);
+    }
+
+    #[test]
+    fn redraw_frame_rejects_non_frame_designator() {
+        let result = builtin_redraw_frame(vec![Value::Int(1)]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn open_termscript_uses_batch_tty_error_payload() {
+        let result = builtin_open_termscript(vec![Value::Nil]);
+        match result {
+            Err(Flow::Signal(sig)) => {
+                assert_eq!(sig.symbol, "error");
+                assert_eq!(sig.data, vec![Value::string("Current frame is not on a tty device")]);
+            }
+            other => panic!("expected error signal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn send_string_to_terminal_rejects_invalid_terminal_designator() {
+        let result = builtin_send_string_to_terminal(vec![Value::string(""), Value::Int(1)]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn send_string_to_terminal_accepts_live_terminal_handle() {
+        let handle = terminal_handle_value();
+        let result = builtin_send_string_to_terminal(vec![Value::string(""), handle]).unwrap();
+        assert!(result.is_nil());
+    }
+
+    #[test]
+    fn internal_show_cursor_tracks_visibility_state() {
+        reset_cursor_visible();
+        let default_visible = builtin_internal_show_cursor_p(vec![]).unwrap();
+        assert_eq!(default_visible, Value::True);
+
+        builtin_internal_show_cursor(vec![Value::Nil, Value::Nil]).unwrap();
+        let hidden = builtin_internal_show_cursor_p(vec![]).unwrap();
+        assert!(hidden.is_nil());
+
+        builtin_internal_show_cursor(vec![Value::Nil, Value::True]).unwrap();
+        let visible = builtin_internal_show_cursor_p(vec![]).unwrap();
+        assert_eq!(visible, Value::True);
+    }
+
+    #[test]
+    fn internal_show_cursor_rejects_non_window_designator() {
+        let result = builtin_internal_show_cursor(vec![Value::Int(1), Value::Nil]);
+        assert!(result.is_err());
     }
 
     #[test]
