@@ -216,19 +216,29 @@ pub(crate) fn builtin_font_put(args: Vec<Value>) -> EvalResult {
     }
 }
 
-/// `(list-fonts FONT-SPEC &optional FRAME MAXNUM PREFER)` -- stub, return nil.
-///
-/// In a real implementation this would query the system font database.
+/// `(list-fonts FONT-SPEC &optional FRAME MAXNUM PREFER)` -- batch stub.
 pub(crate) fn builtin_list_fonts(args: Vec<Value>) -> EvalResult {
     expect_min_args("list-fonts", &args, 1)?;
     expect_max_args("list-fonts", &args, 4)?;
+    if !is_font_spec(&args[0]) {
+        return Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("font-spec"), args[0].clone()],
+        ));
+    }
     Ok(Value::Nil)
 }
 
-/// `(find-font FONT-SPEC &optional FRAME)` -- stub, return nil.
+/// `(find-font FONT-SPEC &optional FRAME)` -- batch stub.
 pub(crate) fn builtin_find_font(args: Vec<Value>) -> EvalResult {
     expect_min_args("find-font", &args, 1)?;
     expect_max_args("find-font", &args, 2)?;
+    if !is_font_spec(&args[0]) {
+        return Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("font-spec"), args[0].clone()],
+        ));
+    }
     Ok(Value::Nil)
 }
 
@@ -238,27 +248,18 @@ pub(crate) fn builtin_clear_font_cache(args: Vec<Value>) -> EvalResult {
     Ok(Value::Nil)
 }
 
-/// `(font-family-list &optional FRAME)` -- return a list of font family names.
-///
-/// Stub implementation returns a handful of common defaults so that Elisp code
-/// that iterates font families does not crash.
+/// `(font-family-list &optional FRAME)` -- batch stub.
 pub(crate) fn builtin_font_family_list(args: Vec<Value>) -> EvalResult {
     expect_max_args("font-family-list", &args, 1)?;
-    let families = vec![
-        "Monospace",
-        "Sans Serif",
-        "Serif",
-        "Courier",
-        "Courier New",
-        "Helvetica",
-        "Arial",
-        "Times New Roman",
-        "DejaVu Sans Mono",
-        "Liberation Mono",
-    ];
-    Ok(Value::list(
-        families.into_iter().map(Value::string).collect(),
-    ))
+    if let Some(frame) = args.first() {
+        if !frame.is_nil() {
+            return Err(signal(
+                "wrong-type-argument",
+                vec![Value::symbol("frame-live-p"), frame.clone()],
+            ));
+        }
+    }
+    Ok(Value::Nil)
 }
 
 /// `(font-xlfd-name FONT &optional FOLD-WILDCARDS)` -- stub, return "*".
@@ -633,6 +634,12 @@ mod tests {
     }
 
     #[test]
+    fn list_fonts_rejects_non_font_spec() {
+        let result = builtin_list_fonts(vec![Value::Nil]);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn find_font_stub() {
         let result = builtin_find_font(vec![Value::vector(vec![Value::Keyword(
             FONT_SPEC_TAG.to_string(),
@@ -642,15 +649,26 @@ mod tests {
     }
 
     #[test]
+    fn find_font_rejects_non_font_spec() {
+        let result = builtin_find_font(vec![Value::Nil]);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn clear_font_cache_stub() {
         assert!(builtin_clear_font_cache(vec![]).unwrap().is_nil());
     }
 
     #[test]
-    fn font_family_list_returns_non_empty() {
+    fn font_family_list_batch_returns_nil() {
         let result = builtin_font_family_list(vec![]).unwrap();
-        assert!(result.is_list());
-        assert!(!result.is_nil());
+        assert!(result.is_nil());
+    }
+
+    #[test]
+    fn font_family_list_rejects_non_nil_frame_designator() {
+        let result = builtin_font_family_list(vec![Value::Int(1)]);
+        assert!(result.is_err());
     }
 
     #[test]
