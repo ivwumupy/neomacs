@@ -4,6 +4,26 @@ Last updated: 2026-02-15
 
 ## Done
 
+- Implemented `make-symbolic-link` compatibility slice:
+  - added pure + evaluator-aware builtins in `rust/neovm-core/src/elisp/fileio.rs`:
+    - `builtin_make_symbolic_link`
+    - `builtin_make_symbolic_link_eval`
+  - semantics aligned with oracle subset on Unix:
+    - arity `2..3`
+    - `stringp` validation for `TARGET` and `LINKNAME`
+    - optional `OK-IF-ALREADY-EXISTS` support by replacing existing linkname
+    - relative path resolution against eval-time `default-directory` in evaluator path
+  - registered and dispatched `make-symbolic-link` in:
+    - `rust/neovm-core/src/elisp/builtins.rs`
+    - `rust/neovm-core/src/elisp/builtin_registry.rs`
+  - added and enabled oracle corpus:
+    - `test/neovm/vm-compat/cases/make-symbolic-link-semantics.forms`
+    - `test/neovm/vm-compat/cases/make-symbolic-link-semantics.expected.tsv`
+    - wired into `test/neovm/vm-compat/cases/default.list`
+  - verified:
+    - `cargo test --manifest-path rust/neovm-core/Cargo.toml make_symbolic_link -- --nocapture` (pass)
+    - `make -C test/neovm/vm-compat check-neovm FORMS=cases/make-symbolic-link-semantics.forms EXPECTED=cases/make-symbolic-link-semantics.expected.tsv` (pass, 7/7)
+    - `make -C test/neovm/vm-compat validate-case-lists` (pass)
 - Implemented `delete-directory` compatibility slice:
   - added pure + evaluator-aware builtins in `rust/neovm-core/src/elisp/fileio.rs`:
     - `builtin_delete_directory`

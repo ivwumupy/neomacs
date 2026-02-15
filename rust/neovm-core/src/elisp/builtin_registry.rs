@@ -464,6 +464,7 @@ const DISPATCH_BUILTIN_NAMES: &[&str] = &[
     "make-overlay",
     "make-sparse-keymap",
     "make-symbol",
+    "make-symbolic-link",
     "make-syntax-table",
     "make-temp-file",
     "make-thread",

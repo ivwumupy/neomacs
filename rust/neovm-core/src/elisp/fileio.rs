@@ -1278,6 +1278,85 @@ pub(crate) fn builtin_delete_directory_eval(eval: &Evaluator, args: Vec<Value>) 
     Ok(Value::Nil)
 }
 
+/// (make-symbolic-link TARGET LINKNAME &optional OK-IF-ALREADY-EXISTS) -> nil
+pub(crate) fn builtin_make_symbolic_link(args: Vec<Value>) -> EvalResult {
+    expect_min_args("make-symbolic-link", &args, 2)?;
+    if args.len() > 3 {
+        return Err(signal(
+            "wrong-number-of-arguments",
+            vec![
+                Value::symbol("make-symbolic-link"),
+                Value::Int(args.len() as i64),
+            ],
+        ));
+    }
+    let target = expect_string_strict(&args[0])?;
+    let linkname = expect_string_strict(&args[1])?;
+    let ok_if_exists = args.get(2).is_some_and(|value| value.is_truthy());
+
+    #[cfg(unix)]
+    {
+        if ok_if_exists {
+            if fs::symlink_metadata(&linkname).is_ok() {
+                fs::remove_file(&linkname)
+                    .map_err(|err| signal_file_io_path(err, "Removing old name", &linkname))?;
+            }
+        }
+        std::os::unix::fs::symlink(&target, &linkname)
+            .map_err(|err| signal_file_io_path(err, "Making symbolic link", &linkname))?;
+        Ok(Value::Nil)
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = (target, linkname, ok_if_exists);
+        Err(signal(
+            "file-error",
+            vec![Value::string("Symbolic links are unsupported on this platform")],
+        ))
+    }
+}
+
+/// Evaluator-aware variant of `make-symbolic-link` that resolves relative
+/// target/link paths against dynamic/default `default-directory`.
+pub(crate) fn builtin_make_symbolic_link_eval(eval: &Evaluator, args: Vec<Value>) -> EvalResult {
+    expect_min_args("make-symbolic-link", &args, 2)?;
+    if args.len() > 3 {
+        return Err(signal(
+            "wrong-number-of-arguments",
+            vec![
+                Value::symbol("make-symbolic-link"),
+                Value::Int(args.len() as i64),
+            ],
+        ));
+    }
+    let target = resolve_filename_for_eval(eval, &expect_string_strict(&args[0])?);
+    let linkname = resolve_filename_for_eval(eval, &expect_string_strict(&args[1])?);
+    let ok_if_exists = args.get(2).is_some_and(|value| value.is_truthy());
+
+    #[cfg(unix)]
+    {
+        if ok_if_exists {
+            if fs::symlink_metadata(&linkname).is_ok() {
+                fs::remove_file(&linkname)
+                    .map_err(|err| signal_file_io_path(err, "Removing old name", &linkname))?;
+            }
+        }
+        std::os::unix::fs::symlink(&target, &linkname)
+            .map_err(|err| signal_file_io_path(err, "Making symbolic link", &linkname))?;
+        Ok(Value::Nil)
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = (target, linkname, ok_if_exists);
+        Err(signal(
+            "file-error",
+            vec![Value::string("Symbolic links are unsupported on this platform")],
+        ))
+    }
+}
+
 /// (rename-file FROM TO) -> nil
 pub(crate) fn builtin_rename_file(args: Vec<Value>) -> EvalResult {
     expect_args("rename-file", &args, 2)?;
@@ -2003,6 +2082,73 @@ mod tests {
         builtin_delete_directory_eval(&eval, vec![Value::string("child")]).unwrap();
         assert!(!child.exists());
 
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_builtin_make_symbolic_link_core_semantics() {
+        let base = std::env::temp_dir().join("neovm-symlink-test");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        let target = base.join("target.txt");
+        let link = base.join("link.txt");
+        fs::write(&target, b"x").unwrap();
+        let target_str = target.to_string_lossy().to_string();
+        let link_str = link.to_string_lossy().to_string();
+
+        assert_eq!(
+            builtin_make_symbolic_link(vec![Value::string(&target_str), Value::string(&link_str)])
+                .unwrap(),
+            Value::Nil
+        );
+        assert!(file_symlink_p(&link_str));
+
+        let err =
+            builtin_make_symbolic_link(vec![Value::string(&target_str), Value::string(&link_str)])
+                .unwrap_err();
+        match err {
+            Flow::Signal(sig) => assert_eq!(sig.symbol, "file-already-exists"),
+            other => panic!("expected signal, got {:?}", other),
+        }
+
+        assert_eq!(
+            builtin_make_symbolic_link(vec![
+                Value::string(&target_str),
+                Value::string(&link_str),
+                Value::True,
+            ])
+            .unwrap(),
+            Value::Nil
+        );
+
+        delete_file(&link_str).unwrap();
+        delete_file(&target_str).unwrap();
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_builtin_make_symbolic_link_eval_uses_default_directory() {
+        let base = std::env::temp_dir().join("neovm-symlink-eval");
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(&base).unwrap();
+        let mut eval = Evaluator::new();
+        eval.obarray.set_symbol_value(
+            "default-directory",
+            Value::string(format!("{}/", base.to_string_lossy())),
+        );
+
+        fs::write(base.join("target.txt"), b"x").unwrap();
+        builtin_make_symbolic_link_eval(
+            &eval,
+            vec![Value::string("target.txt"), Value::string("link.txt")],
+        )
+        .unwrap();
+        assert!(file_symlink_p(&base.join("link.txt").to_string_lossy()));
+
+        delete_file(&base.join("link.txt").to_string_lossy()).unwrap();
+        delete_file(&base.join("target.txt").to_string_lossy()).unwrap();
         let _ = fs::remove_dir_all(base);
     }
 
