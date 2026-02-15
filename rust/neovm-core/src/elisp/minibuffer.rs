@@ -635,7 +635,22 @@ pub(crate) fn builtin_read_file_name(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-file-name", &args, 1)?;
     expect_max_args("read-file-name", &args, 6)?;
     let _prompt = expect_string(&args[0])?;
-    Err(signal("end-of-file", vec![]))
+    if let Some(dir) = args.get(1) {
+        if !dir.is_nil() {
+            let _ = expect_string(dir)?;
+        }
+    }
+    if let Some(default) = args.get(2) {
+        if !default.is_nil() {
+            let _ = expect_string(default)?;
+        }
+    }
+    if let Some(initial) = args.get(4) {
+        if !initial.is_nil() {
+            let _ = expect_string(initial)?;
+        }
+    }
+    Err(end_of_file_stdin_error())
 }
 
 /// `(read-directory-name PROMPT &optional DIR DEFAULT MUSTMATCH INITIAL)`
@@ -645,7 +660,22 @@ pub(crate) fn builtin_read_directory_name(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-directory-name", &args, 1)?;
     expect_max_args("read-directory-name", &args, 5)?;
     let _prompt = expect_string(&args[0])?;
-    Err(signal("end-of-file", vec![]))
+    if let Some(dir) = args.get(1) {
+        if !dir.is_nil() {
+            let _ = expect_string(dir)?;
+        }
+    }
+    if let Some(default) = args.get(2) {
+        if !default.is_nil() {
+            let _ = expect_string(default)?;
+        }
+    }
+    if let Some(initial) = args.get(4) {
+        if !initial.is_nil() {
+            let _ = expect_string(initial)?;
+        }
+    }
+    Err(end_of_file_stdin_error())
 }
 
 /// `(read-buffer PROMPT &optional DEFAULT REQUIRE-MATCH PREDICATE)`
@@ -655,7 +685,7 @@ pub(crate) fn builtin_read_buffer(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-buffer", &args, 1)?;
     expect_max_args("read-buffer", &args, 4)?;
     let _prompt = expect_string(&args[0])?;
-    Err(signal("end-of-file", vec![]))
+    Err(end_of_file_stdin_error())
 }
 
 /// `(read-command PROMPT &optional DEFAULT)`
@@ -665,7 +695,7 @@ pub(crate) fn builtin_read_command(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-command", &args, 1)?;
     expect_max_args("read-command", &args, 2)?;
     let _prompt = expect_string(&args[0])?;
-    Err(signal("end-of-file", vec![]))
+    Err(end_of_file_stdin_error())
 }
 
 /// `(read-variable PROMPT &optional DEFAULT)`
@@ -675,7 +705,7 @@ pub(crate) fn builtin_read_variable(args: Vec<Value>) -> EvalResult {
     expect_min_args("read-variable", &args, 1)?;
     expect_max_args("read-variable", &args, 2)?;
     let _prompt = expect_string(&args[0])?;
-    Err(signal("end-of-file", vec![]))
+    Err(end_of_file_stdin_error())
 }
 
 /// `(try-completion STRING COLLECTION &optional PREDICATE)`
@@ -916,6 +946,13 @@ fn value_to_string_list(val: &Value) -> Vec<String> {
         }
         _ => Vec::new(),
     }
+}
+
+fn end_of_file_stdin_error() -> Flow {
+    signal(
+        "end-of-file",
+        vec![Value::string("Error reading from stdin")],
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1610,7 +1647,37 @@ mod tests {
         ]);
         assert!(matches!(
             result,
-            Err(Flow::Signal(sig)) if sig.symbol == "end-of-file"
+            Err(Flow::Signal(sig))
+                if sig.symbol == "end-of-file"
+                    && matches!(sig.data.as_slice(), [Value::Str(s)] if &**s == "Error reading from stdin")
+        ));
+    }
+
+    #[test]
+    fn builtin_read_file_name_validates_dir_default_and_initial() {
+        let bad_dir = builtin_read_file_name(vec![Value::string("File: "), Value::Int(1)]);
+        assert!(matches!(
+            bad_dir,
+            Err(Flow::Signal(sig)) if sig.symbol == "wrong-type-argument"
+        ));
+
+        let bad_default =
+            builtin_read_file_name(vec![Value::string("File: "), Value::Nil, Value::Int(1)]);
+        assert!(matches!(
+            bad_default,
+            Err(Flow::Signal(sig)) if sig.symbol == "wrong-type-argument"
+        ));
+
+        let bad_initial = builtin_read_file_name(vec![
+            Value::string("File: "),
+            Value::Nil,
+            Value::Nil,
+            Value::Nil,
+            Value::Int(1),
+        ]);
+        assert!(matches!(
+            bad_initial,
+            Err(Flow::Signal(sig)) if sig.symbol == "wrong-type-argument"
         ));
     }
 
@@ -1654,6 +1721,37 @@ mod tests {
         assert!(matches!(
             result,
             Err(Flow::Signal(sig)) if sig.symbol == "wrong-number-of-arguments"
+        ));
+    }
+
+    #[test]
+    fn builtin_read_directory_name_validates_dir_default_and_initial() {
+        let bad_dir = builtin_read_directory_name(vec![Value::string("Directory: "), Value::Int(1)]);
+        assert!(matches!(
+            bad_dir,
+            Err(Flow::Signal(sig)) if sig.symbol == "wrong-type-argument"
+        ));
+
+        let bad_default = builtin_read_directory_name(vec![
+            Value::string("Directory: "),
+            Value::Nil,
+            Value::Int(1),
+        ]);
+        assert!(matches!(
+            bad_default,
+            Err(Flow::Signal(sig)) if sig.symbol == "wrong-type-argument"
+        ));
+
+        let bad_initial = builtin_read_directory_name(vec![
+            Value::string("Directory: "),
+            Value::Nil,
+            Value::Nil,
+            Value::Nil,
+            Value::Int(1),
+        ]);
+        assert!(matches!(
+            bad_initial,
+            Err(Flow::Signal(sig)) if sig.symbol == "wrong-type-argument"
         ));
     }
 
