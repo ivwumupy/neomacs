@@ -329,6 +329,7 @@ const DISPATCH_BUILTIN_NAMES: &[&str] = &[
     "get",
     "get-buffer",
     "get-buffer-create",
+    "get-file-buffer",
     "get-byte",
     "get-char-property",
     "get-load-suffixes",

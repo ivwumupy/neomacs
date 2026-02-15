@@ -4,6 +4,25 @@ Last updated: 2026-02-15
 
 ## Done
 
+- Implemented `get-file-buffer` compatibility slice:
+  - added evaluator-backed dispatch in `rust/neovm-core/src/elisp/builtins.rs` with Emacs-style semantics:
+    - arity `1`
+    - `stringp` validation payloads for non-string arguments
+    - resolves lookup candidates relative to eval-time `default-directory`
+    - matches visited file buffers by exact resolved path and canonicalized path fallback
+  - added builtin registration in `rust/neovm-core/src/elisp/builtin_registry.rs`
+  - expanded `builtins.rs` unit coverage for:
+    - exact, relative, and canonicalized match paths
+    - missing-path nil return
+    - non-string type error path
+  - added and enabled oracle corpus:
+    - `test/neovm/vm-compat/cases/get-file-buffer-semantics.forms`
+    - `test/neovm/vm-compat/cases/get-file-buffer-semantics.expected.tsv`
+    - wired into `test/neovm/vm-compat/cases/default.list`
+  - verified:
+    - `cargo test --manifest-path rust/neovm-core/Cargo.toml get_file_buffer -- --nocapture` (pass)
+    - `make -C test/neovm/vm-compat check-neovm FORMS=cases/get-file-buffer-semantics.forms EXPECTED=cases/get-file-buffer-semantics.expected.tsv` (pass, 4/4)
+    - `make -C test/neovm/vm-compat validate-case-lists` (pass)
 - Implemented `buffer-local-variables` compatibility slice (custom/buffer-local system):
   - aligned evaluator dispatch target in `rust/neovm-core/src/elisp/custom.rs` from loose fallback behavior to explicit argument/arity semantics:
     - arity `0..1`

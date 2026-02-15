@@ -63,6 +63,7 @@ cases/cl-helper-availability
 cases/residual-helper-availability
 cases/bindings
 cases/specpdl-dynamic-unwind-semantics
+cases/get-file-buffer-semantics
 cases/buffer-locals
 cases/buffer-local-value
 cases/buffer-local-variables-semantics

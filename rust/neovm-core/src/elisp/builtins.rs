@@ -4094,6 +4094,12 @@ fn expect_buffer_id(value: &Value) -> Result<BufferId, Flow> {
     }
 }
 
+fn canonicalize_or_self(path: &str) -> String {
+    std::fs::canonicalize(path)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| path.to_string())
+}
+
 /// (get-buffer-create NAME) → buffer
 pub(crate) fn builtin_get_buffer_create(
     eval: &mut super::eval::Evaluator,
@@ -4132,6 +4138,36 @@ pub(crate) fn builtin_get_buffer(
         }
         _ => Ok(Value::Nil),
     }
+}
+
+/// (get-file-buffer FILENAME) -> buffer or nil
+pub(crate) fn builtin_get_file_buffer(
+    eval: &mut super::eval::Evaluator,
+    args: Vec<Value>,
+) -> EvalResult {
+    expect_args("get-file-buffer", &args, 1)?;
+    let filename = expect_string(&args[0])?;
+    let resolved = super::fileio::resolve_filename_for_eval(eval, &filename);
+    let resolved_true = canonicalize_or_self(&resolved);
+
+    for id in eval.buffers.buffer_list() {
+        let Some(buf) = eval.buffers.get(id) else {
+            continue;
+        };
+        let Some(file_name) = &buf.file_name else {
+            continue;
+        };
+
+        let candidate = super::fileio::resolve_filename_for_eval(eval, file_name);
+        if candidate == resolved {
+            return Ok(Value::Buffer(id));
+        }
+        if canonicalize_or_self(&candidate) == resolved_true {
+            return Ok(Value::Buffer(id));
+        }
+    }
+
+    Ok(Value::Nil)
 }
 
 /// (kill-buffer BUFFER-OR-NAME) → t
@@ -5480,6 +5516,7 @@ pub(crate) fn dispatch_builtin(
         // Buffer operations
         "get-buffer-create" => return Some(builtin_get_buffer_create(eval, args)),
         "get-buffer" => return Some(builtin_get_buffer(eval, args)),
+        "get-file-buffer" => return Some(builtin_get_file_buffer(eval, args)),
         "kill-buffer" => return Some(builtin_kill_buffer(eval, args)),
         "set-buffer" => return Some(builtin_set_buffer(eval, args)),
         "current-buffer" => return Some(builtin_current_buffer(eval, args)),
@@ -7781,6 +7818,49 @@ mod tests {
             .expect("builtin string= should evaluate");
         assert_eq!(full, short);
         assert!(full.is_truthy());
+    }
+
+    #[test]
+    fn eval_get_file_buffer_matches_visited_paths() {
+        let mut eval = super::super::eval::Evaluator::new();
+        let id = eval.buffers.create_buffer("gfb");
+
+        let path =
+            std::env::temp_dir().join(format!("neovm-gfb-{}-{}", std::process::id(), "eval"));
+        std::fs::write(&path, b"gfb").expect("write test file");
+        let file = path.to_string_lossy().to_string();
+        eval.buffers.get_mut(id).unwrap().file_name = Some(file.clone());
+
+        let exact = builtin_get_file_buffer(&mut eval, vec![Value::string(&file)]).unwrap();
+        assert_eq!(exact, Value::Buffer(id));
+
+        let truename = std::fs::canonicalize(&path)
+            .expect("canonicalize file")
+            .to_string_lossy()
+            .to_string();
+        let true_match = builtin_get_file_buffer(&mut eval, vec![Value::string(truename)]).unwrap();
+        assert_eq!(true_match, Value::Buffer(id));
+
+        let default_dir = format!("{}/", path.parent().unwrap().to_string_lossy());
+        let basename = path.file_name().unwrap().to_string_lossy().to_string();
+        eval.obarray
+            .set_symbol_value("default-directory", Value::string(default_dir));
+        let relative = builtin_get_file_buffer(&mut eval, vec![Value::string(basename)]).unwrap();
+        assert_eq!(relative, Value::Buffer(id));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn eval_get_file_buffer_type_and_missing_paths() {
+        let mut eval = super::super::eval::Evaluator::new();
+        let missing = builtin_get_file_buffer(
+            &mut eval,
+            vec![Value::string("/tmp/neovm-no-such-file-for-gfb")],
+        )
+        .unwrap();
+        assert!(missing.is_nil());
+        assert!(builtin_get_file_buffer(&mut eval, vec![Value::Int(1)]).is_err());
     }
 
     #[test]
