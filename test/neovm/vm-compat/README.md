@@ -79,6 +79,15 @@ cd test/neovm/vm-compat
 make list-cases
 ```
 
+Run any case list file directly (avoids passing very long `CASES=...` values):
+
+```bash
+cd test/neovm/vm-compat
+make check-neovm-list LIST=cases/thread.list
+make check-list LIST=cases/introspection.list
+make record-list LIST=cases/default.list
+```
+
 Run one specific case:
 
 ```bash

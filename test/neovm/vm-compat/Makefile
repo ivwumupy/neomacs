@@ -6,6 +6,7 @@ read_case_list = $(strip $(shell awk 'NF && $$1 !~ /^#/' $(1) | tr '\n' ' '))
 
 CASES_LIST ?= cases/default.list
 CASES ?= $(call read_case_list,$(CASES_LIST))
+LIST ?= $(CASES_LIST)
 NEOVM_ONLY_CASES_LIST ?= cases/neovm-only.list
 NEOVM_ONLY_CASES ?= $(call read_case_list,$(NEOVM_ONLY_CASES_LIST))
 ALL_NEOVM_CASES ?= $(CASES) $(NEOVM_ONLY_CASES)
@@ -22,7 +23,7 @@ ERT_ALLOWLIST ?= cases/ert-allowlist-smoke.txt
 ERT_EXPECTED ?= cases/ert-allowlist-smoke.expected.tsv
 ERT_LOAD_FILES ?= cases/ert-allowlist-fixtures/smoke-tests.el
 
-.PHONY: oracle neovm record check compare check-neovm record-all check-all check-all-neovm check-all-neovm-only check-legacy-elc-neovm check-introspection-neovm check-thread-neovm check-runner-feature-stamp check-builtin-registry-fboundp list-cases check-one-neovm validate-case-lists ert-oracle record-ert-allowlist check-ert-allowlist bench-load-cache
+.PHONY: oracle neovm record check compare check-neovm record-all check-all check-all-neovm check-all-neovm-only check-legacy-elc-neovm check-introspection-neovm check-thread-neovm check-runner-feature-stamp check-builtin-registry-fboundp list-cases record-list check-list check-neovm-list check-one-neovm validate-case-lists ert-oracle record-ert-allowlist check-ert-allowlist bench-load-cache
 
 oracle:
 	./run-oracle.sh $(FORMS)
@@ -112,6 +113,39 @@ check-builtin-registry-fboundp:
 list-cases:
 	@for case in $(CASES); do \
 		printf '%s\n' "$$case" || exit 0; \
+	done
+
+record-list:
+	@set -e; \
+	if [ ! -f "$(LIST)" ]; then \
+		echo "missing list file: $(LIST)"; \
+		exit 1; \
+	fi; \
+	for case in $(call read_case_list,$(LIST)); do \
+		echo "== $$case =="; \
+		$(MAKE) --no-print-directory record FORMS="$$case.forms" EXPECTED="$$case.expected.tsv"; \
+	done
+
+check-list:
+	@set -e; \
+	if [ ! -f "$(LIST)" ]; then \
+		echo "missing list file: $(LIST)"; \
+		exit 1; \
+	fi; \
+	for case in $(call read_case_list,$(LIST)); do \
+		echo "== $$case =="; \
+		$(MAKE) --no-print-directory check FORMS="$$case.forms" EXPECTED="$$case.expected.tsv"; \
+	done
+
+check-neovm-list:
+	@set -e; \
+	if [ ! -f "$(LIST)" ]; then \
+		echo "missing list file: $(LIST)"; \
+		exit 1; \
+	fi; \
+	for case in $(call read_case_list,$(LIST)); do \
+		echo "== $$case =="; \
+		$(MAKE) --no-print-directory check-neovm FORMS="$$case.forms" EXPECTED="$$case.expected.tsv"; \
 	done
 
 check-one-neovm:
