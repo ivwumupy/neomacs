@@ -4,6 +4,12 @@ Last updated: 2026-02-15
 
 ## Done
 
+- Aligned compat/worker result rendering with evaluator-aware opaque handle formatting:
+  - added `format_eval_result_with_eval` and `print_value_with_eval` in `neovm-core`
+  - switched vm-compat runner output to evaluator-aware formatting path
+  - switched worker task result byte rendering to evaluator-aware handle printing
+- Re-verified thread compatibility corpus after rendering path update:
+  - `cd test/neovm/vm-compat && make check-thread-neovm` (pass)
 - Full suite re-verified after JSON keyword-error and display batch-semantics slices:
   - `cd test/neovm/vm-compat && make check-all-neovm` (pass)
 - Full suite re-verified after JSON buffer builtin routing + cl_lib JSON cleanup:
