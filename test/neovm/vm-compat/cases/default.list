@@ -68,6 +68,7 @@ cases/minibuffer-batch
 cases/minibuffer-contents-no-properties-semantics
 cases/input-batch-readers
 cases/timer-semantics
+cases/display-stub-semantics
 cases/display-batch-semantics
 cases/display-monitor-semantics
 cases/display-monitor-frames-semantics

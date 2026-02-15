@@ -1,0 +1,60 @@
+(fboundp 'ding)
+(condition-case err
+    (ding nil nil)
+  (error (car err)))
+
+(fboundp 'redraw-frame)
+(condition-case err
+    (redraw-frame)
+  (error (car err)))
+(condition-case err
+    (redraw-frame nil nil)
+  (error (car err)))
+
+(fboundp 'redraw-display)
+(condition-case err
+    (redraw-display)
+  (error (car err)))
+(condition-case err
+    (redraw-display nil)
+  (error (car err)))
+
+(fboundp 'open-termscript)
+(condition-case err
+    (open-termscript "/tmp/neovm-vm-compat-termscript.log")
+  (error (car err)))
+(condition-case err
+    (open-termscript)
+  (error (car err)))
+
+(fboundp 'send-string-to-terminal)
+(condition-case err
+    (send-string-to-terminal "")
+  (error (car err)))
+(condition-case err
+    (send-string-to-terminal)
+  (error (car err)))
+
+(fboundp 'internal-show-cursor)
+(condition-case err
+    (internal-show-cursor nil nil)
+  (error (car err)))
+(condition-case err
+    (internal-show-cursor nil)
+  (error (car err)))
+
+(fboundp 'internal-show-cursor-p)
+(condition-case err
+    (internal-show-cursor-p)
+  (error (car err)))
+(condition-case err
+    (internal-show-cursor-p nil nil)
+  (error (car err)))
+
+(fboundp 'last-nonminibuffer-frame)
+(condition-case err
+    (framep (last-nonminibuffer-frame))
+  (error (car err)))
+(condition-case err
+    (last-nonminibuffer-frame nil)
+  (error (car err)))
