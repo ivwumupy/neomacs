@@ -6377,6 +6377,11 @@ pub(crate) fn dispatch_builtin(
         }
 
         // Indentation (evaluator-dependent)
+        "current-indentation" => {
+            return Some(super::indent::builtin_current_indentation_eval(eval, args))
+        }
+        "current-column" => return Some(super::indent::builtin_current_column_eval(eval, args)),
+        "move-to-column" => return Some(super::indent::builtin_move_to_column_eval(eval, args)),
         "indent-region" => return Some(super::indent::builtin_indent_region(eval, args)),
         "reindent-then-newline-and-indent" => {
             return Some(super::indent::builtin_reindent_then_newline_and_indent(

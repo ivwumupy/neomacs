@@ -60,6 +60,17 @@ fn expect_int(val: &Value) -> Result<i64, Flow> {
     }
 }
 
+fn expect_wholenump(val: &Value) -> Result<usize, Flow> {
+    match val {
+        Value::Int(n) if *n >= 0 => Ok(*n as usize),
+        Value::Char(c) => Ok(*c as usize),
+        other => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("wholenump"), other.clone()],
+        )),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Pure builtins
 // ---------------------------------------------------------------------------
@@ -108,9 +119,160 @@ pub(crate) fn builtin_move_to_column(args: Vec<Value>) -> EvalResult {
     Ok(Value::Int(column))
 }
 
+fn tab_width(eval: &super::eval::Evaluator) -> usize {
+    match eval.obarray.symbol_value("tab-width") {
+        Some(Value::Int(n)) if *n > 0 => *n as usize,
+        Some(Value::Char(c)) if (*c as u32) > 0 => *c as usize,
+        _ => 8,
+    }
+}
+
+fn line_bounds(text: &str, begv: usize, zv: usize, point: usize) -> (usize, usize) {
+    let bytes = text.as_bytes();
+    let pt = point.clamp(begv, zv);
+
+    let mut bol = pt;
+    while bol > begv && bytes[bol - 1] != b'\n' {
+        bol -= 1;
+    }
+
+    let mut eol = pt;
+    while eol < zv && bytes[eol] != b'\n' {
+        eol += 1;
+    }
+
+    (bol, eol)
+}
+
+fn next_column(column: usize, ch: char, tab_width: usize) -> usize {
+    if ch == '\t' {
+        let tab = tab_width.max(1);
+        column + (tab - (column % tab))
+    } else {
+        column + crate::encoding::char_width(ch)
+    }
+}
+
+fn column_for_prefix(prefix: &str, tab_width: usize) -> usize {
+    let mut column = 0usize;
+    for ch in prefix.chars() {
+        column = next_column(column, ch, tab_width);
+    }
+    column
+}
+
 // ---------------------------------------------------------------------------
 // Eval-dependent builtins
 // ---------------------------------------------------------------------------
+
+/// (current-indentation) -> integer
+///
+/// Return indentation columns for the current line.
+pub(crate) fn builtin_current_indentation_eval(
+    eval: &mut super::eval::Evaluator,
+    args: Vec<Value>,
+) -> EvalResult {
+    expect_args("current-indentation", &args, 0)?;
+    let Some(buf) = eval.buffers.current_buffer() else {
+        return Ok(Value::Int(0));
+    };
+
+    let tabw = tab_width(eval);
+    let text = buf.text.to_string();
+    let (bol, eol) = line_bounds(&text, buf.begv, buf.zv, buf.pt);
+    let line = &text[bol..eol];
+
+    let mut column = 0usize;
+    for ch in line.chars() {
+        match ch {
+            ' ' | '\t' => column = next_column(column, ch, tabw),
+            _ => break,
+        }
+    }
+
+    Ok(Value::Int(column as i64))
+}
+
+/// (current-column) -> integer
+///
+/// Return the display column at point on the current line.
+pub(crate) fn builtin_current_column_eval(
+    eval: &mut super::eval::Evaluator,
+    args: Vec<Value>,
+) -> EvalResult {
+    expect_args("current-column", &args, 0)?;
+    let Some(buf) = eval.buffers.current_buffer() else {
+        return Ok(Value::Int(0));
+    };
+
+    let tabw = tab_width(eval);
+    let text = buf.text.to_string();
+    let pt = buf.pt.clamp(buf.begv, buf.zv);
+    let (bol, _) = line_bounds(&text, buf.begv, buf.zv, pt);
+    let prefix = &text[bol..pt];
+
+    Ok(Value::Int(column_for_prefix(prefix, tabw) as i64))
+}
+
+/// (move-to-column COLUMN &optional FORCE) -> COLUMN-REACHED
+///
+/// Move point on the current line according to display columns.
+pub(crate) fn builtin_move_to_column_eval(
+    eval: &mut super::eval::Evaluator,
+    args: Vec<Value>,
+) -> EvalResult {
+    expect_min_args("move-to-column", &args, 1)?;
+    expect_max_args("move-to-column", &args, 2)?;
+    let target = expect_wholenump(&args[0])?;
+    let force = args.get(1).is_some_and(|v| v.is_truthy());
+    let tabw = tab_width(eval);
+
+    let Some(buf) = eval.buffers.current_buffer_mut() else {
+        return Ok(Value::Int(0));
+    };
+
+    let text = buf.text.to_string();
+    let pt = buf.pt.clamp(buf.begv, buf.zv);
+    let (bol, eol) = line_bounds(&text, buf.begv, buf.zv, pt);
+    let line = &text[bol..eol];
+
+    let mut column = 0usize;
+    let mut dest_byte = bol;
+    let mut reached = 0usize;
+    let mut found = false;
+
+    for (rel, ch) in line.char_indices() {
+        let next = next_column(column, ch, tabw);
+        dest_byte = bol + rel + ch.len_utf8();
+        reached = next;
+        if next >= target {
+            found = true;
+            break;
+        }
+        column = next;
+    }
+
+    if !found {
+        dest_byte = eol;
+        reached = column_for_prefix(line, tabw);
+    }
+
+    buf.goto_char(dest_byte);
+
+    if force && reached < target {
+        if buf.read_only {
+            return Err(signal(
+                "buffer-read-only",
+                vec![Value::string(buf.name.clone())],
+            ));
+        }
+        let pad = " ".repeat(target - reached);
+        buf.insert(&pad);
+        reached = target;
+    }
+
+    Ok(Value::Int(reached as i64))
+}
 
 /// (indent-region START END &optional COLUMN) -> nil
 ///
@@ -325,6 +487,52 @@ mod tests {
     fn move_to_column_with_force() {
         let result = builtin_move_to_column(vec![Value::Int(8), Value::True]).unwrap();
         assert_eq!(result.as_int(), Some(8));
+    }
+
+    #[test]
+    fn eval_column_and_indentation_subset() {
+        let mut ev = super::super::eval::Evaluator::new();
+        let forms = super::super::parser::parse_forms(
+            r#"
+            (with-temp-buffer
+              (insert "abc")
+              (goto-char (+ (point-min) 2))
+              (current-column))
+            (with-temp-buffer
+              (insert "  abc")
+              (goto-char (point-max))
+              (current-indentation))
+            (with-temp-buffer
+              (insert "a\tb")
+              (goto-char (point-min))
+              (move-to-column 5)
+              (list (point) (current-column)))
+            "#,
+        )
+        .expect("parse forms");
+
+        let col = ev.eval(&forms[0]).expect("eval current-column");
+        assert_eq!(col, Value::Int(2));
+
+        let indent = ev.eval(&forms[1]).expect("eval current-indentation");
+        assert_eq!(indent, Value::Int(2));
+
+        let move_result = ev.eval(&forms[2]).expect("eval move-to-column");
+        let items = list_to_vec(&move_result).expect("list result");
+        assert_eq!(items, vec![Value::Int(3), Value::Int(8)]);
+    }
+
+    #[test]
+    fn eval_move_to_column_wholenump_validation() {
+        let mut ev = super::super::eval::Evaluator::new();
+        let err = builtin_move_to_column_eval(&mut ev, vec![Value::string("x")]).unwrap_err();
+        match err {
+            Flow::Signal(sig) => {
+                assert_eq!(sig.symbol, "wrong-type-argument");
+                assert_eq!(sig.data, vec![Value::symbol("wholenump"), Value::string("x")]);
+            }
+            other => panic!("unexpected flow: {other:?}"),
+        }
     }
 
     #[test]

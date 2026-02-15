@@ -4,6 +4,25 @@ Last updated: 2026-02-15
 
 ## Done
 
+- Implemented evaluator-backed indentation column subset and oracle lock-in:
+  - updated `rust/neovm-core/src/elisp/indent.rs`:
+    - added evaluator-aware `current-column`, `current-indentation`, and `move-to-column`
+    - aligned `move-to-column` type validation to `wholenump`
+    - implemented display-column traversal with tab expansion and point movement semantics
+  - wired evaluator dispatch in `rust/neovm-core/src/elisp/builtins.rs` for:
+    - `current-column`
+    - `current-indentation`
+    - `move-to-column`
+  - added and enabled oracle corpus:
+    - `test/neovm/vm-compat/cases/indent-column-semantics.forms`
+    - `test/neovm/vm-compat/cases/indent-column-semantics.expected.tsv`
+    - wired into `test/neovm/vm-compat/cases/default.list`
+  - verified:
+    - `cargo test --manifest-path rust/neovm-core/Cargo.toml indent::tests::eval_column_and_indentation_subset -- --nocapture` (pass)
+    - `cargo test --manifest-path rust/neovm-core/Cargo.toml indent::tests::eval_move_to_column_wholenump_validation -- --nocapture` (pass)
+    - `make -C test/neovm/vm-compat check-neovm FORMS=cases/indent-column-semantics.forms EXPECTED=cases/indent-column-semantics.expected.tsv` (pass)
+    - `make -C test/neovm/vm-compat validate-case-lists` (pass)
+    - `make -C test/neovm/vm-compat check-all-neovm` (pass)
 - Implemented `kbd-macro-query` compatibility subset and oracle lock-in:
   - updated `rust/neovm-core/src/elisp/kmacro.rs`:
     - enforced exact arity of 1
