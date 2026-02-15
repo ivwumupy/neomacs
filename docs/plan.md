@@ -4,6 +4,17 @@ Last updated: 2026-02-15
 
 ## Done
 
+- Implemented `undo` arity compatibility slice:
+  - added oracle corpus:
+    - `test/neovm/vm-compat/cases/undo-arity-semantics.forms`
+    - `test/neovm/vm-compat/cases/undo-arity-semantics.expected.tsv`
+    - enabled in `test/neovm/vm-compat/cases/default.list`
+  - aligned `undo` to reject >1 args with `wrong-number-of-arguments`
+  - updated undo unit coverage to assert multi-arg error semantics
+  - verified:
+    - `cargo test undo::tests:: -- --nocapture` (pass)
+    - `make -C test/neovm/vm-compat check-neovm FORMS=cases/undo-arity-semantics.forms EXPECTED=cases/undo-arity-semantics.expected.tsv` (pass)
+    - `make -C test/neovm/vm-compat validate-case-lists` (pass)
 - Full vm-compat verification rerun after recent textprop/overlay slices:
   - `make -C test/neovm/vm-compat check-all-neovm` (pass)
 - Implemented `remove-overlays` arity compatibility slice:
