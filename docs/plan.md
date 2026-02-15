@@ -4,6 +4,22 @@ Last updated: 2026-02-15
 
 ## Done
 
+- Aligned `indent-line-to` type/error payload semantics with oracle and locked with corpus:
+  - updated `rust/neovm-core/src/elisp/kill_ring.rs`:
+    - routed `indent-line-to` numeric parsing through a dedicated column parser
+    - aligned non-number payload to `(wrong-type-argument number-or-marker-p <value>)`
+    - aligned float payload to `(wrong-type-argument fixnump <value>)`
+    - preserved negative-column clamp-to-zero behavior
+  - added and enabled oracle corpus:
+    - `test/neovm/vm-compat/cases/indent-line-to-semantics.forms`
+    - `test/neovm/vm-compat/cases/indent-line-to-semantics.expected.tsv`
+    - wired into `test/neovm/vm-compat/cases/default.list`
+  - verified:
+    - `cargo test --manifest-path rust/neovm-core/Cargo.toml kill_ring::tests::indent_line_to_ -- --nocapture` (pass)
+    - `NEOVM_ORACLE_EMACS=/nix/store/hql3zwz5b4ywd2qwx8jssp4dyb7nx4cb-emacs-30.2/bin/emacs make -C test/neovm/vm-compat record FORMS=cases/indent-line-to-semantics.forms EXPECTED=cases/indent-line-to-semantics.expected.tsv` (pass)
+    - `make -C test/neovm/vm-compat check-neovm FORMS=cases/indent-line-to-semantics.forms EXPECTED=cases/indent-line-to-semantics.expected.tsv` (pass, 6/6)
+    - `make -C test/neovm/vm-compat validate-case-lists` (pass)
+    - `make -C test/neovm/vm-compat check-all-neovm` (pass)
 - Aligned `tab-to-tab-stop` semantics with oracle and locked with corpus:
   - updated `rust/neovm-core/src/elisp/kill_ring.rs`:
     - enforced exact arity `0` (`wrong-number-of-arguments` on extra args)
