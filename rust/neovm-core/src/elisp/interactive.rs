@@ -18,7 +18,7 @@ use std::collections::{HashMap, HashSet};
 use super::error::{signal, EvalResult, Flow};
 use super::eval::Evaluator;
 use super::expr::Expr;
-use super::keymap::{KeyBinding, KeymapManager};
+use super::keymap::{KeyBinding, KeyEvent, KeymapManager};
 use super::mode::{MajorMode, MinorMode};
 use super::value::*;
 
@@ -148,6 +148,17 @@ fn expect_args(name: &str, args: &[Value], n: usize) -> Result<(), Flow> {
 
 fn expect_min_args(name: &str, args: &[Value], min: usize) -> Result<(), Flow> {
     if args.len() < min {
+        Err(signal(
+            "wrong-number-of-arguments",
+            vec![Value::symbol(name), Value::Int(args.len() as i64)],
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+fn expect_max_args(name: &str, args: &[Value], max: usize) -> Result<(), Flow> {
+    if args.len() > max {
         Err(signal(
             "wrong-number-of-arguments",
             vec![Value::symbol(name), Value::Int(args.len() as i64)],
@@ -803,10 +814,54 @@ pub(crate) fn builtin_minor_mode_key_binding(
 
 /// `(where-is-internal DEFINITION &optional KEYMAP FIRSTONLY NOINDIRECT NO-REMAP)`
 /// Return list of key sequences that invoke DEFINITION.
-/// Stub: returns nil.
-pub(crate) fn builtin_where_is_internal(_eval: &mut Evaluator, args: Vec<Value>) -> EvalResult {
+pub(crate) fn builtin_where_is_internal(eval: &mut Evaluator, args: Vec<Value>) -> EvalResult {
     expect_min_args("where-is-internal", &args, 1)?;
-    Ok(Value::Nil)
+    expect_max_args("where-is-internal", &args, 5)?;
+
+    let definition = &args[0];
+    let first_only = args.get(2).is_some_and(|v| !v.is_nil());
+
+    let map_id = if let Some(keymap) = args.get(1) {
+        if keymap.is_nil() {
+            match eval.keymaps.global_map() {
+                Some(id) => id,
+                None => return Ok(Value::Nil),
+            }
+        } else {
+            expect_keymap_id(eval, keymap)?
+        }
+    } else {
+        match eval.keymaps.global_map() {
+            Some(id) => id,
+            None => return Ok(Value::Nil),
+        }
+    };
+
+    let mut prefix = Vec::new();
+    let mut visiting = Vec::new();
+    let mut sequences = Vec::new();
+    collect_where_is_sequences(
+        eval,
+        map_id,
+        definition,
+        &mut prefix,
+        &mut visiting,
+        &mut sequences,
+        first_only,
+    );
+
+    if sequences.is_empty() {
+        return Ok(Value::Nil);
+    }
+
+    if first_only {
+        return Ok(key_sequence_to_value(&sequences[0]));
+    }
+    let out: Vec<Value> = sequences
+        .iter()
+        .map(|seq| key_sequence_to_value(seq))
+        .collect();
+    Ok(Value::list(out))
 }
 
 /// `(substitute-command-keys STRING)`
@@ -1349,6 +1404,137 @@ fn key_binding_to_value(binding: &KeyBinding) -> Value {
     }
 }
 
+fn expect_keymap_id(eval: &Evaluator, value: &Value) -> Result<u64, Flow> {
+    match value {
+        Value::Int(n) => {
+            let id = *n as u64;
+            if eval.keymaps.is_keymap(id) {
+                Ok(id)
+            } else {
+                Err(signal(
+                    "wrong-type-argument",
+                    vec![Value::symbol("keymapp"), value.clone()],
+                ))
+            }
+        }
+        other => Err(signal(
+            "wrong-type-argument",
+            vec![Value::symbol("keymapp"), other.clone()],
+        )),
+    }
+}
+
+fn key_event_to_value(event: &KeyEvent) -> Value {
+    match event {
+        KeyEvent::Char {
+            code,
+            ctrl,
+            meta,
+            shift,
+            super_,
+        } if !ctrl && !meta && !shift && !super_ => Value::Int(*code as i64),
+        _ => Value::symbol(KeymapManager::format_key_event(event)),
+    }
+}
+
+fn key_sequence_to_value(seq: &[KeyEvent]) -> Value {
+    Value::vector(seq.iter().map(key_event_to_value).collect())
+}
+
+fn binding_matches_definition(binding: &KeyBinding, definition: &Value) -> bool {
+    match binding {
+        KeyBinding::Command(name) => {
+            definition.as_symbol_name().is_some_and(|sym| sym == name)
+                || matches!(definition, Value::Subr(subr) if subr == name)
+        }
+        KeyBinding::LispValue(value) => value == definition,
+        KeyBinding::Prefix(_) => false,
+    }
+}
+
+fn collect_where_is_sequences(
+    eval: &Evaluator,
+    map_id: u64,
+    definition: &Value,
+    prefix: &mut Vec<KeyEvent>,
+    visiting: &mut Vec<u64>,
+    out: &mut Vec<Vec<KeyEvent>>,
+    first_only: bool,
+) -> bool {
+    if visiting.contains(&map_id) {
+        return false;
+    }
+    visiting.push(map_id);
+
+    let (entries, parent) = match eval.keymaps.get(map_id) {
+        Some(km) => {
+            let mut items: Vec<(KeyEvent, KeyBinding)> = km
+                .bindings
+                .iter()
+                .map(|(event, binding)| (event.clone(), binding.clone()))
+                .collect();
+            items.sort_by(|(a, _), (b, _)| {
+                KeymapManager::format_key_event(a).cmp(&KeymapManager::format_key_event(b))
+            });
+            (items, km.parent)
+        }
+        None => {
+            visiting.pop();
+            return false;
+        }
+    };
+
+    for (event, binding) in entries {
+        prefix.push(event);
+        match binding {
+            KeyBinding::Prefix(next_map) => {
+                if collect_where_is_sequences(
+                    eval,
+                    next_map,
+                    definition,
+                    prefix,
+                    visiting,
+                    out,
+                    first_only,
+                ) {
+                    visiting.pop();
+                    prefix.pop();
+                    return true;
+                }
+            }
+            other => {
+                if binding_matches_definition(&other, definition) {
+                    out.push(prefix.clone());
+                    if first_only {
+                        visiting.pop();
+                        prefix.pop();
+                        return true;
+                    }
+                }
+            }
+        }
+        prefix.pop();
+    }
+
+    if let Some(parent_id) = parent {
+        if collect_where_is_sequences(
+            eval,
+            parent_id,
+            definition,
+            prefix,
+            visiting,
+            out,
+            first_only,
+        ) {
+            visiting.pop();
+            return true;
+        }
+    }
+
+    visiting.pop();
+    false
+}
+
 /// Find the key binding description for a command name.
 fn find_key_for_command(eval: &Evaluator, command: &str) -> String {
     // Search global map for the command
@@ -1578,6 +1764,10 @@ mod tests {
             .iter()
             .map(format_eval_result)
             .collect()
+    }
+
+    fn eval_one(src: &str) -> String {
+        eval_all(src).into_iter().next().expect("at least one form")
     }
 
     fn eval_all_with(ev: &mut Evaluator, src: &str) -> Vec<String> {
@@ -3093,15 +3283,43 @@ mod tests {
     }
 
     // -------------------------------------------------------------------
-    // where-is-internal (stub)
+    // where-is-internal
     // -------------------------------------------------------------------
 
     #[test]
-    fn where_is_internal_returns_nil() {
-        let mut ev = Evaluator::new();
-        let result =
-            builtin_where_is_internal(&mut ev, vec![Value::symbol("forward-char")]).unwrap();
-        assert!(result.is_nil());
+    fn where_is_internal_finds_binding_in_explicit_map() {
+        let result = eval_one(
+            r#"(let ((m (make-sparse-keymap)))
+                 (define-key m "a" 'ignore)
+                 (equal (car (where-is-internal 'ignore m)) [97]))"#,
+        );
+        assert_eq!(result, "OK t");
+    }
+
+    #[test]
+    fn where_is_internal_first_only_returns_vector() {
+        let result = eval_one(
+            r#"(let ((m (make-sparse-keymap)))
+                 (define-key m "a" 'ignore)
+                 (equal (where-is-internal 'ignore m t) [97]))"#,
+        );
+        assert_eq!(result, "OK t");
+    }
+
+    #[test]
+    fn where_is_internal_keymap_type_errors() {
+        let result = eval_one(
+            r#"(condition-case err
+                   (where-is-internal 'ignore 'not-a-map)
+                 (error err))"#,
+        );
+        assert_eq!(result, "OK (wrong-type-argument keymapp not-a-map)");
+    }
+
+    #[test]
+    fn where_is_internal_non_definition_returns_nil() {
+        let result = eval_one("(where-is-internal 1)");
+        assert_eq!(result, "OK nil");
     }
 
     // -------------------------------------------------------------------
